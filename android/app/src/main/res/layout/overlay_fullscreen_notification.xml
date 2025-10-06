@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#CC000000"
+    android:gravity="center"
+    android:padding="20dp">
+
+    <!-- Main notification container -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/overlay_notification_background"
+        android:padding="24dp"
+        android:elevation="8dp">
+
+        <!-- Header with icon and title -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <ImageView
+                android:id="@+id/overlay_icon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@mipmap/ic_launcher"
+                android:layout_marginEnd="16dp" />
+
+            <TextView
+                android:id="@+id/overlay_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🚨 URGENT: New Booking Request!"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="#E53E3E"
+                android:gravity="center" />
+
+        </LinearLayout>
+
+        <!-- Body text -->
+        <TextView
+            android:id="@+id/overlay_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="You have a new urgent booking request"
+            android:textSize="16sp"
+            android:textColor="#333333"
+            android:layout_marginBottom="20dp"
+            android:gravity="center" />
+
+        <!-- Booking details -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#F8F9FA"
+            android:padding="16dp"
+            android:layout_marginBottom="20dp">
+
+            <TextView
+                android:id="@+id/booking_customer_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Customer: N/A"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/booking_customer_mobile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Mobile: N/A"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/booking_work_address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Location: N/A"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/booking_work_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Description: N/A"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/booking_time"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Time: N/A"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/booking_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Booking ID: N/A"
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:textStyle="italic" />
+
+        </LinearLayout>
+
+        <!-- Action buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <Button
+                android:id="@+id/btn_accept"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ACCEPT"
+                android:textColor="#FFFFFF"
+                android:background="#4CAF50"
+                android:layout_marginEnd="8dp"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:padding="12dp" />
+
+            <Button
+                android:id="@+id/btn_reject"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="REJECT"
+                android:textColor="#FFFFFF"
+                android:background="#F44336"
+                android:layout_marginStart="8dp"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:padding="12dp" />
+
+        </LinearLayout>
+
+
+    </LinearLayout>
+
+</LinearLayout>

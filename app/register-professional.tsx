@@ -1,0 +1,2100 @@
+import { API_ENDPOINTS } from '@/constants/api';
+import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import { router, Stack } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
+
+const { width } = Dimensions.get('window');
+
+// Google Places API configuration
+const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
+
+// Type definitions
+interface Suggestion {
+  id: string;
+  place_id?: string;
+  description: string;
+  structured_formatting?: {
+    main_text: string;
+    secondary_text: string;
+  };
+}
+
+interface Skill {
+  id: number;
+  name: string;
+}
+
+export default function RegisterProfessionalScreen() {
+  // Form state
+  const [name, setName] = useState('');
+  const [mobile, setMobile] = useState('');
+  const [email, setEmail] = useState('');
+  const [price, setPrice] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [selectedSkills, setSelectedSkills] = useState<number[]>([]);
+  const [personalDocuments, setPersonalDocuments] = useState<any[]>([]);
+  const [professionalDocuments, setProfessionalDocuments] = useState<any[]>([]);
+  const [location, setLocation] = useState('');
+  const [address, setAddress] = useState('');
+  
+  // Hidden location fields
+  const [pincode, setPincode] = useState('');
+  const [district, setDistrict] = useState('');
+  const [state, setState] = useState('');
+  const [country, setCountry] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [areaName, setAreaName] = useState(''); // Store area name for city column
+  
+  // Location autocomplete
+  const [locationSuggestions, setLocationSuggestions] = useState<Suggestion[]>([]);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  
+  // UI states
+  const [showSkillsDropdown, setShowSkillsDropdown] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1); // 1 for basic info, 2 for skills and documents
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  
+  // Validation states
+  const [nameError, setNameError] = useState('');
+  const [mobileError, setMobileError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [priceError, setPriceError] = useState('');
+  const [locationError, setLocationError] = useState('');
+  const [addressError, setAddressError] = useState('');
+  const [skillsError, setSkillsError] = useState('');
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
+  const [isValidatingEmail, setIsValidatingEmail] = useState(false);
+  const [isEmailValid, setIsEmailValid] = useState(false);
+  
+  // Error auto-dismiss timers
+  const errorTimers = useRef<{ [key: string]: any }>({});
+  
+  // Function to auto-dismiss error after 5 seconds
+  const setErrorWithAutoDismiss = (errorType: string, errorMessage: string) => {
+    // Clear existing timer for this error type
+    if (errorTimers.current[errorType]) {
+      clearTimeout(errorTimers.current[errorType]);
+    }
+    
+    // Set the error message
+    switch (errorType) {
+      case 'name':
+        setNameError(errorMessage);
+        break;
+      case 'mobile':
+        setMobileError(errorMessage);
+        break;
+      case 'email':
+        setEmailError(errorMessage);
+        break;
+      case 'price':
+        setPriceError(errorMessage);
+        break;
+      case 'location':
+        setLocationError(errorMessage);
+        break;
+      case 'address':
+        setAddressError(errorMessage);
+        break;
+      case 'skills':
+        setSkillsError(errorMessage);
+        break;
+    }
+    
+    // Set timer to clear error after 5 seconds
+    errorTimers.current[errorType] = setTimeout(() => {
+      switch (errorType) {
+        case 'name':
+          setNameError('');
+          break;
+        case 'mobile':
+          setMobileError('');
+          break;
+        case 'email':
+          setEmailError('');
+          break;
+        case 'price':
+          setPriceError('');
+          break;
+        case 'location':
+          setLocationError('');
+          break;
+        case 'address':
+          setAddressError('');
+          break;
+        case 'skills':
+          setSkillsError('');
+          break;
+      }
+      // Clean up timer reference
+      delete errorTimers.current[errorType];
+    }, 5000);
+  };
+  
+  // Debounce timer
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const emailValidationTimer = useRef<NodeJS.Timeout | null>(null);
+  const isSelectingSuggestion = useRef(false);
+
+  // Add ref for location input tracking
+  const locationInputRef = useRef<TextInput>(null);
+
+  // Add skillsData state
+  const [skillsData, setSkillsData] = useState<Skill[]>([]);
+
+  // Fetch categories from backend on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        // Use your backend IP or localhost if running on emulator
+        const response = await fetch(API_ENDPOINTS.CATEGORIES);
+        const result = await response.json();
+        if (result.success) {
+          setSkillsData(result.data.map((cat: any) => ({
+            id: cat.id,
+            name: cat.name,
+          })));
+        }
+      } catch (error) {
+        console.error('Error fetching categories:', error);
+      }
+    };
+    fetchCategories();
+    
+    // Cleanup function to clear all error timers when component unmounts
+    return () => {
+      Object.values(errorTimers.current).forEach(timer => {
+        if (timer) clearTimeout(timer);
+      });
+      errorTimers.current = {};
+    };
+  }, []);
+
+  // Profile photo functions
+  const requestCameraPermission = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const requestMediaLibraryPermission = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const handleProfilePhotoUpload = () => {
+    setShowPhotoModal(true);
+  };
+
+  const handleCameraCapture = async () => {
+    setShowPhotoModal(false);
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) {
+      Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+      return;
+    }
+    
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setProfilePhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to take picture. Please try again.');
+    }
+  };
+
+  const handleGallerySelection = async () => {
+    setShowPhotoModal(false);
+    const hasPermission = await requestMediaLibraryPermission();
+    if (!hasPermission) {
+      Alert.alert('Permission Denied', 'Gallery permission is required to select photos.');
+      return;
+    }
+    
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setProfilePhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const closePhotoModal = () => {
+    setShowPhotoModal(false);
+  };
+
+  // Google Places API function
+  const fetchPlaceSuggestions = async (input: string, callback: (suggestions: Suggestion[]) => void) => {
+    if (input.length < 2) {
+      callback([]);
+      return;
+    }
+    
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+          input
+        )}&key=${GOOGLE_PLACES_API_KEY}&types=geocode`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.predictions && Array.isArray(data.predictions)) {
+        const suggestions = data.predictions.map((prediction: any) => ({
+          id: prediction.place_id,
+          place_id: prediction.place_id,
+          description: prediction.description,
+          structured_formatting: prediction.structured_formatting
+        }));
+        callback(suggestions);
+      } else {
+        callback([]);
+      }
+    } catch (error) {
+      callback([]);
+    }
+  };
+
+  // Debounced search function
+  const debouncedSearch = (input: string, callback: (suggestions: Suggestion[]) => void) => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    
+    debounceTimer.current = setTimeout(() => {
+      fetchPlaceSuggestions(input, callback);
+    }, 300) as any;
+  };
+
+  // Handle location input changes
+  const handleLocationChange = (text: string) => {
+    setLocation(text);
+    if (text.length >= 2) {
+      setShowLocationModal(true);
+      debouncedSearch(text, setLocationSuggestions);
+    } else {
+      setShowLocationModal(false);
+      setLocationSuggestions([]);
+    }
+  };
+
+  // Handle location suggestion selection
+  const selectLocationSuggestion = async (suggestion: Suggestion) => {
+    isSelectingSuggestion.current = true;
+    setLocation(suggestion.description);
+    setShowLocationModal(false);
+    setLocationSuggestions([]);
+    
+    // Extract area name from the selected location
+    const locationParts = suggestion.description.split(', ');
+    if (locationParts.length > 0) {
+      const extractedAreaName = locationParts[0].trim();
+      setAreaName(extractedAreaName);
+    }
+    
+    await extractLocationDetails(suggestion.place_id || suggestion.id, suggestion.description);
+    
+    setTimeout(() => { isSelectingSuggestion.current = false; }, 100);
+  };
+
+  // Handle outside touch to close dropdowns and clear inputs
+  const handleOutsideTouch = () => {
+    if (showLocationModal) {
+      setShowLocationModal(false);
+      setLocationSuggestions([]);
+      setLocation('');
+      locationInputRef.current?.blur();
+    }
+    
+    if (showSkillsDropdown) {
+      setShowSkillsDropdown(false);
+    }
+  };
+
+  // Fetch detailed place information using place_id
+  const fetchPlaceDetails = async (placeId: string) => {
+    if (!placeId) {
+      return null;
+    }
+    
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=address_components,formatted_address,geometry&key=${GOOGLE_PLACES_API_KEY}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.result && data.result.address_components) {
+        return data.result;
+      } else {
+        return null;
+      }
+    } catch (error) {
+      return null;
+    }
+  };
+
+  // Extract location details from address components
+  const extractLocationDetails = async (placeId: string, description: string) => {
+    
+    setPincode('');
+    setDistrict('');
+    setState('');
+    setCountry('');
+    setLatitude('');
+    setLongitude('');
+    
+    try {
+      const placeDetails = await fetchPlaceDetails(placeId);
+      
+      if (placeDetails && placeDetails.address_components) {
+        const addressComponents = placeDetails.address_components;
+        
+        const postalCode = addressComponents.find((component: any) => 
+          component.types.includes('postal_code')
+        );
+        
+        const administrativeAreaLevel1 = addressComponents.find((component: any) => 
+          component.types.includes('administrative_area_level_1')
+        );
+        
+        const administrativeAreaLevel2 = addressComponents.find((component: any) => 
+          component.types.includes('administrative_area_level_2')
+        );
+        
+        const administrativeAreaLevel3 = addressComponents.find((component: any) => 
+          component.types.includes('administrative_area_level_3')
+        );
+        
+        const country = addressComponents.find((component: any) => 
+          component.types.includes('country')
+        );
+        
+        const locality = addressComponents.find((component: any) => 
+          component.types.includes('locality')
+        );
+        
+        const sublocality = addressComponents.find((component: any) => 
+          component.types.includes('sublocality')
+        );
+        
+        if (placeDetails.geometry && placeDetails.geometry.location) {
+          const lat = placeDetails.geometry.location.lat;
+          const lng = placeDetails.geometry.location.lng;
+          
+          setLatitude(lat.toString());
+          setLongitude(lng.toString());
+        }
+        
+        if (postalCode) {
+          setPincode(postalCode.long_name);
+        }
+        
+        if (administrativeAreaLevel1) {
+          setState(administrativeAreaLevel1.long_name);
+        }
+        
+        // Set district (mandal) - prefer level 2, then level 3, then locality
+        if (administrativeAreaLevel2) {
+          setDistrict(administrativeAreaLevel2.long_name);
+        } else if (administrativeAreaLevel3) {
+          setDistrict(administrativeAreaLevel3.long_name);
+        } else if (locality) {
+          setDistrict(locality.long_name);
+        }
+        
+        if (country) {
+          setCountry(country.long_name);
+        }
+        
+        if (!postalCode && placeDetails.geometry && placeDetails.geometry.location) {
+          await fetchPincodeFromCoordinates(
+            placeDetails.geometry.location.lat,
+            placeDetails.geometry.location.lng
+          );
+        }
+        
+      } else {
+        const parts = description.split(', ');
+        
+        if (parts.length >= 2) {
+          const pincodeMatch = description.match(/\b\d{6}\b/);
+          if (pincodeMatch) {
+            setPincode(pincodeMatch[0]);
+          }
+          
+          // For city/area name, use the first part of the location
+          if (parts.length >= 1) {
+            const areaName = parts[0]?.trim();
+            if (areaName) {
+            }
+          }
+          
+          if (parts.length >= 4) {
+            setDistrict(parts[parts.length - 3]?.trim() || '');
+            setState(parts[parts.length - 2]?.trim() || '');
+            setCountry(parts[parts.length - 1]?.trim() || '');
+          } else if (parts.length === 3) {
+            setState(parts[parts.length - 2]?.trim() || '');
+            setCountry(parts[parts.length - 1]?.trim() || '');
+          } else if (parts.length === 2) {
+            setCountry(parts[parts.length - 1]?.trim() || '');
+          }
+        }
+      }
+    } catch (error) {
+      const parts = description.split(', ');
+      if (parts.length >= 2) {
+        const pincodeMatch = description.match(/\b\d{6}\b/);
+        if (pincodeMatch) {
+          setPincode(pincodeMatch[0]);
+        }
+        if (parts.length >= 3) {
+          setState(parts[parts.length - 2]?.trim() || '');
+          setCountry(parts[parts.length - 1]?.trim() || '');
+        }
+      }
+    }
+  };
+
+  // Function to get pincode from coordinates using reverse geocoding
+  const fetchPincodeFromCoordinates = async (lat: number, lng: number) => {
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_PLACES_API_KEY}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        const addressComponents = data.results[0].address_components;
+        const postalCode = addressComponents.find((component: any) => 
+          component.types.includes('postal_code')
+        );
+        
+        if (postalCode) {
+          setPincode(postalCode.long_name);
+        }
+      }
+    } catch (error) {
+    }
+  };
+
+  // Handle skill selection
+  const toggleSkill = (skillId: number) => {
+    // Clear error immediately when skill is selected
+    if (skillsError) {
+      if (errorTimers.current['skills']) {
+        clearTimeout(errorTimers.current['skills']);
+        delete errorTimers.current['skills'];
+      }
+      setSkillsError('');
+    }
+    setSelectedSkills(prev =>
+      prev.includes(skillId)
+        ? prev.filter(id => id !== skillId)
+        : [...prev, skillId]
+    );
+  };
+
+  // Handle document upload with options
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [currentDocumentType, setCurrentDocumentType] = useState<'personal' | 'professional'>('personal');
+  
+  const handleDocumentUploadWithOptions = async (documentType: 'personal' | 'professional') => {
+    setCurrentDocumentType(documentType);
+    setShowDocumentModal(true);
+  };
+  
+  const closeDocumentModal = () => {
+    setShowDocumentModal(false);
+  };
+
+  const handleDocumentFileSelection = async () => {
+    setShowDocumentModal(false);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'image/*'
+        ],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        // Add unique IDs to each document
+        const documentsWithIds = result.assets.map((doc, index) => ({
+          ...doc,
+          id: `doc_${Date.now()}_${index}_${Math.random()}`,
+          mimeType: doc.mimeType || 'application/octet-stream'
+        }));
+
+        if (currentDocumentType === 'personal') {
+          setPersonalDocuments([...personalDocuments, ...documentsWithIds]);
+        } else {
+          setProfessionalDocuments([...professionalDocuments, ...documentsWithIds]);
+        }
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to upload document. Please try again.');
+    }
+  };
+
+  // Handle camera capture for documents
+  const handleCameraCaptureForDocuments = async () => {
+    setShowDocumentModal(false);
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) {
+      Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+      return;
+    }
+    
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const photo = result.assets[0];
+        
+        // Add to documents with unique ID
+        const newDocument = {
+          id: `photo_${Date.now()}_${Math.random()}`,
+          name: `Photo_${new Date().getTime()}.jpg`,
+          uri: photo.uri,
+          size: photo.fileSize || 0,
+          mimeType: 'image/jpeg'
+        };
+        
+        if (currentDocumentType === 'personal') {
+          setPersonalDocuments([...personalDocuments, newDocument]);
+        } else {
+          setProfessionalDocuments([...professionalDocuments, newDocument]);
+        }
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to take picture. Please try again.');
+    }
+  };
+
+  // Remove uploaded document
+  const removeDocument = (documentId: string, documentType: 'personal' | 'professional') => {
+    if (documentType === 'personal') {
+      const newDocuments = personalDocuments.filter(doc => doc.id !== documentId);
+      setPersonalDocuments(newDocuments);
+    } else {
+      const newDocuments = professionalDocuments.filter(doc => doc.id !== documentId);
+      setProfessionalDocuments(newDocuments);
+    }
+  };
+
+  // Clear all documents of a specific type
+  const clearAllDocuments = (documentType: 'personal' | 'professional') => {
+    Alert.alert(
+      `Clear All ${documentType === 'personal' ? 'Personal' : 'Professional'} Documents`,
+      `Are you sure you want to remove all selected ${documentType} documents?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear All', 
+          style: 'destructive',
+          onPress: () => {
+            if (documentType === 'personal') {
+              setPersonalDocuments([]);
+            } else {
+              setProfessionalDocuments([]);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Check if user exists in database
+  const checkUserExists = async (mobile: string, email: string) => {
+    try {
+      setIsCheckingUser(true);
+      setMobileError('');
+      setEmailError('');
+      
+      const response = await fetch(API_ENDPOINTS.CHECK_USER_EXISTS(mobile, email, 'professional'));
+      const result = await response.json();
+      
+      if (result.success && result.data.exists) {
+        if (result.data.existingMobile) {
+          setErrorWithAutoDismiss('mobile', 'Mobile number already registered in our system');
+        }
+        if (result.data.existingEmail) {
+          setErrorWithAutoDismiss('email', 'Email address already registered in our system');
+        }
+        return true; // User exists
+      }
+      return false; // User doesn't exist
+    } catch (error) {
+      // Set generic error if API call fails
+      setErrorWithAutoDismiss('email', 'Unable to verify email. Please try again.');
+      return false;
+    } finally {
+      setIsCheckingUser(false);
+    }
+  };
+
+  // Real-time email validation
+  const validateEmailInRealTime = async (email: string) => {
+    if (emailValidationTimer.current) {
+      clearTimeout(emailValidationTimer.current);
+    }
+    
+    emailValidationTimer.current = setTimeout(async () => {
+      if (email.trim().length === 0) {
+        setEmailError('');
+        setIsValidatingEmail(false);
+        return;
+      }
+      
+      // Basic email format validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        setErrorWithAutoDismiss('email', 'Please enter a valid email address');
+        setIsValidatingEmail(false);
+        return;
+      }
+      
+      // Check if email already exists (only check email, not mobile)
+      try {
+        setIsValidatingEmail(true);
+        const response = await fetch(API_ENDPOINTS.CHECK_USER_EXISTS('', email.trim(), 'professional'));
+        const result = await response.json();
+        
+        if (result.success && result.data.existingEmail) {
+          setErrorWithAutoDismiss('email', 'Email address already registered in our system');
+          setIsEmailValid(false);
+        } else {
+          setEmailError(''); // Clear error if email is available
+          setIsEmailValid(true);
+        }
+      } catch (error) {
+        // Don't set error for network issues during real-time validation
+      } finally {
+        setIsValidatingEmail(false);
+      }
+    }, 1000) as any; // 1 second delay
+  };
+
+  // Handle next button
+  const handleNext = async () => {
+    // Clear previous errors
+    setNameError('');
+    setMobileError('');
+    setEmailError('');
+    setPriceError('');
+    setLocationError('');
+    
+    let hasErrors = false;
+    
+    // Check name
+    if (!name.trim()) {
+      setErrorWithAutoDismiss('name', 'Full name is required');
+      hasErrors = true;
+    }
+    
+    // Check mobile
+    if (!mobile.trim()) {
+      setErrorWithAutoDismiss('mobile', 'Mobile number is required');
+      hasErrors = true;
+    } else if (mobile.length < 10) {
+      setErrorWithAutoDismiss('mobile', 'Please enter a valid mobile number');
+      hasErrors = true;
+    }
+    
+    // Check email
+    if (!email.trim()) {
+      setErrorWithAutoDismiss('email', 'Email is required');
+      hasErrors = true;
+    } else {
+      // Enhanced email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        setErrorWithAutoDismiss('email', 'Please enter a valid email address');
+        hasErrors = true;
+    }
+    }
+    
+    // Check price
+    if (!price.trim()) {
+      setErrorWithAutoDismiss('price', 'Price per hour is required');
+      hasErrors = true;
+    } else {
+      // Validate price is a positive number
+      const priceValue = parseFloat(price.trim());
+      if (isNaN(priceValue) || priceValue <= 0) {
+        setErrorWithAutoDismiss('price', 'Please enter a valid price (positive number)');
+        hasErrors = true;
+      }
+    }
+    
+    // Check location
+    if (!location.trim()) {
+      setErrorWithAutoDismiss('location', 'Location is required');
+      hasErrors = true;
+    }
+    
+    if (hasErrors) {
+      return;
+    }
+
+    // Check if user already exists
+    const userExists = await checkUserExists(mobile.trim(), email.trim());
+    
+    if (userExists) {
+      // Don't proceed to next step, errors are already set
+      return;
+    }
+
+    // All validations passed, proceed to next step
+    setCurrentStep(2);
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (selectedSkills.length === 0) {
+      setErrorWithAutoDismiss('skills', 'Please select at least one skill');
+      return;
+    }
+
+    // Check address
+    if (!address.trim()) {
+      setErrorWithAutoDismiss('address', 'Address is required');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Create FormData for multipart/form-data request
+      const formData = new FormData();
+      
+      // Add basic form fields
+      formData.append('name', name);
+      formData.append('mobile', mobile);
+      formData.append('email', email);
+      formData.append('price', price);
+      formData.append('skills', JSON.stringify(selectedSkills));
+      formData.append('location', location);
+      formData.append('address', address);
+      formData.append('pincode', pincode);
+      formData.append('district', district);
+      formData.append('state', state);
+      formData.append('country', country);
+      formData.append('latitude', latitude);
+      formData.append('longitude', longitude);
+      formData.append('areaName', areaName); // Send area name for city column
+
+      // Add profile photo if exists
+      if (profilePhoto) {
+        const profilePhotoObj = {
+          uri: profilePhoto,
+          type: 'image/jpeg',
+          name: `profile_${Date.now()}.jpg`,
+        };
+        formData.append('profilePhoto', profilePhotoObj as any);
+      }
+
+      // Add personal documents to document1 column
+      if (personalDocuments.length > 0) {
+        personalDocuments.forEach((doc, index) => {
+          const documentObj = {
+            uri: doc.uri,
+            type: doc.mimeType || 'application/octet-stream',
+            name: doc.name || `personal_doc_${index}.pdf`,
+          };
+          // Use 'document1' field name to match your database column
+          formData.append('document1', documentObj as any);
+        });
+      }
+
+      // Add professional documents to document2 column
+      if (professionalDocuments.length > 0) {
+        professionalDocuments.forEach((doc, index) => {
+          const documentObj = {
+            uri: doc.uri,
+            type: doc.mimeType || 'application/octet-stream',
+            name: doc.name || `professional_doc_${index}.pdf`,
+          };
+          // Use 'document2' field name to match your database column
+          formData.append('document2', documentObj as any);
+        });
+      }
+
+      // Make API call to backend with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for file uploads
+
+      try {
+        const response = await fetch(API_ENDPOINTS.REGISTER_PROFESSIONAL, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json();
+        if (response.ok && result.success) {
+          Alert.alert(
+            'Success!',
+            'Your professional registration has been submitted successfully. We will contact you soon.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Reset form
+                  setName('');
+                  setMobile('');
+                  setEmail('');
+                  setPrice('');
+                  setProfilePhoto(null);
+                  setSelectedSkills([]);
+                  setPersonalDocuments([]);
+                  setProfessionalDocuments([]);
+                  setLocation('');
+                  setAddress('');
+                  setPincode('');
+                  setDistrict('');
+                  setState('');
+                  setCountry('');
+                  setLatitude('');
+                  setLongitude('');
+                  setAreaName('');
+                  setCurrentStep(1);
+                  router.back();
+                }
+              }
+            ]
+          );
+        } else {
+          const errorMessage = result.message || 'Registration failed. Please try again.';
+          Alert.alert('Registration Failed', errorMessage);
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timeout. The server took too long to respond. Please try again.');
+        }
+        throw fetchError;
+      }
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      let errorMessage = 'Unable to connect to server. Please check your internet connection and try again.';
+      
+      if (error.message) {
+        if (error.message.includes('timeout')) {
+          errorMessage = 'Request timeout. Please try again.';
+        } else if (error.message.includes('Network request failed')) {
+          errorMessage = 'Network connection failed. Please check your internet connection and ensure you are connected to the same WiFi network as your computer.';
+        }
+      }
+      
+      Alert.alert('Network Error', errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // SuggestionDropdown component
+  const SuggestionDropdown = ({ visible, suggestions, onSelect, style }: any) => {
+    if (!visible || suggestions.length === 0) return null;
+    return (
+      <View style={[styles.suggestionDropdown, style]}>
+        <ScrollView style={styles.suggestionList} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
+          {suggestions.map((suggestion: Suggestion) => (
+            <TouchableOpacity
+              key={suggestion.id}
+              style={styles.suggestionItem}
+              onPressIn={() => onSelect(suggestion)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="location-outline" size={16} color="#666" />
+              <View style={styles.suggestionTextContainer}>
+                <Text style={styles.suggestionMainText}>
+                  {suggestion.structured_formatting?.main_text || suggestion.description}
+                </Text>
+                {suggestion.structured_formatting?.secondary_text && (
+                  <Text style={styles.suggestionSecondaryText}>
+                    {suggestion.structured_formatting.secondary_text}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Step 1: Basic Information
+  const renderStep1 = () => (
+    <View style={styles.formContainer}>
+      {/* Profile Photo Upload */}
+      <View style={styles.profilePhotoContainer}>
+        <TouchableOpacity style={styles.profilePhotoButton} onPress={handleProfilePhotoUpload}>
+          {profilePhoto ? (
+            <Image source={{ uri: profilePhoto }} style={styles.profilePhoto} />
+          ) : (
+            <View style={styles.profilePhotoPlaceholder}>
+              <Ionicons name="camera" size={30} color="#A1CEDC" />
+              <Text style={styles.profilePhotoText}>Add Photo</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Name Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Full Name *</Text>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your full name"
+            placeholderTextColor="#999"
+            value={name}
+            onChangeText={(text) => {
+              setName(text);
+              // Clear error immediately when user types
+              if (nameError) {
+                if (errorTimers.current['name']) {
+                  clearTimeout(errorTimers.current['name']);
+                  delete errorTimers.current['name'];
+                }
+                setNameError('');
+              }
+            }}
+          />
+        </View>
+        {nameError ? (
+          <Text style={styles.errorText}>{nameError}</Text>
+        ) : null}
+      </View>
+
+      {/* Mobile Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Mobile Number *</Text>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="call-outline" size={20} color="#666" style={styles.inputIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your mobile number"
+            placeholderTextColor="#999"
+            value={mobile}
+            onChangeText={(text) => {
+              setMobile(text);
+              // Clear error immediately when user types
+              if (mobileError) {
+                if (errorTimers.current['mobile']) {
+                  clearTimeout(errorTimers.current['mobile']);
+                  delete errorTimers.current['mobile'];
+                }
+                setMobileError('');
+              }
+            }}
+            keyboardType="phone-pad"
+            maxLength={10}
+          />
+        </View>
+        {mobileError ? (
+          <Text style={styles.errorText}>{mobileError}</Text>
+        ) : null}
+      </View>
+
+      {/* Email Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Email *</Text>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your email"
+            placeholderTextColor="#999"
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              // Clear error immediately when user types
+              if (emailError) {
+                if (errorTimers.current['email']) {
+                  clearTimeout(errorTimers.current['email']);
+                  delete errorTimers.current['email'];
+                }
+                setEmailError('');
+              }
+              setIsEmailValid(false); // Reset validation state
+              validateEmailInRealTime(text); // Real-time validation
+            }}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          {isValidatingEmail && (
+            <Ionicons name="reload" size={16} color="#A1CEDC" style={styles.spinningIcon} />
+          )}
+          {isEmailValid && !isValidatingEmail && (
+            <Ionicons name="checkmark-circle" size={20} color="#27ae60" />
+          )}
+        </View>
+        {emailError ? (
+          <Text style={styles.errorText}>{emailError}</Text>
+        ) : null}
+        {isValidatingEmail && !emailError && (
+          <Text style={styles.validatingText}>Validating email...</Text>
+        )}
+        {isEmailValid && !emailError && !isValidatingEmail && (
+          <Text style={styles.successText}>Email is available</Text>
+        )}
+      </View>
+
+      {/* Price Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Price *</Text>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="cash-outline" size={20} color="#666" style={styles.inputIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter price per hour"
+            placeholderTextColor="#999"
+            value={price}
+            onChangeText={(text) => {
+              setPrice(text);
+              // Clear error immediately when user types
+              if (priceError) {
+                if (errorTimers.current['price']) {
+                  clearTimeout(errorTimers.current['price']);
+                  delete errorTimers.current['price'];
+                }
+                setPriceError('');
+              }
+            }}
+            keyboardType="numeric"
+          />
+        </View>
+        {priceError ? (
+          <Text style={styles.errorText}>{priceError}</Text>
+        ) : null}
+      </View>
+
+      {/* Location Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Location *</Text>
+        <View style={{ position: 'relative' }}>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="location-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              ref={locationInputRef}
+              style={styles.input}
+              placeholder="Type to search location"
+              placeholderTextColor="#999"
+              value={location}
+              onChangeText={(text) => {
+                handleLocationChange(text);
+                // Clear error immediately when user types
+                if (locationError) {
+                  if (errorTimers.current['location']) {
+                    clearTimeout(errorTimers.current['location']);
+                    delete errorTimers.current['location'];
+                  }
+                  setLocationError('');
+                }
+              }}
+              onFocus={() => {
+                if (location.length >= 2) {
+                  setShowLocationModal(true);
+                }
+              }}
+            />
+          </View>
+          <SuggestionDropdown
+            visible={showLocationModal}
+            suggestions={locationSuggestions}
+            onSelect={selectLocationSuggestion}
+            style={{ position: 'absolute', top: 55, left: 0, right: 0, zIndex: 10 }}
+          />
+        </View>
+        {locationError ? (
+          <Text style={styles.errorText}>{locationError}</Text>
+        ) : null}
+      </View>
+
+      {/* Next Button */}
+      <TouchableOpacity
+        style={[styles.nextButton, isCheckingUser && styles.nextButtonDisabled]}
+        onPress={handleNext}
+        disabled={isCheckingUser}
+      >
+        {isCheckingUser ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons name="reload" size={20} color="#fff" style={styles.spinningIcon} />
+            <Text style={styles.nextButtonText}>Checking...</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.nextButtonText}>Next</Text>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Step 2: Skills and Documents
+  const renderStep2 = () => (
+    <View style={styles.formContainer}>
+
+      {/* Address Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Address *</Text>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="home-outline" size={30} color="#666" style={styles.inputIcon} />
+          <TextInput
+            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+            placeholder="Enter your complete address"
+            placeholderTextColor="#999"
+            value={address}
+            onChangeText={(text) => {
+              setAddress(text);
+              // Clear error immediately when user types
+              if (addressError) {
+                if (errorTimers.current['address']) {
+                  clearTimeout(errorTimers.current['address']);
+                  delete errorTimers.current['address'];
+                }
+                setAddressError('');
+              }
+            }}
+            multiline={true}
+            numberOfLines={3}
+          />
+        </View>
+        {addressError ? (
+          <Text style={styles.errorText}>{addressError}</Text>
+        ) : null}
+      </View>
+
+      {/* Skills Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Skills *</Text>
+        <TouchableOpacity
+          style={styles.skillsDropdown}
+          onPress={() => setShowSkillsDropdown(!showSkillsDropdown)}
+        >
+          <View style={styles.skillsDropdownHeader}>
+            <Ionicons name="briefcase-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Text style={styles.skillsDropdownText}>
+              {selectedSkills.length > 0 
+                ? `${selectedSkills.length} skill(s) selected`
+                : 'Select your skills'
+              }
+            </Text>
+            <Ionicons 
+              name={showSkillsDropdown ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#666" 
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Selected Skills Display */}
+        {selectedSkills.length > 0 && (
+          <View style={styles.selectedSkillsContainer}>
+            {selectedSkills.map((id) => {
+              const skill = skillsData.find(s => s.id === id);
+              return (
+                <TouchableOpacity
+                  key={id}
+                  style={styles.selectedSkillTag}
+                  onPress={() => toggleSkill(id)}
+                >
+                  <Text style={styles.selectedSkillText}>{skill?.name}</Text>
+                  <Ionicons name="close-circle" size={16} color="#e74c3c" />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+                 {/* Skills Dropdown */}
+         {showSkillsDropdown && (
+           <View style={styles.skillsDropdownContent}>
+             <ScrollView style={styles.skillsList} nestedScrollEnabled={true}>
+               {skillsData.map((skill) => (
+                 <TouchableOpacity
+                   key={skill.id}
+                   style={styles.skillItem}
+                   onPress={() => toggleSkill(skill.id)}
+                 >
+                   <Text style={styles.skillText}>{skill.name}</Text>
+                   {selectedSkills.includes(skill.id) && (
+                     <Ionicons name="checkmark-circle" size={20} color="#27ae60" />
+                   )}
+                 </TouchableOpacity>
+               ))}
+             </ScrollView>
+           </View>
+         )}
+         
+         {/* Skills Error Message */}
+         {skillsError ? (
+           <Text style={styles.errorText}>{skillsError}</Text>
+         ) : null}
+       </View>
+
+      {/* Personal Documents Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Personal Documents</Text>
+        
+        <View style={styles.uploadOptionsContainer}>
+          <TouchableOpacity
+            style={styles.uploadOptionButton}
+            onPress={() => handleDocumentUploadWithOptions('personal')}
+          >
+            <Ionicons name="document-text-outline" size={20} color="#666" />
+            <Text style={styles.uploadOptionText}>Upload Aadhar/Pan/Ration</Text>
+          </TouchableOpacity>
+          {personalDocuments.length > 0 && (
+            <Text style={styles.documentCountText}>
+              {personalDocuments.length} document{personalDocuments.length !== 1 ? 's' : ''} selected
+              {personalDocuments.length > 0 && (
+                <Text style={styles.documentSizeText}>
+                  {' '}(Total: {(personalDocuments.reduce((total, doc) => total + (doc.size || 0), 0) / 1024 / 1024).toFixed(2)} MB)
+                </Text>
+              )}
+            </Text>
+          )}
+        </View>
+
+        {/* Selected Personal Documents Display */}
+        {personalDocuments.length > 0 && (
+          <View style={styles.uploadedDocumentsContainer}>
+            <View style={styles.documentHeaderRow}>
+              <Text style={styles.newDocumentsTitle}>Selected Personal Documents ({personalDocuments.length}):</Text>
+              <TouchableOpacity onPress={() => clearAllDocuments('personal')} style={styles.clearAllButton}>
+                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                <Text style={styles.clearAllText}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
+            {personalDocuments.map((doc) => (
+              <View key={doc.id} style={styles.uploadedDocumentItem}>
+                <Ionicons 
+                  name={doc.mimeType?.startsWith('image/') ? "image-outline" : "document-outline"} 
+                  size={16} 
+                  color="#666" 
+                />
+                <View style={styles.documentInfoContainer}>
+                  <Text style={styles.uploadedDocumentName}>{doc.name}</Text>
+                  {doc.size && (
+                    <Text style={styles.documentSizeInfo}>
+                      {(doc.size / 1024 / 1024).toFixed(2)} MB
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={() => removeDocument(doc.id, 'personal')}>
+                  <Ionicons name="close-circle" size={20} color="#e74c3c" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Professional Documents Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Professional Documents</Text>
+        
+        <View style={styles.uploadOptionsContainer}>
+          <TouchableOpacity
+            style={styles.uploadOptionButton}
+            onPress={() => handleDocumentUploadWithOptions('professional')}
+          >
+            <Ionicons name="document-text-outline" size={20} color="#666" />
+            <Text style={styles.uploadOptionText}>Upload License/Certificates</Text>
+          </TouchableOpacity>
+          {professionalDocuments.length > 0 && (
+            <Text style={styles.documentCountText}>
+              {professionalDocuments.length} document{professionalDocuments.length !== 1 ? 's' : ''} selected
+              {professionalDocuments.length > 0 && (
+                <Text style={styles.documentSizeText}>
+                  {' '}(Total: {(professionalDocuments.reduce((total, doc) => total + (doc.size || 0), 0) / 1024 / 1024).toFixed(2)} MB)
+                </Text>
+              )}
+            </Text>
+          )}
+        </View>
+
+        {/* Selected Professional Documents Display */}
+        {professionalDocuments.length > 0 && (
+          <View style={styles.uploadedDocumentsContainer}>
+            <View style={styles.documentHeaderRow}>
+              <Text style={styles.newDocumentsTitle}>Selected Professional Documents ({professionalDocuments.length}):</Text>
+              <TouchableOpacity onPress={() => clearAllDocuments('professional')} style={styles.clearAllButton}>
+                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                <Text style={styles.clearAllText}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
+            {professionalDocuments.map((doc) => (
+              <View key={doc.id} style={styles.uploadedDocumentItem}>
+                <Ionicons 
+                  name={doc.mimeType?.startsWith('image/') ? "image-outline" : "document-outline"} 
+                  size={16} 
+                  color="#666" 
+                />
+                <View style={styles.documentInfoContainer}>
+                  <Text style={styles.uploadedDocumentName}>{doc.name}</Text>
+                  {doc.size && (
+                    <Text style={styles.documentSizeInfo}>
+                      {(doc.size / 1024 / 1024).toFixed(2)} MB
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={() => removeDocument(doc.id, 'professional')}>
+                  <Ionicons name="close-circle" size={20} color="#e74c3c" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Submit Button */}
+      <TouchableOpacity
+        style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons name="reload" size={20} color="#fff" style={styles.spinningIcon} />
+            <Text style={styles.submitButtonText}>Submitting...</Text>
+          </View>
+        ) : (
+          <>
+            <Ionicons name="checkmark-circle" size={20} color="#fff" />
+            <Text style={styles.submitButtonText}>Register as Professional</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: false,
+        }}
+      />
+      <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <KeyboardAvoidingView 
+          style={styles.container} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          {/* Header - moved outside ScrollView */}
+          <View style={styles.headerContainer}>
+            <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
+              <Ionicons style={styles.menuicon} name="arrow-back" size={28} color="black" />
+            </TouchableOpacity>
+            <Image
+              source={require('@/assets/images/OriginX.png')}
+              style={styles.mainlogo}
+              contentFit="contain"
+            />
+          </View>
+
+          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            {/* Progress Indicator */}
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${currentStep * 50}%` }]} />
+              </View>
+              <Text style={styles.progressText}>Step {currentStep} of 2</Text>
+            </View>
+
+            {/* Subtitle */}
+            <View style={styles.logoContainer}>
+              {currentStep === 2 && (
+                <TouchableOpacity
+                  style={styles.headerBackButton}
+                  onPress={() => setCurrentStep(1)}
+                >
+                  <Ionicons name="arrow-back" size={20} color="#A1CEDC" />
+                  <Text style={styles.headerBackButtonText}>Back</Text>
+                </TouchableOpacity>
+              )}
+              <Text style={styles.logoSubtitle}>
+                {currentStep === 1 ? '' : 'Skills & Documents'}
+              </Text>
+            </View>
+
+            {/* Render current step */}
+            {currentStep === 1 ? renderStep1() : renderStep2()}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+
+      {/* Photo Modal */}
+      <Modal
+        visible={showPhotoModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closePhotoModal}
+      >
+        <TouchableWithoutFeedback onPress={closePhotoModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHandle} />
+                <Text style={styles.modalTitle}>Add profile photo</Text>
+                <TouchableOpacity
+                  style={styles.modalOptionButton}
+                  onPress={handleCameraCapture}
+                >
+                  <Ionicons name="camera" size={24} color="#2c3e50" />
+                  <Text style={styles.modalOptionText}>Take a photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalOptionButton}
+                  onPress={handleGallerySelection}
+                >
+                  <Ionicons name="images-outline" size={24} color="#2c3e50" />
+                  <Text style={styles.modalOptionText}>Upload from Photos</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalDescription}>
+                  On OriginX, we require members to use their real identities, so upload a photo of yourself.
+                </Text>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Document Upload Modal */}
+      <Modal
+        visible={showDocumentModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closeDocumentModal}
+      >
+        <TouchableWithoutFeedback onPress={closeDocumentModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
+                <TouchableOpacity onPress={closeDocumentModal}>
+                  <View style={styles.modalHandle} />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>
+                  {currentDocumentType === 'personal' ? 'Upload Personal Documents' : 'Upload Professional Documents'}
+                </Text>
+                <TouchableOpacity
+                  style={styles.modalOptionButton}
+                  onPress={handleDocumentFileSelection}
+                >
+                  <Ionicons name="document-text-outline" size={24} color="#2c3e50" />
+                  <Text style={styles.modalOptionText}>Select Files</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalOptionButton}
+                  onPress={handleCameraCaptureForDocuments}
+                >
+                  <Ionicons name="camera" size={24} color="#2c3e50" />
+                  <Text style={styles.modalOptionText}>Take a photo</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalDescription}>
+                  {currentDocumentType === 'personal' 
+                    ? 'Upload your Aadhar, PAN, or Ration card documents for verification.'
+                    : 'Upload your professional licenses, certificates, or other relevant documents.'
+                  }
+                </Text>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingTop: 50,
+    paddingBottom: 10,
+    backgroundColor: '#A1CEDC',
+  },
+  menuButton: {
+    padding: 5,
+  },
+  mainlogo: {
+    height: 50,
+    width: 180,
+    marginRight: 200,
+  },
+  menuicon: {
+    marginRight: 10,
+  },
+  progressContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#f8f9fa',
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 2,
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#A1CEDC',
+    borderRadius: 2,
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: -30,
+    marginBottom: 7,
+  },
+  logoSubtitle: {
+    fontSize: 20,
+    color: '#2c3e50',
+    fontStyle: 'italic',
+    fontWeight: 'bold'
+  },
+  formContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 30,
+    backgroundColor: '#f8f9fa',
+  },
+  profilePhotoContainer: {
+    alignItems: 'center',
+    marginBottom: 5,
+    marginTop: -55,
+  },
+  profilePhotoButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 60,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#A1CEDC',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  profilePhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  profilePhotoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profilePhotoText: {
+    fontSize: 12,
+    color: '#A1CEDC',
+    marginTop: 5,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    marginBottom: 15,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    paddingHorizontal: 15,
+    borderWidth: 2,
+    borderColor: '#A1CEDC',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    height: 50,
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  nextButton: {
+    backgroundColor: '#A1CEDC',
+    borderRadius: 15,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    shadowColor: '#A1CEDC',
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  nextButtonDisabled: {
+    backgroundColor: '#bdc3c7',
+  },
+  nextButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginRight: 8,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#A1CEDC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  backButtonText: {
+    color: '#A1CEDC',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  headerBackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'absolute',
+    left: 20,
+    top: 0,
+    zIndex: 10,
+    marginTop: 15,
+  },
+  headerBackButtonText: {
+    color: '#A1CEDC',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  skillsDropdown: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: '#A1CEDC',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  skillsDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+  },
+  skillsDropdownText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#2c3e50',
+    marginLeft: 10,
+  },
+  selectedSkillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+    gap: 8,
+  },
+  selectedSkillTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e8',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#27ae60',
+  },
+  selectedSkillText: {
+    fontSize: 14,
+    color: '#27ae60',
+    fontWeight: '600',
+    marginRight: 5,
+  },
+  skillsDropdownContent: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    marginTop: 5,
+    maxHeight: 200,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  skillsList: {
+    maxHeight: 180,
+  },
+  skillItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  skillText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  uploadOptionsContainer: {
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  uploadOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e0f2f7',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderWidth: 1,
+    borderColor: '#a7dbd8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  uploadOptionText: {
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#2c3e50',
+    fontWeight: '600',
+  },
+  uploadedDocumentsContainer: {
+    marginTop: 10,
+    paddingHorizontal: 10,
+  },
+  uploadedDocumentItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  uploadedDocumentName: {
+    fontSize: 14,
+    color: '#2c3e50',
+    flex: 1,
+  },
+  submitButton: {
+    backgroundColor: '#3498db',
+    borderRadius: 15,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    shadowColor: '#3498db',
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#bdc3c7',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  spinningIcon: {
+    marginRight: 8,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  suggestionDropdown: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    maxHeight: 250,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 15,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginTop: 2,
+  },
+  suggestionList: {
+    maxHeight: 230,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  suggestionTextContainer: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  suggestionMainText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 2,
+  },
+  suggestionSecondaryText: {
+    fontSize: 13,
+    color: '#7f8c8d',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#ddd',
+    borderRadius: 2,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    width: '100%',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  modalOptionText: {
+    marginLeft: 15,
+    fontSize: 16,
+    color: '#2c3e50',
+    fontWeight: '500',
+  },
+  modalDescription: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    marginTop: 15,
+    lineHeight: 18,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    color: '#e74c3c',
+    fontSize: 14,
+    marginTop: 5,
+    marginLeft: 15,
+    fontWeight: '500',
+  },
+  validatingText: {
+    color: '#A1CEDC',
+    fontSize: 14,
+    marginTop: 5,
+    marginLeft: 15,
+    fontStyle: 'italic',
+  },
+  successText: {
+    color: '#27ae60',
+    fontSize: 14,
+    marginTop: 5,
+    marginLeft: 15,
+    fontWeight: '500',
+  },
+  documentCountText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginTop: 5,
+    marginLeft: 15,
+  },
+  documentSizeText: {
+    fontSize: 12,
+    color: '#e74c3c',
+    fontWeight: '600',
+  },
+  documentHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  newDocumentsTitle: {
+    fontSize: 14,
+    color: '#2c3e50',
+    fontWeight: '600',
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 15,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  clearAllText: {
+    color: '#e74c3c',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 5,
+  },
+  documentInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  documentSizeInfo: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginLeft: 10,
+  },
+});
