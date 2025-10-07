@@ -8,7 +8,6 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Animated,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -17,13 +16,20 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions
 } from 'react-native';
-
-const { width, height } = Dimensions.get('window');
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
   const { login, isAuthenticated, user } = useAuth();
+  const { width, height } = useWindowDimensions();
+  
+  // Responsive scaling functions
+  const scale = (size: number) => (width / 375) * size; // Base width 375 (iPhone X)
+  const verticalScale = (size: number) => (height / 812) * size; // Base height 812
+  const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
+  
   const [showOtpInput, setShowOtpInput] = useState(false);
   // Automatically set user type based on app type
   const [userType] = useState<'professional' | 'seeker'>(() => {
@@ -193,13 +199,16 @@ export default function LoginScreen() {
     }
   };
 
+  // Create responsive styles
+  const styles = createStyles(width, height, scale, verticalScale, moderateScale);
+
   const renderOTPLogin = () => (
     <>
       {/* Mobile Number Input */}
       <View style={styles.inputGroup}>
         <View style={styles.inputContainer}>
           <View style={styles.inputIconContainer}>
-            <Ionicons name="call" size={20} color="#667eea" />
+            <Ionicons name="call" size={moderateScale(20)} color="#667eea" />
           </View>
           <TextInput
             style={styles.input}
@@ -218,7 +227,7 @@ export default function LoginScreen() {
         <View style={styles.userTypeBadge}>
           <Ionicons 
             name={userType === 'professional' ? "construct" : "search"} 
-            size={16} 
+            size={moderateScale(16)} 
             color="#667eea" 
           />
           <Text style={styles.userTypeText}>
@@ -238,7 +247,7 @@ export default function LoginScreen() {
             {isLoading ? 'Sending...' : 'Send OTP'}
           </Text>
           <View style={styles.authButtonIcon}>
-            <Ionicons name="send" size={20} color="#fff" />
+            <Ionicons name="send" size={moderateScale(20)} color="#fff" />
           </View>
         </View>
       </TouchableOpacity>
@@ -250,7 +259,7 @@ export default function LoginScreen() {
       <View style={styles.inputGroup}>
         <View style={styles.inputContainer}>
           <View style={styles.inputIconContainer}>
-            <Ionicons name="key" size={20} color="#667eea" />
+            <Ionicons name="key" size={moderateScale(20)} color="#667eea" />
           </View>
           <TextInput
             style={styles.input}
@@ -276,7 +285,7 @@ export default function LoginScreen() {
             {isLoading ? 'Verifying...' : 'Submit'}
           </Text>
           <View style={styles.authButtonIcon}>
-            <Ionicons name="checkmark" size={20} color="#fff" />
+            <Ionicons name="checkmark" size={moderateScale(20)} color="#fff" />
           </View>
         </View>
       </TouchableOpacity>
@@ -300,19 +309,20 @@ export default function LoginScreen() {
   );
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar barStyle="light-content" backgroundColor="#667eea" />
-      
-      <View style={styles.background}>
-        {/* Animated Background Elements */}
-        <View style={styles.gradientCircle1} />
-        <View style={styles.gradientCircle2} />
-        <View style={styles.gradientCircle3} />
-        <View style={styles.floatingShape1} />
-        <View style={styles.floatingShape2} />
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+        
+        <View style={styles.background}>
+          {/* Animated Background Elements */}
+          <View style={[styles.gradientCircle1, { width: width * 1.1, height: width * 1.1, borderRadius: width * 0.55 }]} />
+          <View style={[styles.gradientCircle2, { width: width * 1.4, height: width * 1.4, borderRadius: width * 0.7 }]} />
+          <View style={[styles.gradientCircle3, { width: width * 0.7, height: width * 0.7, borderRadius: width * 0.35 }]} />
+          <View style={[styles.floatingShape1, { width: width * 0.27, height: width * 0.27, borderRadius: width * 0.135 }]} />
+          <View style={[styles.floatingShape2, { width: width * 0.22, height: width * 0.22, borderRadius: width * 0.11 }]} />
         
         <ScrollView 
           contentContainerStyle={styles.scrollContainer}
@@ -338,7 +348,7 @@ export default function LoginScreen() {
                   style={styles.menuButton}
                   onPress={goBack}
                 >
-                  <Ionicons name="arrow-back" size={28} color="#fff" />
+                  <Ionicons name="arrow-back" size={moderateScale(28)} color="#fff" />
                 </TouchableOpacity>
               )}
               
@@ -409,11 +419,19 @@ export default function LoginScreen() {
           </Animated.View>
         </ScrollView>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+// Function to create responsive styles
+const createStyles = (
+  width: number,
+  height: number,
+  scale: (size: number) => number,
+  verticalScale: (size: number) => number,
+  moderateScale: (size: number, factor?: number) => number
+) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -424,55 +442,40 @@ const styles = StyleSheet.create({
   },
   gradientCircle1: {
     position: 'absolute',
-    top: -150,
-    right: -150,
-    width: 400,
-    height: 400,
-    borderRadius: 200,
+    top: verticalScale(-150),
+    right: scale(-150),
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   gradientCircle2: {
     position: 'absolute',
-    bottom: -200,
-    left: -200,
-    width: 500,
-    height: 500,
-    borderRadius: 250,
+    bottom: verticalScale(-200),
+    left: scale(-200),
     backgroundColor: 'rgba(138, 43, 226, 0.15)',
   },
   gradientCircle3: {
     position: 'absolute',
-    top: height * 0.4,
-    right: -100,
-    width: 250,
-    height: 250,
-    borderRadius: 125,
+    top: '40%',
+    right: scale(-100),
     backgroundColor: 'rgba(255, 105, 180, 0.1)',
   },
   floatingShape1: {
     position: 'absolute',
-    top: height * 0.2,
-    left: -50,
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    top: '20%',
+    left: scale(-50),
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     transform: [{ rotate: '45deg' }],
   },
   floatingShape2: {
     position: 'absolute',
-    bottom: height * 0.3,
-    right: 50,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    bottom: '30%',
+    right: scale(50),
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
     transform: [{ rotate: '-30deg' }],
   },
   scrollContainer: {
     flexGrow: 1,
-    paddingHorizontal: 25,
-    paddingVertical: 20,
+    paddingHorizontal: width * 0.06,
+    paddingVertical: verticalScale(20),
   },
   content: {
     flex: 1,
@@ -481,12 +484,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    paddingTop: 20,
+    marginBottom: verticalScale(20),
+    paddingTop: verticalScale(10),
   },
   menuButton: {
-    padding: 5,
-    marginLeft: -15,
+    padding: scale(5),
+    marginLeft: scale(-15),
   },
   logoContainer: {
     flex: 1,
@@ -496,134 +499,135 @@ const styles = StyleSheet.create({
     marginLeft: 0,
   },
   logo: {
-    height: 70,
-    width: 180,
+    height: verticalScale(60),
+    width: '50%',
+    maxWidth: scale(180),
     tintColor: '#fff',
   },
   mainContent: {
     flex: 1,
     justifyContent: 'center',
-    marginTop: -30,
+    marginTop: verticalScale(-30),
   },
   mainContentOtp: {
-    marginTop: -90,
+    marginTop: verticalScale(-90),
   },
   titleContainer: {
-    marginBottom: 40,
+    marginBottom: verticalScale(40),
     alignItems: 'center',
   },
   title: {
-    fontSize: 36,
+    fontSize: moderateScale(28),
     fontWeight: '900',
     color: '#fff',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
     letterSpacing: -1,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    textShadowOffset: { width: 0, height: verticalScale(2) },
+    textShadowRadius: scale(4),
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: moderateScale(15),
     color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
     fontWeight: '500',
-    lineHeight: 24,
+    lineHeight: moderateScale(22),
   },
   formContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 30,
-    padding: 26,
+    borderRadius: scale(30),
+    padding: width * 0.06,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 20,
+      height: verticalScale(20),
     },
     shadowOpacity: 0.3,
-    shadowRadius: 30,
+    shadowRadius: scale(30),
     elevation: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   formHeader: {
-    marginBottom: 30,
+    marginBottom: verticalScale(25),
     alignItems: 'center',
   },
   formTitle: {
-    fontSize: 24,
+    fontSize: moderateScale(22),
     fontWeight: '800',
     color: '#2d3748',
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   formSubtitle: {
-    fontSize: 16,
+    fontSize: moderateScale(14),
     color: '#718096',
     fontWeight: '500',
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f7fafc',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    borderWidth: 2,
+    borderRadius: scale(20),
+    paddingHorizontal: width * 0.05,
+    borderWidth: scale(2),
     borderColor: '#e2e8f0',
-    height: 60,
+    minHeight: verticalScale(56),
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: verticalScale(2),
     },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 2,
   },
   inputIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
     backgroundColor: 'rgba(102, 126, 234, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: scale(12),
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: moderateScale(15),
     color: '#2d3748',
     fontWeight: '600',
   },
   radioGroup: {
-    marginBottom: 25,
+    marginBottom: verticalScale(25),
   },
   radioGroupTitle: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
     color: '#2d3748',
-    marginBottom: 15,
+    marginBottom: verticalScale(15),
   },
   radioOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: verticalScale(15),
   },
   radioButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
+    width: scale(20),
+    height: scale(20),
+    borderRadius: scale(10),
+    borderWidth: scale(2),
     borderColor: '#667eea',
-    marginRight: 15,
+    marginRight: scale(15),
     justifyContent: 'center',
     alignItems: 'center',
   },
   radioButtonSelected: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: scale(10),
+    height: scale(10),
+    borderRadius: scale(5),
     backgroundColor: '#667eea',
   },
   radioLabel: {
@@ -632,43 +636,43 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   radioText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
     color: '#2d3748',
-    marginLeft: 10,
+    marginLeft: scale(10),
   },
   userTypeDisplay: {
-    marginBottom: 25,
+    marginBottom: verticalScale(25),
     alignItems: 'center',
   },
   userTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(102, 126, 234, 0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(20),
     borderWidth: 1,
     borderColor: 'rgba(102, 126, 234, 0.3)',
   },
   userTypeText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: '600',
     color: '#667eea',
-    marginLeft: 8,
+    marginLeft: scale(8),
   },
   authButton: {
-    borderRadius: 25,
+    borderRadius: scale(25),
     overflow: 'hidden',
-    marginBottom: 25,
+    marginBottom: verticalScale(25),
     backgroundColor: '#667eea',
     shadowColor: '#667eea',
     shadowOffset: {
       width: 0,
-      height: 10,
+      height: verticalScale(10),
     },
     shadowOpacity: 0.4,
-    shadowRadius: 20,
+    shadowRadius: scale(20),
     elevation: 15,
   },
   disabledButton: {
@@ -679,19 +683,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 30,
+    paddingVertical: verticalScale(16),
+    paddingHorizontal: width * 0.08,
   },
   authButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: moderateScale(17),
     fontWeight: '700',
-    marginRight: 10,
+    marginRight: scale(10),
   },
   authButtonIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: scale(30),
+    height: scale(30),
+    borderRadius: scale(15),
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -703,12 +707,12 @@ const styles = StyleSheet.create({
   },
   resendText: {
     color: '#718096',
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '500',
   },
   resendLink: {
     color: '#667eea',
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
@@ -717,18 +721,18 @@ const styles = StyleSheet.create({
     textDecorationLine: 'none',
   },
   signupContainer: {
-    marginTop: 20,
+    marginTop: verticalScale(20),
     alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: verticalScale(15),
+    paddingHorizontal: scale(20),
     // backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 15,
+    borderRadius: scale(15),
     // borderWidth: 1,
     // borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   signupButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -737,7 +741,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowOffset: { width: 0, height: verticalScale(1) },
+    textShadowRadius: scale(2),
   },
 }); 

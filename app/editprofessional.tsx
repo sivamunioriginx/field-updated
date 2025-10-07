@@ -8,21 +8,20 @@ import * as MediaLibrary from 'expo-media-library';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+  View,
 } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Google Places API configuration
 const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
@@ -68,6 +67,7 @@ interface WorkerData {
 }
 
 export default function RegisterProfessionalScreen() {
+  const { width } = useWindowDimensions();
   const { updateUser } = useAuth();
   const params = useLocalSearchParams();
   const { mode, workerData, workerId, onUpdateSuccess } = params;
@@ -1766,23 +1766,24 @@ export default function RegisterProfessionalScreen() {
           headerShown: false,
         }}
       />
-      <TouchableWithoutFeedback onPress={handleOutsideTouch}>
-        <KeyboardAvoidingView 
-          style={styles.container} 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
-          {/* Header - moved outside ScrollView */}
-          <View style={styles.headerContainer}>
-            <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
-              <Ionicons style={styles.menuicon} name="arrow-back" size={28} color="black" />
-            </TouchableOpacity>
-            <Image
-              source={require('@/assets/images/OriginX.png')}
-              style={styles.mainlogo}
-              contentFit="contain"
-            />
-          </View>
+      <SafeAreaView style={styles.container}>
+        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+          <KeyboardAvoidingView 
+            style={styles.container} 
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          >
+            {/* Header - moved outside ScrollView */}
+            <View style={styles.headerContainer}>
+              <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
+                <Ionicons style={styles.menuicon} name="arrow-back" size={28} color="black" />
+              </TouchableOpacity>
+              <Image
+                source={require('@/assets/images/OriginX.png')}
+                style={styles.mainlogo}
+                contentFit="contain"
+              />
+            </View>
 
           <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
             {/* Progress Indicator */}
@@ -1904,6 +1905,7 @@ export default function RegisterProfessionalScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      </SafeAreaView>
     </>
   );
 }

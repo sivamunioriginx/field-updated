@@ -9,7 +9,8 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Notifications from 'expo-notifications';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, Animated, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Worker {
   id: string;
@@ -50,6 +51,7 @@ interface Booking {
 }
 
 export default function Index() {
+  const { width } = useWindowDimensions();
   const { logout, user, isAuthenticated } = useAuth();
   const params = useLocalSearchParams();
   const { name: paramName, id: paramId, email: paramEmail } = params;
@@ -981,11 +983,12 @@ export default function Index() {
           headerShown: false,
         }}
       />
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
         {/* Header - Fixed outside ScrollView */}
         <TouchableWithoutFeedback onPress={handleOutsideTouch}>
           <View style={styles.headerContainer}>
@@ -1527,6 +1530,7 @@ export default function Index() {
           )}
 
       </KeyboardAvoidingView>
+      </SafeAreaView>
     </>
   );
 }
@@ -1550,8 +1554,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 50,
+    paddingHorizontal: '3%',
+    paddingTop: 10,
     paddingBottom: 6,
     backgroundColor: '#A1CEDC',
   },
@@ -1559,9 +1563,10 @@ const styles = StyleSheet.create({
     width: 38, // Same width as the removed button to maintain layout
   },
   mainlogo: {
-    height: 50,
-    width: 180,
-    marginLeft: -195,
+    height: 45,
+    width: '45%',
+    maxWidth: 180,
+    marginLeft: '-52%',
   },
   personButton: {
     padding: 5,

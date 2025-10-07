@@ -8,7 +8,6 @@ import { router, Stack } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
   Alert,
-  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,10 +17,10 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Google Places API configuration
 const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
@@ -38,6 +37,13 @@ interface Suggestion {
 }
 
 export default function RegisterServiceSeekerScreen() {
+  const { width, height } = useWindowDimensions();
+  
+  // Responsive scaling functions
+  const scale = (size: number) => (width / 375) * size; // Base width 375 (iPhone X)
+  const verticalScale = (size: number) => (height / 812) * size; // Base height 812
+  const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
+  
   // Form state
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -837,7 +843,7 @@ export default function RegisterServiceSeekerScreen() {
               onPressIn={() => onSelect(suggestion)}
               activeOpacity={0.7}
             >
-              <Ionicons name="location-outline" size={16} color="#666" />
+              <Ionicons name="location-outline" size={moderateScale(16)} color="#666" />
               <View style={styles.suggestionTextContainer}>
                 <Text style={styles.suggestionMainText}>
                   {suggestion.structured_formatting?.main_text || suggestion.description}
@@ -865,7 +871,7 @@ export default function RegisterServiceSeekerScreen() {
             <Image source={{ uri: profilePhoto }} style={styles.profilePhoto} />
           ) : (
             <View style={styles.profilePhotoPlaceholder}>
-              <Ionicons name="camera" size={30} color="#A1CEDC" />
+              <Ionicons name="camera" size={moderateScale(30)} color="#A1CEDC" />
               <Text style={styles.profilePhotoText}>Add Photo</Text>
             </View>
           )}
@@ -876,7 +882,7 @@ export default function RegisterServiceSeekerScreen() {
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Full Name *</Text>
         <View style={styles.inputWrapper}>
-          <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+          <Ionicons name="person-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="Enter your full name"
@@ -904,7 +910,7 @@ export default function RegisterServiceSeekerScreen() {
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Mobile Number *</Text>
         <View style={styles.inputWrapper}>
-          <Ionicons name="call-outline" size={20} color="#666" style={styles.inputIcon} />
+          <Ionicons name="call-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="Enter your mobile number"
@@ -941,7 +947,7 @@ export default function RegisterServiceSeekerScreen() {
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Email *</Text>
         <View style={styles.inputWrapper}>
-          <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+          <Ionicons name="mail-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="Enter your email"
@@ -964,10 +970,10 @@ export default function RegisterServiceSeekerScreen() {
             autoCapitalize="none"
           />
           {isValidatingEmail && (
-            <Ionicons name="reload" size={16} color="#A1CEDC" style={styles.spinningIcon} />
+            <Ionicons name="reload" size={moderateScale(16)} color="#A1CEDC" style={styles.spinningIcon} />
           )}
           {isEmailValid && !isValidatingEmail && (
-            <Ionicons name="checkmark-circle" size={20} color="#27ae60" />
+            <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#27ae60" />
           )}
         </View>
         {emailError ? (
@@ -989,7 +995,7 @@ export default function RegisterServiceSeekerScreen() {
             style={styles.uploadOptionButton}
             onPress={() => handleDocumentUploadWithOptions('personal')}
           >
-            <Ionicons name="document-text-outline" size={20} color="#666" />
+            <Ionicons name="document-text-outline" size={moderateScale(20)} color="#666" />
             <Text style={styles.uploadOptionText}>Upload Aadhar/Pan/Ration</Text>
           </TouchableOpacity>
           {personalDocuments.length > 0 && (
@@ -1010,7 +1016,7 @@ export default function RegisterServiceSeekerScreen() {
             <View style={styles.documentHeaderRow}>
               <Text style={styles.newDocumentsTitle}>Selected Documents ({personalDocuments.length}):</Text>
               <TouchableOpacity onPress={clearAllDocuments} style={styles.clearAllButton}>
-                <Ionicons name="trash-outline" size={16} color="#e74c3c" />
+                <Ionicons name="trash-outline" size={moderateScale(16)} color="#e74c3c" />
                 <Text style={styles.clearAllText}>Clear All</Text>
               </TouchableOpacity>
             </View>
@@ -1018,7 +1024,7 @@ export default function RegisterServiceSeekerScreen() {
               <View key={doc.id} style={styles.uploadedDocumentItem}>
                 <Ionicons 
                   name={doc.mimeType?.startsWith('image/') ? "image-outline" : "document-outline"} 
-                  size={16} 
+                  size={moderateScale(16)} 
                   color="#666" 
                 />
                 <View style={styles.documentInfoContainer}>
@@ -1030,7 +1036,7 @@ export default function RegisterServiceSeekerScreen() {
                   )}
                 </View>
                 <TouchableOpacity onPress={() => removeDocument(doc.id)}>
-                  <Ionicons name="close-circle" size={20} color="#e74c3c" />
+                  <Ionicons name="close-circle" size={moderateScale(20)} color="#e74c3c" />
                 </TouchableOpacity>
               </View>
             ))}
@@ -1043,7 +1049,7 @@ export default function RegisterServiceSeekerScreen() {
         <Text style={styles.inputLabel}>Location *</Text>
         <View style={{ position: 'relative' }}>
           <View style={styles.inputWrapper}>
-            <Ionicons name="location-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="location-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
             <TextInput
               ref={locationInputRef}
               style={styles.input}
@@ -1072,7 +1078,7 @@ export default function RegisterServiceSeekerScreen() {
             visible={showLocationModal}
             suggestions={locationSuggestions}
             onSelect={selectLocationSuggestion}
-            style={{ position: 'absolute', top: 55, left: 0, right: 0, zIndex: 10 }}
+            style={{ position: 'absolute', top: verticalScale(55), left: 0, right: 0, zIndex: 10 }}
           />
         </View>
         {locationError ? (
@@ -1084,9 +1090,9 @@ export default function RegisterServiceSeekerScreen() {
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Address *</Text>
         <View style={styles.inputWrapper}>
-          <Ionicons name="home-outline" size={30} color="#666" style={styles.inputIcon} />
+          <Ionicons name="home-outline" size={moderateScale(30)} color="#666" style={styles.inputIcon} />
           <TextInput
-            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+            style={[styles.input, { height: verticalScale(80), textAlignVertical: 'top' }]}
             placeholder="Enter your complete address"
             placeholderTextColor="#999"
             value={address}
@@ -1118,23 +1124,26 @@ export default function RegisterServiceSeekerScreen() {
       >
         {isSubmitting ? (
           <View style={styles.loadingContainer}>
-            <Ionicons name="reload" size={20} color="#fff" style={styles.spinningIcon} />
+            <Ionicons name="reload" size={moderateScale(20)} color="#fff" style={styles.spinningIcon} />
             <Text style={styles.submitButtonText}>Submitting...</Text>
           </View>
         ) : isCheckingUser ? (
           <View style={styles.loadingContainer}>
-            <Ionicons name="reload" size={20} color="#fff" style={styles.spinningIcon} />
+            <Ionicons name="reload" size={moderateScale(20)} color="#fff" style={styles.spinningIcon} />
             <Text style={styles.submitButtonText}>Checking...</Text>
           </View>
         ) : (
           <>
-            <Ionicons name="checkmark-circle" size={20} color="#fff" />
+            <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#fff" />
             <Text style={styles.submitButtonText}>Register as Service Seeker</Text>
           </>
         )}
       </TouchableOpacity>
     </View>
   );
+
+  // Create responsive styles
+  const styles = createStyles(width, height, scale, verticalScale, moderateScale);
 
   return (
     <>
@@ -1143,15 +1152,16 @@ export default function RegisterServiceSeekerScreen() {
           headerShown: false,
         }}
       />
-      <TouchableWithoutFeedback onPress={handleOutsideTouch}>
-        <KeyboardAvoidingView 
-          style={styles.container} 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+      <SafeAreaView style={styles.container}>
+        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+          <KeyboardAvoidingView 
+            style={styles.container} 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
           {/* Header - moved outside ScrollView */}
           <View style={styles.headerContainer}>
             <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
-              <Ionicons style={styles.menuicon} name="arrow-back" size={28} color="black" />
+              <Ionicons style={styles.menuicon} name="arrow-back" size={moderateScale(28)} color="black" />
             </TouchableOpacity>
             <Image
               source={require('@/assets/images/OriginX.png')}
@@ -1183,14 +1193,14 @@ export default function RegisterServiceSeekerScreen() {
                   style={styles.modalOptionButton}
                   onPress={handleCameraCapture}
                 >
-                  <Ionicons name="camera" size={24} color="#2c3e50" />
+                  <Ionicons name="camera" size={moderateScale(24)} color="#2c3e50" />
                   <Text style={styles.modalOptionText}>Take a photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.modalOptionButton}
                   onPress={handleGallerySelection}
                 >
-                  <Ionicons name="images-outline" size={24} color="#2c3e50" />
+                  <Ionicons name="images-outline" size={moderateScale(24)} color="#2c3e50" />
                   <Text style={styles.modalOptionText}>Upload from Photos</Text>
                 </TouchableOpacity>
                 <Text style={styles.modalDescription}>
@@ -1221,14 +1231,14 @@ export default function RegisterServiceSeekerScreen() {
                   style={styles.modalOptionButton}
                   onPress={handleDocumentFileSelection}
                 >
-                  <Ionicons name="document-text-outline" size={24} color="#2c3e50" />
+                  <Ionicons name="document-text-outline" size={moderateScale(24)} color="#2c3e50" />
                   <Text style={styles.modalOptionText}>Select Multiple Files</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.modalOptionButton}
                   onPress={handleCameraCaptureForDocuments}
                 >
-                  <Ionicons name="camera" size={24} color="#2c3e50" />
+                  <Ionicons name="camera" size={moderateScale(24)} color="#2c3e50" />
                   <Text style={styles.modalOptionText}>Take a photo</Text>
                 </TouchableOpacity>
                 <Text style={styles.modalDescription}>
@@ -1239,11 +1249,19 @@ export default function RegisterServiceSeekerScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      </SafeAreaView>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+// Function to create responsive styles
+const createStyles = (
+  width: number,
+  height: number,
+  scale: (size: number) => number,
+  verticalScale: (size: number) => number,
+  moderateScale: (size: number, factor?: number) => number
+) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -1255,38 +1273,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 50,
-    paddingBottom: 10,
+    paddingHorizontal: width * 0.03,
+    paddingTop: verticalScale(10),
+    paddingBottom: verticalScale(10),
     backgroundColor: '#A1CEDC',
   },
   menuButton: {
-    padding: 5,
+    padding: scale(5),
   },
   mainlogo: {
-    height: 50,
-    width: 180,
-    marginRight: 200,
+    height: verticalScale(45),
+    width: width * 0.45,
+    maxWidth: scale(180),
+    marginRight: width * 0.50,
   },
   menuicon: {
-    marginRight: 10,
+    marginRight: scale(10),
   },
   formContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 30,
+    paddingHorizontal: width * 0.05,
+    paddingVertical: verticalScale(25),
     backgroundColor: '#f8f9fa',
   },
   profilePhotoContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    marginTop: -15,
+    marginBottom: verticalScale(20),
+    marginTop: verticalScale(-15),
   },
   profilePhotoButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 60,
+    width: scale(95),
+    height: scale(95),
+    borderRadius: scale(48),
     overflow: 'hidden',
-    borderWidth: 3,
+    borderWidth: scale(3),
     borderColor: '#A1CEDC',
     backgroundColor: '#fff',
     justifyContent: 'center',
@@ -1294,10 +1313,10 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: verticalScale(4),
     },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: scale(8),
     elevation: 8,
   },
   profilePhoto: {
@@ -1309,106 +1328,106 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profilePhotoText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#A1CEDC',
-    marginTop: 5,
+    marginTop: verticalScale(5),
     fontWeight: '600',
   },
   inputContainer: {
-    marginBottom: 15,
+    marginBottom: verticalScale(15),
   },
   inputLabel: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 15,
-    paddingHorizontal: 15,
-    borderWidth: 2,
+    borderRadius: scale(15),
+    paddingHorizontal: scale(15),
+    borderWidth: scale(2),
     borderColor: '#A1CEDC',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: verticalScale(2),
     },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 3,
   },
   inputIcon: {
-    marginRight: 10,
+    marginRight: scale(10),
   },
   input: {
     flex: 1,
-    height: 50,
-    fontSize: 16,
+    height: verticalScale(50),
+    fontSize: moderateScale(16),
     color: '#2c3e50',
   },
 
   uploadOptionsContainer: {
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: verticalScale(10),
+    marginBottom: verticalScale(10),
   },
   uploadOptionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#e0f2f7',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+    borderRadius: scale(10),
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(15),
     borderWidth: 1,
     borderColor: '#a7dbd8',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: verticalScale(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 3,
   },
   uploadOptionText: {
-    marginLeft: 10,
-    fontSize: 14,
+    marginLeft: scale(10),
+    fontSize: moderateScale(14),
     color: '#2c3e50',
     fontWeight: '600',
   },
   uploadedDocumentsContainer: {
-    marginTop: 10,
-    paddingHorizontal: 10,
+    marginTop: verticalScale(10),
+    paddingHorizontal: scale(10),
   },
   uploadedDocumentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
+    borderRadius: scale(10),
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
+    marginBottom: verticalScale(8),
   },
   uploadedDocumentName: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: '#2c3e50',
     flex: 1,
   },
   submitButton: {
     backgroundColor: '#A1CEDC',
-    borderRadius: 15,
-    paddingVertical: 18,
+    borderRadius: scale(15),
+    paddingVertical: verticalScale(18),
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: verticalScale(20),
     shadowColor: '#A1CEDC',
     shadowOffset: {
       width: 0,
-      height: 6,
+      height: verticalScale(6),
     },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: scale(10),
     elevation: 8,
   },
   submitButtonDisabled: {
@@ -1419,51 +1438,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   spinningIcon: {
-    marginRight: 8,
+    marginRight: scale(8),
   },
   submitButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: 'bold',
-    marginLeft: 8,
+    marginLeft: scale(8),
   },
   suggestionDropdown: {
     backgroundColor: '#fff',
-    borderRadius: 15,
-    maxHeight: 250,
+    borderRadius: scale(15),
+    maxHeight: verticalScale(250),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
+    shadowOffset: { width: 0, height: verticalScale(5) },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: scale(10),
     elevation: 15,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    marginTop: 2,
+    marginTop: verticalScale(2),
   },
   suggestionList: {
-    maxHeight: 230,
+    maxHeight: verticalScale(230),
   },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 15,
+    paddingHorizontal: scale(15),
+    paddingVertical: verticalScale(15),
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',
   },
   suggestionTextContainer: {
-    marginLeft: 10,
+    marginLeft: scale(10),
     flex: 1,
   },
   suggestionMainText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: 2,
+    marginBottom: verticalScale(2),
   },
   suggestionSecondaryText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     color: '#7f8c8d',
   },
   modalOverlay: {
@@ -1473,28 +1492,28 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 40,
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    padding: scale(20),
+    paddingBottom: verticalScale(40),
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
+    shadowOffset: { width: 0, height: verticalScale(-4) },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: scale(10),
     elevation: 10,
   },
   modalHandle: {
-    width: 40,
-    height: 4,
+    width: scale(40),
+    height: verticalScale(4),
     backgroundColor: '#ddd',
-    borderRadius: 2,
+    borderRadius: scale(2),
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: 'bold',
     color: '#2c3e50',
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
     textAlign: 'center',
   },
   modalOptionButton: {
@@ -1502,96 +1521,96 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     width: '100%',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    marginBottom: 10,
+    paddingVertical: verticalScale(15),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(10),
+    marginBottom: verticalScale(10),
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
   modalOptionText: {
-    marginLeft: 15,
-    fontSize: 16,
+    marginLeft: scale(15),
+    fontSize: moderateScale(16),
     color: '#2c3e50',
     fontWeight: '500',
   },
   modalDescription: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#7f8c8d',
     textAlign: 'center',
-    marginTop: 15,
-    lineHeight: 18,
-    paddingHorizontal: 20,
+    marginTop: verticalScale(15),
+    lineHeight: moderateScale(18),
+    paddingHorizontal: scale(20),
   },
   errorText: {
     color: '#e74c3c',
-    fontSize: 14,
-    marginTop: 5,
-    marginLeft: 15,
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(5),
+    marginLeft: scale(15),
     fontWeight: '500',
   },
   validatingText: {
     color: '#A1CEDC',
-    fontSize: 14,
-    marginTop: 5,
-    marginLeft: 15,
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(5),
+    marginLeft: scale(15),
     fontStyle: 'italic',
   },
   successText: {
     color: '#27ae60',
-    fontSize: 14,
-    marginTop: 5,
-    marginLeft: 15,
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(5),
+    marginLeft: scale(15),
     fontWeight: '500',
   },
   newDocumentsTitle: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: '600',
     color: '#27ae60',
-    marginBottom: 8,
-    marginTop: 10,
+    marginBottom: verticalScale(8),
+    marginTop: verticalScale(10),
   },
   documentCountText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#27ae60',
-    marginTop: 8,
+    marginTop: verticalScale(8),
     textAlign: 'center',
     fontStyle: 'italic',
   },
   documentSizeText: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     color: '#666',
     fontStyle: 'italic',
   },
   documentInfoContainer: {
     flex: 1,
-    marginLeft: 8,
+    marginLeft: scale(8),
   },
   documentSizeInfo: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     color: '#666',
     fontStyle: 'italic',
-    marginTop: 2,
+    marginTop: verticalScale(2),
   },
   documentHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: verticalScale(10),
   },
   clearAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(6),
     backgroundColor: '#ffeaea',
   },
   clearAllText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#e74c3c',
-    marginLeft: 4,
+    marginLeft: scale(4),
     fontWeight: '500',
   },
 });

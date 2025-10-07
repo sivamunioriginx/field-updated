@@ -6,23 +6,22 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+  View,
 } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Google Places API configuration
 const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
@@ -39,7 +38,17 @@ interface Suggestion {
 }
 
 export default function EditServiceSeekerScreen() {
+  const { width, height } = useWindowDimensions();
   const { updateUser } = useAuth();
+  
+  // Helper function for responsive values (needed for inline styles)
+  const getResponsiveValue = (baseValue: number) => {
+    const baseHeight = 800;
+    return (baseValue * height) / baseHeight;
+  };
+  
+  // Create responsive styles based on screen dimensions
+  const styles = useMemo(() => createStyles(height, width), [height, width]);
   // Get user data from navigation params
   const params = useLocalSearchParams();
   const initialName = typeof params.name === 'string' ? params.name : '';
@@ -1180,7 +1189,7 @@ export default function EditServiceSeekerScreen() {
         <View style={styles.inputWrapper}>
           <Ionicons name="home-outline" size={30} color="#666" style={styles.inputIcon} />
           <TextInput
-            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+            style={[styles.input, { height: getResponsiveValue(80), textAlignVertical: 'top' }]}
             placeholder="Enter your complete address"
             placeholderTextColor="#999"
             value={address}
@@ -1237,11 +1246,12 @@ export default function EditServiceSeekerScreen() {
           headerShown: false,
         }}
       />
-      <TouchableWithoutFeedback onPress={handleOutsideTouch}>
-        <KeyboardAvoidingView 
-          style={styles.container} 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+      <SafeAreaView style={styles.container}>
+        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+          <KeyboardAvoidingView 
+            style={styles.container} 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
           {/* Header - moved outside ScrollView */}
           <View style={styles.headerContainer}>
             <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
@@ -1333,11 +1343,25 @@ export default function EditServiceSeekerScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      </SafeAreaView>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (screenHeight: number, screenWidth: number) => {
+  // Helper function to get responsive values based on screen height
+  const getResponsiveValue = (baseValue: number, screenHeight: number) => {
+    const baseHeight = 800;
+    return (baseValue * screenHeight) / baseHeight;
+  };
+
+  // Helper function to get responsive values based on screen width
+  const getResponsiveWidth = (baseValue: number, screenWidth: number) => {
+    const baseWidth = 400;
+    return (baseValue * screenWidth) / baseWidth;
+  };
+
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -1349,38 +1373,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 50,
-    paddingBottom: 10,
+    paddingHorizontal: getResponsiveWidth(10, screenWidth),
+    paddingTop: getResponsiveValue(50, screenHeight),
+    paddingBottom: getResponsiveValue(10, screenHeight),
     backgroundColor: '#A1CEDC',
+    marginTop: getResponsiveValue(-40, screenHeight),
   },
   menuButton: {
-    padding: 5,
+    padding: getResponsiveValue(5, screenHeight),
   },
   mainlogo: {
-    height: 50,
-    width: 180,
-    marginRight: 190,
+    height: getResponsiveValue(50, screenHeight),
+    width: getResponsiveWidth(180, screenWidth),
+    marginRight: getResponsiveWidth(190, screenWidth),
   },
   menuicon: {
-    marginRight: 4,
+    marginRight: getResponsiveWidth(4, screenWidth),
   },
   formContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 30,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    paddingVertical: getResponsiveValue(30, screenHeight),
     backgroundColor: '#f8f9fa',
   },
   profilePhotoContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    marginTop: -15,
+    marginBottom: getResponsiveValue(20, screenHeight),
+    marginTop: getResponsiveValue(-15, screenHeight),
   },
   profilePhotoButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 60,
+    width: getResponsiveValue(100, screenHeight),
+    height: getResponsiveValue(100, screenHeight),
+    borderRadius: getResponsiveValue(60, screenHeight),
     overflow: 'hidden',
-    borderWidth: 3,
+    borderWidth: getResponsiveValue(3, screenHeight),
     borderColor: '#A1CEDC',
     backgroundColor: '#fff',
     justifyContent: 'center',
@@ -1388,10 +1413,10 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: getResponsiveValue(4, screenHeight),
     },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: getResponsiveValue(8, screenHeight),
     elevation: 8,
   },
   profilePhoto: {
@@ -1405,83 +1430,83 @@ const styles = StyleSheet.create({
   profilePhotoText: {
     fontSize: 12,
     color: '#A1CEDC',
-    marginTop: 5,
+    marginTop: getResponsiveValue(5, screenHeight),
     fontWeight: '600',
   },
   inputContainer: {
-    marginBottom: 15,
+    marginBottom: getResponsiveValue(15, screenHeight),
   },
   inputLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: 8,
+    marginBottom: getResponsiveValue(8, screenHeight),
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 15,
-    paddingHorizontal: 15,
-    borderWidth: 2,
+    borderRadius: getResponsiveValue(15, screenHeight),
+    paddingHorizontal: getResponsiveWidth(15, screenWidth),
+    borderWidth: getResponsiveValue(2, screenHeight),
     borderColor: '#A1CEDC',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: getResponsiveValue(2, screenHeight),
     },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: getResponsiveValue(4, screenHeight),
     elevation: 3,
   },
   inputIcon: {
-    marginRight: 10,
+    marginRight: getResponsiveWidth(10, screenWidth),
   },
   input: {
     flex: 1,
-    height: 50,
+    height: getResponsiveValue(50, screenHeight),
     fontSize: 16,
     color: '#2c3e50',
   },
 
   uploadOptionsContainer: {
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: getResponsiveValue(10, screenHeight),
+    marginBottom: getResponsiveValue(10, screenHeight),
   },
   uploadOptionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#e0f2f7',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderWidth: 1,
+    borderRadius: getResponsiveValue(10, screenHeight),
+    paddingVertical: getResponsiveValue(10, screenHeight),
+    paddingHorizontal: getResponsiveWidth(15, screenWidth),
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#a7dbd8',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: getResponsiveValue(2, screenHeight) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: getResponsiveValue(4, screenHeight),
     elevation: 3,
   },
   uploadOptionText: {
-    marginLeft: 10,
+    marginLeft: getResponsiveWidth(10, screenWidth),
     fontSize: 14,
     color: '#2c3e50',
     fontWeight: '600',
   },
   uploadedDocumentsContainer: {
-    marginTop: 10,
-    paddingHorizontal: 10,
+    marginTop: getResponsiveValue(10, screenHeight),
+    paddingHorizontal: getResponsiveWidth(10, screenWidth),
   },
   uploadedDocumentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
+    borderRadius: getResponsiveValue(10, screenHeight),
+    paddingVertical: getResponsiveValue(8, screenHeight),
+    paddingHorizontal: getResponsiveWidth(12, screenWidth),
+    marginBottom: getResponsiveValue(8, screenHeight),
   },
   uploadedDocumentName: {
     fontSize: 14,
@@ -1490,19 +1515,19 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: '#A1CEDC',
-    borderRadius: 15,
-    paddingVertical: 18,
+    borderRadius: getResponsiveValue(15, screenHeight),
+    paddingVertical: getResponsiveValue(18, screenHeight),
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: getResponsiveValue(20, screenHeight),
     shadowColor: '#A1CEDC',
     shadowOffset: {
       width: 0,
-      height: 6,
+      height: getResponsiveValue(6, screenHeight),
     },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: getResponsiveValue(10, screenHeight),
     elevation: 8,
   },
   submitButtonDisabled: {
@@ -1513,48 +1538,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   spinningIcon: {
-    marginRight: 8,
+    marginRight: getResponsiveWidth(8, screenWidth),
   },
   submitButtonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
-    marginLeft: 8,
+    marginLeft: getResponsiveWidth(8, screenWidth),
   },
   suggestionDropdown: {
     backgroundColor: '#fff',
-    borderRadius: 15,
-    maxHeight: 250,
+    borderRadius: getResponsiveValue(15, screenHeight),
+    maxHeight: getResponsiveValue(250, screenHeight),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
+    shadowOffset: { width: 0, height: getResponsiveValue(5, screenHeight) },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: getResponsiveValue(10, screenHeight),
     elevation: 15,
-    borderWidth: 1,
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#e0e0e0',
-    marginTop: 2,
+    marginTop: getResponsiveValue(2, screenHeight),
   },
   suggestionList: {
-    maxHeight: 230,
+    maxHeight: getResponsiveValue(230, screenHeight),
   },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
+    paddingHorizontal: getResponsiveWidth(15, screenWidth),
+    paddingVertical: getResponsiveValue(15, screenHeight),
+    borderBottomWidth: getResponsiveValue(1, screenHeight),
     borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',
   },
   suggestionTextContainer: {
-    marginLeft: 10,
+    marginLeft: getResponsiveWidth(10, screenWidth),
     flex: 1,
   },
   suggestionMainText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: 2,
+    marginBottom: getResponsiveValue(2, screenHeight),
   },
   suggestionSecondaryText: {
     fontSize: 13,
@@ -1567,28 +1592,28 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 40,
+    borderTopLeftRadius: getResponsiveValue(20, screenHeight),
+    borderTopRightRadius: getResponsiveValue(20, screenHeight),
+    padding: getResponsiveWidth(20, screenWidth),
+    paddingBottom: getResponsiveValue(40, screenHeight),
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
+    shadowOffset: { width: 0, height: getResponsiveValue(-4, screenHeight) },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowRadius: getResponsiveValue(10, screenHeight),
     elevation: 10,
   },
   modalHandle: {
-    width: 40,
-    height: 4,
+    width: getResponsiveWidth(40, screenWidth),
+    height: getResponsiveValue(4, screenHeight),
     backgroundColor: '#ddd',
-    borderRadius: 2,
+    borderRadius: getResponsiveValue(2, screenHeight),
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2c3e50',
-    marginBottom: 20,
+    marginBottom: getResponsiveValue(20, screenHeight),
     textAlign: 'center',
   },
   modalOptionButton: {
@@ -1596,16 +1621,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     width: '100%',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    marginBottom: 10,
+    paddingVertical: getResponsiveValue(15, screenHeight),
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    borderRadius: getResponsiveValue(10, screenHeight),
+    marginBottom: getResponsiveValue(10, screenHeight),
     backgroundColor: '#fff',
-    borderWidth: 1,
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#e0e0e0',
   },
   modalOptionText: {
-    marginLeft: 15,
+    marginLeft: getResponsiveWidth(15, screenWidth),
     fontSize: 16,
     color: '#2c3e50',
     fontWeight: '500',
@@ -1614,68 +1639,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7f8c8d',
     textAlign: 'center',
-    marginTop: 15,
-    lineHeight: 18,
-    paddingHorizontal: 20,
+    marginTop: getResponsiveValue(15, screenHeight),
+    lineHeight: getResponsiveValue(18, screenHeight),
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
   },
   errorText: {
     color: '#e74c3c',
     fontSize: 14,
-    marginTop: 5,
-    marginLeft: 15,
+    marginTop: getResponsiveValue(5, screenHeight),
+    marginLeft: getResponsiveWidth(15, screenWidth),
     fontWeight: '500',
   },
   validatingText: {
     color: '#A1CEDC',
     fontSize: 14,
-    marginTop: 5,
-    marginLeft: 15,
+    marginTop: getResponsiveValue(5, screenHeight),
+    marginLeft: getResponsiveWidth(15, screenWidth),
     fontStyle: 'italic',
   },
   successText: {
     color: '#27ae60',
     fontSize: 14,
-    marginTop: 5,
-    marginLeft: 15,
+    marginTop: getResponsiveValue(5, screenHeight),
+    marginLeft: getResponsiveWidth(15, screenWidth),
     fontWeight: '500',
   },
   existingDocumentsContainer: {
-    marginTop: -5,
-    marginBottom: -20,
-    paddingHorizontal: 10,
+    marginTop: getResponsiveValue(-5, screenHeight),
+    marginBottom: getResponsiveValue(-20, screenHeight),
+    paddingHorizontal: getResponsiveWidth(10, screenWidth),
     backgroundColor: '#f8f9fa',
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: getResponsiveValue(10, screenHeight),
+    paddingVertical: getResponsiveValue(10, screenHeight),
   },
   existingDocumentsTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: 8,
+    marginBottom: getResponsiveValue(8, screenHeight),
   },
   existingDocumentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#e8f4fd',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 6,
-    borderLeftWidth: 3,
+    borderRadius: getResponsiveValue(8, screenHeight),
+    paddingVertical: getResponsiveValue(8, screenHeight),
+    paddingHorizontal: getResponsiveWidth(12, screenWidth),
+    marginBottom: getResponsiveValue(6, screenHeight),
+    borderLeftWidth: getResponsiveValue(3, screenHeight),
     borderLeftColor: '#3498db',
   },
   existingDocumentName: {
     fontSize: 14,
     color: '#2c3e50',
     flex: 1,
-    marginLeft: 8,
+    marginLeft: getResponsiveWidth(8, screenWidth),
   },
   newDocumentsTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: '#27ae60',
-    marginBottom: 8,
-    marginTop: 10,
+    marginBottom: getResponsiveValue(8, screenHeight),
+    marginTop: getResponsiveValue(10, screenHeight),
   },
-});
+  });
+};

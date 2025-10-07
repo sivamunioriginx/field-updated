@@ -3,8 +3,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ServiceSeeker {
   id: string;
@@ -36,23 +37,58 @@ interface Booking {
   reject_reason?: string;
 }
 
+// Helper function to get responsive values based on screen height
+const getResponsiveValue = (baseValue: number, screenHeight: number) => {
+  // Base height is considered as 800 (typical phone screen)
+  const baseHeight = 800;
+  return (baseValue * screenHeight) / baseHeight;
+};
+
+// Helper function to get responsive values based on screen width
+const getResponsiveWidth = (baseValue: number, screenWidth: number) => {
+  // Base width is considered as 400 (typical phone screen width)
+  const baseWidth = 400;
+  return (baseValue * screenWidth) / baseWidth;
+};
+
 export default function Index() {
+  const { width, height } = useWindowDimensions();
   const { logout, user, isAuthenticated } = useAuth();
   const { name: initialName, profileImage: profileImageParam, mobile } = useLocalSearchParams();
   
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuClosedByOutside, setMenuClosedByOutside] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [serviceSeeker, setServiceSeeker] = useState<ServiceSeeker | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('notifications');
-  const slideAnim = useRef(new Animated.Value(300)).current;
+  const slideAnim = useRef(new Animated.Value(getResponsiveWidth(300, width))).current;
+  const isAnimating = useRef(false);
+
+  // Create responsive styles based on screen dimensions
+  const styles = useMemo(() => createStyles(height, width), [height, width]);
+
+  // Cleanup animation state on unmount
+  useEffect(() => {
+    return () => {
+      isAnimating.current = false;
+    };
+  }, []);
+
+  // Prevent menu from reopening automatically after outside close
+  useEffect(() => {
+    if (menuClosedByOutside && !menuOpen) {
+      // Menu was closed by outside click, ensure it stays closed
+      slideAnim.setValue(getResponsiveWidth(300, width));
+    }
+  }, [menuClosedByOutside, menuOpen, slideAnim, width]);
 
   const handleOutsideTouch = () => {
     Keyboard.dismiss();
     if (menuOpen) {
-      closeMenu();
+      forceCloseMenu();
     }
   };
 
@@ -60,25 +96,54 @@ export default function Index() {
     if (menuOpen) {
       closeMenu();
     } else {
+      // Reset the outside close flag when manually opening
+      setMenuClosedByOutside(false);
       openMenu();
     }
   };
 
   const openMenu = () => {
+    if (menuOpen || isAnimating.current) return; // Prevent multiple open calls
+    
+    isAnimating.current = true;
     setMenuOpen(true);
     Animated.timing(slideAnim, {
       toValue: 0,
       duration: 300,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      isAnimating.current = false;
+    });
   };
 
   const closeMenu = () => {
+    if (!menuOpen || isAnimating.current) return; // Prevent multiple close calls
+    
+    isAnimating.current = true;
     Animated.timing(slideAnim, {
-      toValue: 300,
+      toValue: getResponsiveWidth(300, width),
       duration: 300,
       useNativeDriver: true,
-    }).start(() => setMenuOpen(false));
+    }).start(() => {
+      setMenuOpen(false);
+      isAnimating.current = false;
+    });
+  };
+
+  // Force close menu without animation (for outside clicks)
+  const forceCloseMenu = () => {
+    if (!menuOpen) return;
+    
+    // Stop any ongoing animation
+    slideAnim.stopAnimation();
+    
+    // Immediately set to closed state
+    setMenuOpen(false);
+    setMenuClosedByOutside(true); // Mark as closed by outside click
+    isAnimating.current = false;
+    
+    // Reset animation value to closed position
+    slideAnim.setValue(getResponsiveWidth(300, width));
   };
 
   const handleEditProfile = () => {
@@ -497,13 +562,14 @@ export default function Index() {
           headerShown: false,
         }}
       />
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'height' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'height' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
         {/* Header - Fixed outside ScrollView */}
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <View style={styles.headerContainer}>
             <TouchableOpacity style={styles.backButton} onPress={() => router.push('/(tabs)')}>
               <Ionicons name="arrow-back" size={28} color="black" />
@@ -519,7 +585,7 @@ export default function Index() {
           </View>
         </TouchableWithoutFeedback>
 
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <ScrollView 
             style={styles.scrollView} 
             showsVerticalScrollIndicator={false}
@@ -529,7 +595,7 @@ export default function Index() {
             onScrollBeginDrag={() => {
               Keyboard.dismiss();
               if (menuOpen) {
-                closeMenu();
+                forceCloseMenu();
               }
             }}
           >
@@ -706,7 +772,7 @@ export default function Index() {
         </TouchableWithoutFeedback>
         
         {/* Bottom Navigation Icons - Always at bottom */}
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <View style={styles.bottomNavigation}>
             <TouchableOpacity 
               style={styles.bottomNavItem} 
@@ -780,7 +846,7 @@ export default function Index() {
           
           {/* Menu Backdrop - Only show when menu is open */}
           {menuOpen && (
-            <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+            <TouchableWithoutFeedback onPress={forceCloseMenu}>
               <View style={styles.menuBackdrop} />
             </TouchableWithoutFeedback>
           )}
@@ -793,6 +859,7 @@ export default function Index() {
                 transform: [{ translateX: slideAnim }],
               },
             ]}
+            pointerEvents={menuOpen ? 'auto' : 'none'}
           >
             <View style={styles.menuContent}>
               {/* Profile Section */}
@@ -853,101 +920,103 @@ export default function Index() {
             </View>
           </Animated.View>
       </KeyboardAvoidingView>
+      </SafeAreaView>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (screenHeight: number, screenWidth: number) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
   innerContainer: {
-    padding: 20,
+    padding: getResponsiveValue(20, screenHeight),
   },
   scrollView: {
     flex: 1,
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingBottom: 100, // Add padding to ensure content doesn't get hidden behind bottom navigation
+    paddingBottom: getResponsiveValue(100, screenHeight), // Add padding to ensure content doesn't get hidden behind bottom navigation
   },
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 50,
-    paddingBottom: 6,
+    paddingHorizontal: getResponsiveWidth(10, screenWidth),
+    paddingTop: getResponsiveValue(45, screenHeight),
+    paddingBottom: getResponsiveValue(6, screenHeight),
     backgroundColor: '#A1CEDC',
+    marginTop: getResponsiveValue(-40, screenHeight),
   },
   menuButton: {
-    padding: 5,
+    padding: getResponsiveValue(5, screenHeight),
   },
   menuicon: {
-    marginRight: 10,
+    marginRight: getResponsiveWidth(10, screenWidth),
   },
   backButton: {
-    padding: 5,
+    padding: getResponsiveValue(5, screenHeight),
   },
   mainlogo: {
-    height: 50,
-    width: 180,
-    marginRight: 140,
+    height: getResponsiveValue(50, screenHeight),
+    width: getResponsiveWidth(180, screenWidth),
+    marginRight: getResponsiveWidth(140, screenWidth),
   },
   personButton: {
-    padding: 5,
+    padding: getResponsiveValue(5, screenHeight),
   },
   personicon: {
-    marginRight: 0, 
+    marginLeft: -25, 
   },
   // Sliding Menu Styles
   menuContainer: {
     position: 'absolute',
-    top: 0,
+    top: -40,
     right: 0,
-    height: '100%',
-    width: 300,
+    height: screenHeight, // Use full screen height
+    width: getResponsiveWidth(300, screenWidth),
     backgroundColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: { width: -4, height: 0 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
+    borderTopLeftRadius: getResponsiveValue(20, screenHeight),
+    borderBottomLeftRadius: getResponsiveValue(20, screenHeight),
     zIndex: 1001, // Higher than bottom navigation (1000)
   },
   menuContent: {
     flex: 1,
-    paddingTop: 60,
+    paddingTop: getResponsiveValue(60, screenHeight),
   },
   profileSection: {
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: getResponsiveValue(20, screenHeight),
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
     backgroundColor: '#667eea',
-    borderTopLeftRadius: 20,
+    borderTopLeftRadius: getResponsiveValue(20, screenHeight),
     position: 'relative',
     overflow: 'hidden',
-    marginTop: -60,
+    marginTop: getResponsiveValue(-60, screenHeight),
   },
   profileImageContainer: {
     position: 'relative',
-    marginBottom: 5,
-    marginTop: 40,
+    marginBottom: getResponsiveValue(5, screenHeight),
+    marginTop: getResponsiveValue(40, screenHeight),
   },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: getResponsiveValue(100, screenHeight),
+    height: getResponsiveValue(100, screenHeight),
+    borderRadius: getResponsiveValue(50, screenHeight),
     borderWidth: 4,
     borderColor: 'rgba(255,255,255,0.3)',
   },
   profileImagePlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: getResponsiveValue(100, screenHeight),
+    height: getResponsiveValue(100, screenHeight),
+    borderRadius: getResponsiveValue(50, screenHeight),
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -963,7 +1032,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 5,
+    marginBottom: getResponsiveValue(5, screenHeight),
     textShadowColor: 'rgba(0,0,0,0.1)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -971,24 +1040,24 @@ const styles = StyleSheet.create({
   menuDivider: {
     height: 1,
     backgroundColor: '#f1f5f9',
-    marginHorizontal: 20,
-    marginVertical: 10,
+    marginHorizontal: getResponsiveWidth(20, screenWidth),
+    marginVertical: getResponsiveValue(10, screenHeight),
   },
   menuItems: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    paddingTop: getResponsiveValue(20, screenHeight),
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+    paddingVertical: getResponsiveValue(18, screenHeight),
+    paddingHorizontal: getResponsiveWidth(16, screenWidth),
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
-    borderRadius: 12,
-    marginBottom: 8,
+    borderRadius: getResponsiveValue(12, screenHeight),
+    marginBottom: getResponsiveValue(8, screenHeight),
     backgroundColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -997,10 +1066,10 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   menuItemIcon: {
-    marginRight: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    marginRight: getResponsiveWidth(12, screenWidth),
+    width: getResponsiveValue(40, screenHeight),
+    height: getResponsiveValue(40, screenHeight),
+    borderRadius: getResponsiveValue(20, screenHeight),
     backgroundColor: '#fef2f2',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1012,18 +1081,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   bottomSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-    paddingTop: 20,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    paddingBottom: getResponsiveValue(30, screenHeight),
+    paddingTop: getResponsiveValue(20, screenHeight),
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
     marginTop: 'auto',
   },
   versionInfo: {
     alignItems: 'center',
-    paddingVertical: 15,
+    paddingVertical: getResponsiveValue(15, screenHeight),
     backgroundColor: '#f8fafc',
-    borderRadius: 12,
+    borderRadius: getResponsiveValue(12, screenHeight),
   },
   versionText: {
     fontSize: 12,
@@ -1032,25 +1101,25 @@ const styles = StyleSheet.create({
   },
   // New styles for bookings and bottom navigation
   bookingsSection: {
-    marginTop: 2,
+    marginTop: getResponsiveValue(2, screenHeight),
   },
   bookingsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    marginTop: -10,
+    marginBottom: getResponsiveValue(10, screenHeight),
+    marginTop: getResponsiveValue(-10, screenHeight),
   },
   bookingsTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 90,
+    marginLeft: getResponsiveWidth(90, screenWidth),
   },
   bookingsTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginLeft: 10,
+    marginLeft: getResponsiveWidth(10, screenWidth),
   },
   bookingsActions: {
     flexDirection: 'row',
@@ -1058,10 +1127,10 @@ const styles = StyleSheet.create({
   },
   bookingCount: {
     backgroundColor: '#3498db',
-    borderRadius: 15,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginRight: 20,
+    borderRadius: getResponsiveValue(15, screenHeight),
+    paddingHorizontal: getResponsiveWidth(10, screenWidth),
+    paddingVertical: getResponsiveValue(5, screenHeight),
+    marginRight: getResponsiveWidth(20, screenWidth),
   },
   bookingCountText: {
     color: '#ffffff',
@@ -1070,39 +1139,39 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 30,
+    paddingVertical: getResponsiveValue(30, screenHeight),
   },
   loadingText: {
     fontSize: 16,
     color: '#666',
   },
   bookingsList: {
-    gap: 15,
+    gap: getResponsiveValue(15, screenHeight),
   },
   bookingCard: {
     backgroundColor: '#ebeef1ff',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: -5,
+    borderRadius: getResponsiveValue(10, screenHeight),
+    padding: getResponsiveValue(15, screenHeight),
+    marginBottom: getResponsiveValue(-5, screenHeight),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-    marginLeft: -5,
-    marginRight: -5,
+    marginLeft: getResponsiveWidth(-5, screenWidth),
+    marginRight: getResponsiveWidth(-5, screenWidth),
   },
   bookingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: getResponsiveValue(12, screenHeight),
   },
   
   bookingIdContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: getResponsiveWidth(8, screenWidth),
   },
   
   bookingId: {
@@ -1112,9 +1181,9 @@ const styles = StyleSheet.create({
   },
   
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: getResponsiveWidth(8, screenWidth),
+    paddingVertical: getResponsiveValue(4, screenHeight),
+    borderRadius: getResponsiveValue(6, screenHeight),
   },
   
   statusText: {
@@ -1124,11 +1193,11 @@ const styles = StyleSheet.create({
   
   // New styles for pending booking content
   pendingBookingContent: {
-    gap: 8,
+    gap: getResponsiveValue(8, screenHeight),
   },
   
   bookingDetails: {
-    gap: 8,
+    gap: getResponsiveValue(8, screenHeight),
   },
   bookingRow: {
     flexDirection: 'row',
@@ -1137,7 +1206,7 @@ const styles = StyleSheet.create({
   bookingLabel: {
     fontSize: 14,
     color: '#666',
-    marginLeft: 5,
+    marginLeft: getResponsiveWidth(5, screenWidth),
   },
   bookingValue: {
     fontSize: 14,
@@ -1146,12 +1215,12 @@ const styles = StyleSheet.create({
   },
   statusInfoContainer: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: getResponsiveValue(12, screenHeight),
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    borderRadius: getResponsiveValue(8, screenHeight),
     borderWidth: 1,
     borderColor: '#e9ecef',
-    marginTop: 8,
+    marginTop: getResponsiveValue(8, screenHeight),
   },
   statusInfoText: {
     fontSize: 14,
@@ -1161,18 +1230,18 @@ const styles = StyleSheet.create({
   },
   noBookings: {
     alignItems: 'center',
-    paddingVertical: 30,
+    paddingVertical: getResponsiveValue(30, screenHeight),
   },
   noBookingsText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginTop: 10,
+    marginTop: getResponsiveValue(10, screenHeight),
   },
   noBookingsSubtext: {
     fontSize: 14,
     color: '#666',
-    marginTop: 5,
+    marginTop: getResponsiveValue(5, screenHeight),
   },
   bottomNavigation: {
     position: 'absolute', // Make it absolutely positioned
@@ -1183,13 +1252,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: getResponsiveValue(15, screenHeight),
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
     justifyContent: 'space-around',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: getResponsiveValue(-2, screenHeight) },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: getResponsiveValue(4, screenHeight),
     elevation: 8,
     zIndex: 1000, // Ensure it's above other content
   },
@@ -1200,7 +1269,7 @@ const styles = StyleSheet.create({
   bottomNavText: {
     fontSize: 12,
     color: '#9CA3AF',
-    marginTop: 5,
+    marginTop: getResponsiveValue(5, screenHeight),
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -1210,16 +1279,16 @@ const styles = StyleSheet.create({
   },
   // New styles for rejected booking content
   rejectedBookingContent: {
-    gap: 8,
+    gap: getResponsiveValue(8, screenHeight),
   },
   
   rejectReasonContainer: {
     backgroundColor: '#fef2f2',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: getResponsiveValue(8, screenHeight),
+    padding: getResponsiveValue(12, screenHeight),
     borderWidth: 1,
     borderColor: '#fecaca',
-    marginTop: 8,
+    marginTop: getResponsiveValue(8, screenHeight),
   },
   
   rejectReasonText: {
@@ -1235,6 +1304,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1000, // Below menu but above everything else
   },

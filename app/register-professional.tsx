@@ -7,21 +7,20 @@ import * as MediaLibrary from 'expo-media-library';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    useWindowDimensions,
+    View,
 } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Google Places API configuration
 const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
@@ -43,6 +42,7 @@ interface Skill {
 }
 
 export default function RegisterProfessionalScreen() {
+  const { width } = useWindowDimensions();
   // Form state
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -1446,22 +1446,23 @@ export default function RegisterProfessionalScreen() {
           headerShown: false,
         }}
       />
-      <TouchableWithoutFeedback onPress={handleOutsideTouch}>
-        <KeyboardAvoidingView 
-          style={styles.container} 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          {/* Header - moved outside ScrollView */}
-          <View style={styles.headerContainer}>
-            <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
-              <Ionicons style={styles.menuicon} name="arrow-back" size={28} color="black" />
-            </TouchableOpacity>
-            <Image
-              source={require('@/assets/images/OriginX.png')}
-              style={styles.mainlogo}
-              contentFit="contain"
-            />
-          </View>
+      <SafeAreaView style={styles.container}>
+        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+          <KeyboardAvoidingView 
+            style={styles.container} 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            {/* Header - moved outside ScrollView */}
+            <View style={styles.headerContainer}>
+              <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
+                <Ionicons style={styles.menuicon} name="arrow-back" size={28} color="black" />
+              </TouchableOpacity>
+              <Image
+                source={require('@/assets/images/OriginX.png')}
+                style={styles.mainlogo}
+                contentFit="contain"
+              />
+            </View>
 
           <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
             {/* Progress Indicator */}
@@ -1572,6 +1573,7 @@ export default function RegisterProfessionalScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      </SafeAreaView>
     </>
   );
 }
@@ -1588,8 +1590,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 50,
+    paddingHorizontal: '3%',
+    paddingTop: 10,
     paddingBottom: 10,
     backgroundColor: '#A1CEDC',
   },
@@ -1597,15 +1599,16 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   mainlogo: {
-    height: 50,
-    width: 180,
-    marginRight: 200,
+    height: 45,
+    width: '45%',
+    maxWidth: 180,
+    marginRight: '50%',
   },
   menuicon: {
     marginRight: 10,
   },
   progressContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: '5%',
     paddingVertical: 15,
     backgroundColor: '#f8f9fa',
   },
@@ -1621,36 +1624,36 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   progressText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
     textAlign: 'center',
   },
   logoContainer: {
     alignItems: 'center',
     paddingVertical: 10,
-    marginTop: -30,
+    marginTop: -20,
     marginBottom: 7,
   },
   logoSubtitle: {
-    fontSize: 20,
+    fontSize: 18,
     color: '#2c3e50',
     fontStyle: 'italic',
     fontWeight: 'bold'
   },
   formContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 30,
+    paddingHorizontal: '5%',
+    paddingVertical: 25,
     backgroundColor: '#f8f9fa',
   },
   profilePhotoContainer: {
     alignItems: 'center',
     marginBottom: 5,
-    marginTop: -55,
+    marginTop: -45,
   },
   profilePhotoButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 60,
+    width: 95,
+    height: 95,
+    borderRadius: 48,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#A1CEDC',
@@ -1675,7 +1678,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profilePhotoText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#A1CEDC',
     marginTop: 5,
     fontWeight: '600',

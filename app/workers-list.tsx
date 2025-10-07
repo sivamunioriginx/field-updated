@@ -4,12 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Dimensions,
   FlatList,
   Image,
   Linking,
@@ -23,13 +22,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 // Using a simple range input instead of slider for now
 // import Slider from '@react-native-community/slider';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-
-const { width, height } = Dimensions.get('window');
 
 // Helper function to split name if longer than 10 characters
 const splitName = (name: string) => {
@@ -50,6 +49,7 @@ interface DualRangeSliderProps {
   onValueChange: (value: { min: number; max: number }) => void;
   step?: number;
   unit?: string;
+  styles: any; // Add styles prop
 }
 
 const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
@@ -58,8 +58,10 @@ const DualRangeSlider: React.FC<DualRangeSliderProps> = ({
   value,
   onValueChange,
   step = 1,
-  unit = ''
+  unit = '',
+  styles
 }) => {
+  const { width } = useWindowDimensions();
   const sliderWidth = width * 0.7;
   const thumbSize = 20;
   const [isDraggingMin, setIsDraggingMin] = useState(false);
@@ -199,7 +201,22 @@ interface Worker {
   created_at?: string;
 }
 
+// Helper function to get responsive values based on screen height
+const getResponsiveValue = (baseValue: number, screenHeight: number) => {
+  // Base height is considered as 800 (typical phone screen)
+  const baseHeight = 800;
+  return (baseValue * screenHeight) / baseHeight;
+};
+
+// Helper function to get responsive values based on screen width
+const getResponsiveWidth = (baseValue: number, screenWidth: number) => {
+  // Base width is considered as 400 (typical phone screen width)
+  const baseWidth = 400;
+  return (baseValue * screenWidth) / baseWidth;
+};
+
 export default function WorkersList() {
+  const { width, height } = useWindowDimensions();
   const { workers, location, coordinates } = useLocalSearchParams();
   const { isAuthenticated, user } = useAuth();
   const [workerList, setWorkerList] = useState<Worker[]>([]);
@@ -261,6 +278,9 @@ export default function WorkersList() {
   const [priceRange, setPriceRange] = useState({ min: 0, max: 2000 });
   const [currentDistanceRange, setCurrentDistanceRange] = useState({ min: 0, max: 50 });
   const [currentPriceRange, setCurrentPriceRange] = useState({ min: 0, max: 2000 });
+
+  // Create responsive styles based on screen dimensions
+  const styles = useMemo(() => createStyles(height, width), [height, width]);
 
   // Auto-reset sort state when component opens
   useEffect(() => {
@@ -1457,7 +1477,6 @@ export default function WorkersList() {
                       <View style={styles.profileRating}>
                         <Ionicons name="star" size={14} color="#f59e0b" />
                         <Text style={styles.profileRatingText}>4.7</Text>
-                        <Text style={styles.profileReviewText}>(24 reviews)</Text>
                       </View>
                     </View>
                   </View>
@@ -2276,6 +2295,7 @@ export default function WorkersList() {
                       value={currentDistanceRange}
                       onValueChange={(value) => handleRangeChange('distance', value.min, value.max)}
                       unit=" km"
+                      styles={styles}
                     />
                     <Text style={styles.rangeHint}>
                       💡 Price filter is also active: ₹{currentPriceRange.min} - ₹{currentPriceRange.max}
@@ -2322,6 +2342,7 @@ export default function WorkersList() {
                       value={currentPriceRange}
                       onValueChange={(value) => handleRangeChange('price', value.min, value.max)}
                       unit=""
+                      styles={styles}
                     />
                     <Text style={styles.rangeHint}>
                       💡 Distance filter is also active: {currentDistanceRange.min} - {currentDistanceRange.max} km
@@ -2508,7 +2529,7 @@ export default function WorkersList() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#4f46e5" />
       
       {/* Fixed Header - Not affected by scroll */}
@@ -2563,45 +2584,45 @@ export default function WorkersList() {
       {renderWaitingModal()}
       {renderBookingStatusModal()}
       {renderSortModal()}
-    </View>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (screenHeight: number, screenWidth: number) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f9fafb',
   },
   header: {
     backgroundColor: '#4f46e5',
-    paddingTop: 45,
-    paddingBottom: 14,
-    marginTop: -20,
+    paddingTop: getResponsiveValue(45, screenHeight),
+    paddingBottom: getResponsiveValue(14, screenHeight),
+    marginTop: getResponsiveValue(-60, screenHeight),
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 8,
-    marginTop: 10,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    marginBottom: getResponsiveValue(8, screenHeight),
+    marginTop: getResponsiveValue(10, screenHeight),
   },
   backBtn: {
-    padding: 8,
+    padding: getResponsiveValue(8, screenHeight),
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: 'white',
-    marginRight: 170,
+    marginRight: getResponsiveWidth(200, screenWidth),
   },
   headerStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: -10,
-    marginBottom: -7,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    marginTop: getResponsiveValue(-10, screenHeight),
+    marginBottom: getResponsiveValue(-7, screenHeight),
   },
   resultsText: {
     color: 'rgba(255,255,255,0.9)',
@@ -2609,23 +2630,23 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   sortIconBtn: {
-    padding: 8,
+    padding: getResponsiveValue(8, screenHeight),
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 8,
+    borderRadius: getResponsiveValue(8, screenHeight),
   },
   listContainer: {
-    marginTop: -3,
-    paddingBottom: 20,
+    marginTop: getResponsiveValue(-3, screenHeight),
+    paddingBottom: getResponsiveValue(20, screenHeight),
   },
   cardWrapper: {
-    paddingHorizontal: 16,
-    marginBottom: -1,
+    paddingHorizontal: getResponsiveWidth(16, screenWidth),
+    marginBottom: getResponsiveValue(-1, screenHeight),
   },
   workerCard: {
-    marginTop: 12,
+    marginTop: getResponsiveValue(12, screenHeight),
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: getResponsiveValue(16, screenHeight),
+    padding: getResponsiveValue(16, screenHeight),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -2636,23 +2657,23 @@ const styles = StyleSheet.create({
   },
   profileSection: {
     flexDirection: 'row',
-    marginBottom: 16,
-    marginTop: -8,
+    marginBottom: getResponsiveValue(16, screenHeight),
+    marginTop: getResponsiveValue(-8, screenHeight),
   },
   avatarWrapper: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: getResponsiveWidth(12, screenWidth),
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: getResponsiveValue(56, screenHeight),
+    height: getResponsiveValue(56, screenHeight),
+    borderRadius: getResponsiveValue(28, screenHeight),
     backgroundColor: '#f3f4f6',
   },
   avatarPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: getResponsiveValue(56, screenHeight),
+    height: getResponsiveValue(56, screenHeight),
+    borderRadius: getResponsiveValue(28, screenHeight),
     backgroundColor: '#6366f1',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2664,13 +2685,13 @@ const styles = StyleSheet.create({
   },
   statusDot: {
     position: 'absolute',
-    bottom: 22,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    bottom: getResponsiveValue(10, screenHeight),
+    right: getResponsiveWidth(-3, screenWidth),
+    width: getResponsiveValue(14, screenHeight),
+    height: getResponsiveValue(14, screenHeight),
+    borderRadius: getResponsiveValue(7, screenHeight),
     backgroundColor: '#10b981',
-    borderWidth: 2,
+    borderWidth: getResponsiveValue(2, screenHeight),
     borderColor: 'white',
   },
   workerInfo: {
@@ -2679,7 +2700,7 @@ const styles = StyleSheet.create({
   nameContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 4,
+    marginBottom: getResponsiveValue(4, screenHeight),
     position: 'relative',
     flexWrap: 'nowrap',
   },
@@ -2697,7 +2718,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
     lineHeight: 22,
-    marginTop: 4,
+    marginTop: getResponsiveValue(4, screenHeight),
   },
   verifiedBadge: {
     position: 'absolute',
@@ -2708,7 +2729,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: getResponsiveValue(8, screenHeight),
   },
   metaInfo: {
     flexDirection: 'row',
@@ -2718,7 +2739,7 @@ const styles = StyleSheet.create({
   leftMetaInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: getResponsiveWidth(12, screenWidth),
   },
   locationInfo: {
     flexDirection: 'row',
@@ -2727,26 +2748,26 @@ const styles = StyleSheet.create({
   distanceText: {
     fontSize: 12,
     color: '#6b7280',
-    marginLeft: 2,
+    marginLeft: getResponsiveWidth(2, screenWidth),
     fontWeight: '500',
   },
   priceInfo: {
     position: 'absolute',
-    right: 40,
+    right: getResponsiveWidth(40, screenWidth),
     top: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f0fdf4',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
+    paddingHorizontal: getResponsiveWidth(6, screenWidth),
+    paddingVertical: getResponsiveValue(2, screenHeight),
+    borderRadius: getResponsiveValue(6, screenHeight),
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#bbf7d0',
   },
   priceText: {
     fontSize: 14,
     color: '#10b981',
-    marginLeft: 2,
+    marginLeft: getResponsiveWidth(2, screenWidth),
     fontWeight: '600',
   },
   ratingInfo: {
@@ -2757,28 +2778,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#111827',
-    marginLeft: 3,
-    marginRight: 3,
-  },
-  profileReviewText: {
-    fontSize: 12,
-    color: '#9ca3af',
+    marginLeft: getResponsiveWidth(3, screenWidth),
+    marginRight: getResponsiveWidth(3, screenWidth),
   },
   actionSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: getResponsiveWidth(8, screenWidth),
     justifyContent: 'space-between',
-    marginBottom: -5,
-    marginTop: -5,
+    marginBottom: getResponsiveValue(-5, screenHeight),
+    marginTop: getResponsiveValue(-5, screenHeight),
   },
   primaryAction: {
     backgroundColor: '#4f46e5',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: getResponsiveWidth(16, screenWidth),
+    paddingVertical: getResponsiveValue(10, screenHeight),
+    borderRadius: getResponsiveValue(20, screenHeight),
     flex: 1,
-    marginRight: 8,
+    marginRight: getResponsiveWidth(8, screenWidth),
   },
   primaryActionText: {
     color: 'white',
@@ -2788,13 +2805,13 @@ const styles = StyleSheet.create({
   },
   viewProfileBtn: {
     backgroundColor: '#f3f4f6',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingHorizontal: getResponsiveWidth(16, screenWidth),
+    paddingVertical: getResponsiveValue(10, screenHeight),
+    borderRadius: getResponsiveValue(20, screenHeight),
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#e5e7eb',
     flex: 1,
-    marginRight: 8,
+    marginRight: getResponsiveWidth(8, screenWidth),
   },
   viewProfileText: {
     color: '#4f46e6',
@@ -2803,11 +2820,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: getResponsiveValue(40, screenHeight),
+    height: getResponsiveValue(40, screenHeight),
+    borderRadius: getResponsiveValue(20, screenHeight),
     backgroundColor: '#f9fafb',
-    borderWidth: 1,
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#e5e7eb',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2825,12 +2842,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#111827',
-    marginTop: 16,
+    marginTop: getResponsiveValue(16, screenHeight),
   },
   loadingSubtitle: {
     fontSize: 14,
     color: '#6b7280',
-    marginTop: 4,
+    marginTop: getResponsiveValue(4, screenHeight),
   },
   emptyContainer: {
     flexGrow: 1,
@@ -2839,16 +2856,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: getResponsiveWidth(32, screenWidth),
   },
   emptyIcon: {
-    marginBottom: 20,
+    marginBottom: getResponsiveValue(20, screenHeight),
   },
   emptyTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 8,
+    marginBottom: getResponsiveValue(8, screenHeight),
     textAlign: 'center',
   },
   emptyMessage: {
@@ -2856,21 +2873,21 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
+    marginBottom: getResponsiveValue(24, screenHeight),
   },
   refreshBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#4f46e5',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    paddingVertical: getResponsiveValue(12, screenHeight),
+    borderRadius: getResponsiveValue(24, screenHeight),
   },
   refreshBtnText: {
     color: 'white',
     fontSize: 15,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: getResponsiveWidth(6, screenWidth),
   },
   modalOverlay: {
     flex: 1,
@@ -2887,56 +2904,56 @@ const styles = StyleSheet.create({
   },
   profileModal: {
     width: '100%',
-    height: height * 0.7,
+    height: '70%',
     backgroundColor: 'white',
-    borderTopLeftRadius: 17,
-    borderTopRightRadius: 17,
+    borderTopLeftRadius: getResponsiveValue(17, screenHeight),
+    borderTopRightRadius: getResponsiveValue(17, screenHeight),
     overflow: 'hidden',
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: getResponsiveValue(-2, screenHeight) },
     shadowOpacity: 0.1,
-    shadowRadius: 10,
+    shadowRadius: getResponsiveValue(10, screenHeight),
     elevation: 10,
   },
   modalHandle: {
     alignItems: 'center',
-    paddingVertical: 10,
-    marginBottom: 10,
+    paddingVertical: getResponsiveValue(10, screenHeight),
+    marginBottom: getResponsiveValue(10, screenHeight),
   },
   handleBar: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
+    width: getResponsiveWidth(40, screenWidth),
+    height: getResponsiveValue(4, screenHeight),
+    borderRadius: getResponsiveValue(2, screenHeight),
     backgroundColor: '#e5e7eb',
   },
   modalContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingHorizontal: getResponsiveWidth(20, screenWidth),
+    paddingBottom: getResponsiveValue(20, screenHeight),
     flexGrow: 1,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: getResponsiveValue(16, screenHeight),
   },
   profileImageContainer: {
     position: 'relative',
-    marginRight: 15,
+    marginRight: getResponsiveWidth(15, screenWidth),
   },
   profileImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: getResponsiveValue(60, screenHeight),
+    height: getResponsiveValue(60, screenHeight),
+    borderRadius: getResponsiveValue(30, screenHeight),
     backgroundColor: '#f3f4f6',
   },
   profileImagePlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: getResponsiveValue(60, screenHeight),
+    height: getResponsiveValue(60, screenHeight),
+    borderRadius: getResponsiveValue(30, screenHeight),
     backgroundColor: '#6366f1',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2948,13 +2965,13 @@ const styles = StyleSheet.create({
   },
   profileStatusDot: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    bottom: getResponsiveValue(2, screenHeight),
+    right: getResponsiveWidth(2, screenWidth),
+    width: getResponsiveValue(16, screenHeight),
+    height: getResponsiveValue(16, screenHeight),
+    borderRadius: getResponsiveValue(8, screenHeight),
     backgroundColor: '#10b981',
-    borderWidth: 2,
+    borderWidth: getResponsiveValue(2, screenHeight),
     borderColor: 'white',
   },
   profileInfo: {
@@ -2963,7 +2980,7 @@ const styles = StyleSheet.create({
   profileNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: getResponsiveValue(4, screenHeight),
   },
      profileName: {
      fontSize: 20,
@@ -2975,16 +2992,16 @@ const styles = StyleSheet.create({
      fontSize: 14,
      color: '#6b7280',
      fontWeight: '500',
-     marginBottom: 4,
+     marginBottom: getResponsiveValue(4, screenHeight),
    },
    profileVerifiedBadge: {
-     marginLeft: 6,
+     marginLeft: getResponsiveWidth(6, screenWidth),
    },
   profileSkill: {
     fontSize: 15,
     color: '#6b7280',
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: getResponsiveValue(8, screenHeight),
   },
   profileMeta: {
     flexDirection: 'row',
@@ -2994,7 +3011,7 @@ const styles = StyleSheet.create({
   profileLeftMetaInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 15,
+    gap: getResponsiveWidth(15, screenWidth),
   },
   profileLocation: {
     flexDirection: 'row',
@@ -3003,24 +3020,24 @@ const styles = StyleSheet.create({
   profileDistance: {
     fontSize: 13,
     color: '#6b7280',
-    marginLeft: 3,
+    marginLeft: getResponsiveWidth(3, screenWidth),
     fontWeight: '500',
   },
   profilePriceInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f0fdf4',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingHorizontal: getResponsiveWidth(8, screenWidth),
+    paddingVertical: getResponsiveValue(3, screenHeight),
+    borderRadius: getResponsiveValue(8, screenHeight),
+    borderWidth: getResponsiveValue(1, screenHeight),
     borderColor: '#bbf7d0',
-    marginLeft: 6,
+    marginLeft: getResponsiveWidth(6, screenWidth),
   },
   profilePriceText: {
     fontSize: 13,
     color: '#10b981',
-    marginLeft: 3,
+    marginLeft: getResponsiveWidth(3, screenWidth),
     fontWeight: '600',
   },
   profileRating: {
@@ -3031,8 +3048,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#111827',
-    marginLeft: 3,
-    marginRight: 3,
+    marginLeft: getResponsiveWidth(3, screenWidth),
+    marginRight: getResponsiveWidth(3, screenWidth),
   },
   reviewCountText: {
     fontSize: 12,
@@ -3041,27 +3058,27 @@ const styles = StyleSheet.create({
   contactActions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 20,
+    marginBottom: getResponsiveValue(20, screenHeight),
   },
   contactBtn: {
     alignItems: 'center',
     flex: 1,
-    marginHorizontal: 5,
+    marginHorizontal: getResponsiveWidth(5, screenWidth),
   },
   contactBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#3b82f6',
-    marginTop: 5,
+    marginTop: getResponsiveValue(5, screenHeight),
   },
   addressSection: {
-    marginBottom: 20,
+    marginBottom: getResponsiveValue(20, screenHeight),
   },
   addressTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 12,
+    marginBottom: getResponsiveValue(12, screenHeight),
   },
   addressContent: {
     flexDirection: 'row',
@@ -3071,27 +3088,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4b5563',
     lineHeight: 20,
-    marginLeft: 10,
+    marginLeft: getResponsiveWidth(10, screenWidth),
     flex: 1,
     textAlign: 'justify',
   },
   documentsSection: {
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: getResponsiveValue(10, screenHeight),
+    marginBottom: getResponsiveValue(10, screenHeight),
   },
   documentsTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 12,
+    marginBottom: getResponsiveValue(12, screenHeight),
   },
   documentsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 15,
+    gap: getResponsiveWidth(15, screenWidth),
   },
   documentItem: {
-    width: (width - 40 - 15) / 2,
+    flex: 1,
     aspectRatio: 1.2,
     borderRadius: 10,
     overflow: 'hidden',
