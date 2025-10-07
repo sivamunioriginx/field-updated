@@ -2,7 +2,8 @@
 // API Configuration
 const getBaseUrl = () => {
   if (!__DEV__) {
-    return 'https://your-production-server.com/api';
+    // ngrok URL for sharing APKs with friends
+    return 'https://lois-nonenvironmental-alisa.ngrok-free.dev/api';
   }
   
   // For physical devices, use your computer's IP address:

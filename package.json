@@ -20,6 +20,7 @@
     "build:worker": "env-cmd -f .env.worker eas build -p android",
     "build:customer:local": "env-cmd -f .env.customer eas build --platform android --profile customer --local",
     "build:worker:local": "env-cmd -f .env.worker eas build --platform android --profile worker --local",
+    "build:share": "node scripts/build-for-sharing.js",
     "start:backend": "cd backend && npm run dev"
   },
   "dependencies": {

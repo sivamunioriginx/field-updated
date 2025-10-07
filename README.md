@@ -35,6 +35,31 @@ npm run reset-project
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
+## 📱 Sharing APKs Without a Server
+
+Want to share your APKs with friends using only your local backend? **It's possible!**
+
+### 🚀 Quick Start (One Command)
+```bash
+start-for-sharing.bat
+```
+This automatically starts backend + ngrok, then builds APKs!
+
+### 📚 Documentation
+- **[README_SHARING.md](./README_SHARING.md)** - Overview & quick reference
+- **[QUICK_START_SHARING.md](./QUICK_START_SHARING.md)** - 5-minute setup guide
+- **[SHARE_APKS_GUIDE.md](./SHARE_APKS_GUIDE.md)** - Complete detailed guide
+
+### 🎯 How It Works
+1. Use **ngrok** to expose your local backend to the internet
+2. Build APKs with the ngrok URL
+3. Share APKs with friends
+4. Keep your computer on while they use the app
+
+Perfect for testing and demos! 🎉
+
+---
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:

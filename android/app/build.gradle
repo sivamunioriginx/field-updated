@@ -201,6 +201,23 @@ android.applicationVariants.all { variant ->
     if (bundleTask) {
         bundleTask.dependsOn copyGoogleServicesTask
     }
+    
+    // Fix for ALL Gradle task dependency issues with copyGoogleServicesTask
+    def taskNames = [
+        "merge${variant.name.capitalize()}JniLibFolders",
+        "merge${variant.name.capitalize()}StartupProfile",
+        "merge${variant.name.capitalize()}ArtProfile",
+        "process${variant.name.capitalize()}MainManifest",
+        "process${variant.name.capitalize()}Manifest",
+        "merge${variant.name.capitalize()}Resources"
+    ]
+    
+    taskNames.each { taskName ->
+        def task = tasks.findByName(taskName)
+        if (task) {
+            task.dependsOn copyGoogleServicesTask
+        }
+    }
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`

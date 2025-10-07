@@ -298,7 +298,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         
         Thread {
             try {
-                val url = "http://192.168.31.84:3001/api/accept-booking-alert"
+                val url = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api/accept-booking-alert"
                 
                 val json = org.json.JSONObject().apply {
                     put("booking_id", bookingId)
@@ -343,7 +343,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         
         Thread {
             try {
-                val url = "http://192.168.31.84:3001/api/reject-booking-alert"
+                val url = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api/reject-booking-alert"
                 
                 val json = org.json.JSONObject().apply {
                     put("booking_id", bookingId)
