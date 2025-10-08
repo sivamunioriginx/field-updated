@@ -9,7 +9,6 @@ import { router } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Dimensions,
   FlatList,
   ScrollView,
   StyleSheet,
@@ -20,8 +19,6 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
-
-const { width } = Dimensions.get('window');
 
 // Google Places API configuration
 const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
@@ -740,8 +737,9 @@ const handleSearchWorkersNearby = async () => {
 
   const groupCategoryItems = (items: CategoryItem[]) => {
     const grouped = [];
-    for (let i = 0; i < items.length; i += 3) {
-      const chunk = items.slice(i, i + 3);
+    const itemsPerRow = screenWidth < 600 ? 3 : screenWidth < 900 ? 4 : 5;
+    for (let i = 0; i < items.length; i += itemsPerRow) {
+      const chunk = items.slice(i, i + itemsPerRow);
       grouped.push(chunk);
     }
     return grouped;
@@ -770,51 +768,54 @@ const handleSearchWorkersNearby = async () => {
     </View>
   );
 
-  const renderCategoryItemRow = ({ item: rowData }: { item: CategoryItem[] }) => (
-    <View style={styles.categoryItemRow}>
-      {rowData.length > 0 ? (
-        rowData.map((item: CategoryItem) => {
-          const currentSection = categorySections[currentCategoryIndex];
-          const currentSelection = categorySelections[currentSection?.id || ''];
-          const isSelected = currentSelection?.item.id === item.id;
-          const BASE_URL = getBaseUrl().replace('/api', '');
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.categoryItemCard,
-                isSelected && styles.categoryItemCardSelected,
-              ]}
-              onPress={() => handleSubcategorySelect(categorySections[currentCategoryIndex], item)}
-            >
-              <View style={styles.categoryItemImageContainer}>
-                <Image
-                  source={{ uri: `${BASE_URL}/uploads/subcategorys/${item.image}` }}
-                  style={styles.categoryItemImage}
-                  contentFit="cover"
-                />
-                <View style={styles.categoryItemOverlay}>
-                  <Text style={styles.categoryItemTitle}>{item.title}</Text>
-                </View>
-                {isSelected && (
-                  <View style={styles.selectedIndicator}>
-                    <Ionicons name="checkmark-circle" size={24} color="#fff" />
+  const renderCategoryItemRow = ({ item: rowData }: { item: CategoryItem[] }) => {
+    const itemsPerRow = screenWidth < 600 ? 3 : screenWidth < 900 ? 4 : 5;
+    return (
+      <View style={styles.categoryItemRow}>
+        {rowData.length > 0 ? (
+          rowData.map((item: CategoryItem) => {
+            const currentSection = categorySections[currentCategoryIndex];
+            const currentSelection = categorySelections[currentSection?.id || ''];
+            const isSelected = currentSelection?.item.id === item.id;
+            const BASE_URL = getBaseUrl().replace('/api', '');
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.categoryItemCard,
+                  isSelected && styles.categoryItemCardSelected,
+                ]}
+                onPress={() => handleSubcategorySelect(categorySections[currentCategoryIndex], item)}
+              >
+                <View style={styles.categoryItemImageContainer}>
+                  <Image
+                    source={{ uri: `${BASE_URL}/uploads/subcategorys/${item.image}` }}
+                    style={styles.categoryItemImage}
+                    contentFit="cover"
+                  />
+                  <View style={styles.categoryItemOverlay}>
+                    <Text style={styles.categoryItemTitle}>{item.title}</Text>
                   </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })
-      ) : (
-        <Text>No items available</Text>
-      )}
-      {rowData.length < 3 && rowData.length > 0 && (
-        Array.from({ length: 3 - rowData.length }, (_, index) => (
-          <View key={`empty-${index}`} style={styles.categoryItemCardEmpty} />
-        ))
-      )}
-    </View>
-  );
+                  {isSelected && (
+                    <View style={styles.selectedIndicator}>
+                      <Ionicons name="checkmark-circle" size={24} color="#fff" />
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          <Text>No items available</Text>
+        )}
+        {rowData.length < itemsPerRow && rowData.length > 0 && (
+          Array.from({ length: itemsPerRow - rowData.length }, (_, index) => (
+            <View key={`empty-${index}`} style={styles.categoryItemCardEmpty} />
+          ))
+        )}
+      </View>
+    );
+  };
 
   const renderCategorySection = ({ item: section, index }: { item: CategorySection, index: number }) => {
     const groupedItems = groupCategoryItems(section.items);
@@ -835,7 +836,7 @@ const handleSearchWorkersNearby = async () => {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoryScrollContainer}
-          snapToInterval={width - 20}
+          snapToInterval={screenWidth - 20}
           decelerationRate="fast"
           pagingEnabled
         />
@@ -880,7 +881,7 @@ const handleSearchWorkersNearby = async () => {
   };
 
   const handleCategoryScroll = (event: any) => {
-    const slideSize = width;
+    const slideSize = screenWidth;
     const index = Math.floor(event.nativeEvent.contentOffset.x / slideSize);
     if (index !== currentCategoryIndex && categorySections[index]) {
       setCurrentCategoryIndex(index);
@@ -1097,7 +1098,7 @@ const handleSearchWorkersNearby = async () => {
                   keyExtractor={(item) => item.id}
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  snapToInterval={width}
+                  snapToInterval={screenWidth}
                   decelerationRate="fast"
                   pagingEnabled
                   onMomentumScrollEnd={handleCategoryScroll}
@@ -1195,17 +1196,32 @@ const handleSearchWorkersNearby = async () => {
 }
 
 const createStyles = (screenHeight: number, screenWidth: number) => {
-  // Helper function to get responsive values based on screen height
-  const getResponsiveValue = (baseValue: number, screenHeight: number) => {
+  // Helper function to get responsive values based on screen height with min/max constraints
+  const getResponsiveValue = (baseValue: number, screenHeight: number, minValue?: number, maxValue?: number) => {
     const baseHeight = 800;
-    return (baseValue * screenHeight) / baseHeight;
+    const scaledValue = (baseValue * screenHeight) / baseHeight;
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
   };
 
-  // Helper function to get responsive values based on screen width
-  const getResponsiveWidth = (baseValue: number, screenWidth: number) => {
+  // Helper function to get responsive values based on screen width with min/max constraints
+  const getResponsiveWidth = (baseValue: number, screenWidth: number, minValue?: number, maxValue?: number) => {
     const baseWidth = 400;
-    return (baseValue * screenWidth) / baseWidth;
+    const scaledValue = (baseValue * screenWidth) / baseWidth;
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
   };
+
+  // Helper to get number of items per row based on screen width
+  const getItemsPerRow = () => {
+    if (screenWidth < 600) return 3;
+    if (screenWidth < 900) return 4;
+    return 5;
+  };
+
+  const itemsPerRow = getItemsPerRow();
 
   return StyleSheet.create({
   container: {
@@ -1224,8 +1240,8 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     padding: getResponsiveValue(5, screenHeight),
   },
   mainlogo: {
-    height: getResponsiveValue(50, screenHeight),
-    width: getResponsiveWidth(180, screenWidth),
+    height: getResponsiveValue(50, screenHeight, 40, 60),
+    width: getResponsiveWidth(180, screenWidth, 150, 220),
     marginLeft: getResponsiveWidth(-160, screenWidth),
   },
   menuicon: {
@@ -1252,7 +1268,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     alignItems: 'center',
   },
   searchTitle: {
-    fontSize: 28,
+    fontSize: Math.min(Math.max(screenWidth * 0.07, 22), 32),
     fontWeight: '800',
     color: '#1a202c',
     marginBottom: getResponsiveValue(8, screenHeight),
@@ -1260,11 +1276,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     letterSpacing: -0.5,
   },
   searchSubtitle: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#4a5568',
     textAlign: 'center',
     fontWeight: '500',
-    lineHeight: 22,
+    lineHeight: Math.min(Math.max(screenWidth * 0.055, 18), 24),
   },
   searchCard: {
     backgroundColor: '#ffffff',
@@ -1296,9 +1312,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f7fafc',
-    borderRadius: getResponsiveValue(18, screenHeight),
-    paddingHorizontal: getResponsiveWidth(18, screenWidth),
-    borderWidth: getResponsiveValue(2, screenHeight),
+    borderRadius: getResponsiveValue(18, screenHeight, 15, 22),
+    paddingHorizontal: getResponsiveWidth(18, screenWidth, 12, 24),
+    borderWidth: getResponsiveValue(2, screenHeight, 1, 3),
     borderColor: '#e2e8f0',
     shadowColor: '#000',
     shadowOffset: {
@@ -1318,11 +1334,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f7fafc',
-    borderRadius: getResponsiveValue(18, screenHeight),
-    paddingHorizontal: getResponsiveWidth(18, screenWidth),
-    borderWidth: getResponsiveValue(2, screenHeight),
+    borderRadius: getResponsiveValue(18, screenHeight, 15, 22),
+    paddingHorizontal: getResponsiveWidth(18, screenWidth, 12, 24),
+    borderWidth: getResponsiveValue(2, screenHeight, 1, 3),
     borderColor: '#e2e8f0',
-    height: getResponsiveValue(55, screenHeight),
+    height: getResponsiveValue(55, screenHeight, 45, 65),
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1351,19 +1367,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     flex: 1,
   },
   categoryPicker: {
-    height: getResponsiveValue(55, screenHeight),
+    height: getResponsiveValue(55, screenHeight, 45, 65),
     width: '100%',
     color: '#2d3748',
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     fontWeight: '600',
   },
   pincodeWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f7fafc',
-    borderRadius: getResponsiveValue(18, screenHeight),
-    paddingHorizontal: getResponsiveWidth(18, screenWidth),
-    borderWidth: getResponsiveValue(2, screenHeight),
+    borderRadius: getResponsiveValue(18, screenHeight, 15, 22),
+    paddingHorizontal: getResponsiveWidth(18, screenWidth, 12, 24),
+    borderWidth: getResponsiveValue(2, screenHeight, 1, 3),
     borderColor: '#e2e8f0',
     shadowColor: '#000',
     shadowOffset: {
@@ -1379,8 +1395,8 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   inputBox: {
     flex: 1,
-    height: getResponsiveValue(55, screenHeight),
-    fontSize: 16,
+    height: getResponsiveValue(55, screenHeight, 45, 65),
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#2d3748',
     fontWeight: '500',
   },
@@ -1390,19 +1406,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   pincodeBox: {
     flex: 1,
-    height: getResponsiveValue(55, screenHeight),
-    fontSize: 16,
+    height: getResponsiveValue(55, screenHeight, 45, 65),
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#2d3748',
     fontWeight: '500',
   },
   searchButton: {
-    height: getResponsiveValue(60, screenHeight),
+    height: getResponsiveValue(60, screenHeight, 50, 70),
     backgroundColor: '#4299e1',
-    borderRadius: getResponsiveValue(18, screenHeight),
+    borderRadius: getResponsiveValue(18, screenHeight, 15, 22),
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: getResponsiveWidth(30, screenWidth),
+    paddingHorizontal: getResponsiveWidth(30, screenWidth, 20, 40),
     shadowColor: '#4299e1',
     shadowOffset: {
       width: 0,
@@ -1416,7 +1432,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   searchButtonText: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: 17,
+    fontSize: Math.min(Math.max(screenWidth * 0.0425, 15), 19),
     marginLeft: getResponsiveWidth(10, screenWidth),
     letterSpacing: 0.5,
   },
@@ -1435,7 +1451,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     position: 'relative', // Added for absolute positioning of dots
   },
   categorySection: {
-    width: width,
+    width: screenWidth,
     paddingVertical: getResponsiveValue(25, screenHeight),
     paddingBottom: getResponsiveValue(20, screenHeight),
     paddingTop: getResponsiveValue(15, screenHeight),
@@ -1448,7 +1464,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     alignItems: 'center',
   },
   categoryTitle: {
-    fontSize: 26,
+    fontSize: Math.min(Math.max(screenWidth * 0.065, 20), 30),
     fontWeight: '800',
     color: '#1a202c',
     marginBottom: getResponsiveValue(8, screenHeight),
@@ -1457,11 +1473,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     marginRight: getResponsiveWidth(40, screenWidth),
   },
   categorySubtitle: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#4a5568',
     textAlign: 'center',
     fontWeight: '500',
-    lineHeight: 22,
+    lineHeight: Math.min(Math.max(screenWidth * 0.055, 18), 24),
     marginRight: getResponsiveWidth(40, screenWidth),
   },
   categoryScrollContainer: {
@@ -1471,15 +1487,15 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   categoryItemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: width - 30,
+    width: screenWidth - 30,
     paddingRight: getResponsiveWidth(10, screenWidth),
     marginTop: getResponsiveValue(-15, screenHeight),
     marginBottom: getResponsiveValue(8, screenHeight), // Reduced margin to minimize gap
   },
   categoryItemCard: {
-    width: (width - 75) / 3,
-    height: getResponsiveValue(140, screenHeight),
-    borderRadius: getResponsiveValue(20, screenHeight),
+    width: (screenWidth - (itemsPerRow * 15 + 30)) / itemsPerRow,
+    height: getResponsiveValue(140, screenHeight, 100, 180),
+    borderRadius: getResponsiveValue(20, screenHeight, 15, 25),
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {
@@ -1489,11 +1505,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     shadowOpacity: 0.15,
     shadowRadius: getResponsiveValue(12, screenHeight),
     elevation: 10,
-    marginRight: getResponsiveWidth(12, screenWidth),
+    marginRight: getResponsiveWidth(12, screenWidth, 8, 16),
   },
   categoryItemCardEmpty: {
-    width: (width - 75) / 3,
-    height: getResponsiveValue(140, screenHeight),
+    width: (screenWidth - (itemsPerRow * 15 + 30)) / itemsPerRow,
+    height: getResponsiveValue(140, screenHeight, 100, 180),
   },
   categoryItemCardSelected: {
     borderWidth: getResponsiveValue(3, screenHeight),
@@ -1525,7 +1541,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   categoryItemTitle: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: Math.min(Math.max(screenWidth * 0.0325, 11), 15),
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: getResponsiveValue(3, screenHeight),
@@ -1603,13 +1619,13 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     flex: 1,
   },
   suggestionMainText: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     fontWeight: '600',
     color: '#1a202c',
     marginBottom: getResponsiveValue(3, screenHeight),
   },
   suggestionSecondaryText: {
-    fontSize: 14,
+    fontSize: Math.min(Math.max(screenWidth * 0.035, 12), 16),
     color: '#4a5568',
     fontWeight: '500',
   },
@@ -1648,11 +1664,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f7fafc',
-    borderRadius: getResponsiveValue(18, screenHeight),
-    paddingHorizontal: getResponsiveWidth(18, screenWidth),
-    borderWidth: getResponsiveValue(2, screenHeight),
+    borderRadius: getResponsiveValue(18, screenHeight, 15, 22),
+    paddingHorizontal: getResponsiveWidth(18, screenWidth, 12, 24),
+    borderWidth: getResponsiveValue(2, screenHeight, 1, 3),
     borderColor: '#e2e8f0',
-    height: getResponsiveValue(55, screenHeight),
+    height: getResponsiveValue(55, screenHeight, 45, 65),
     marginLeft: getResponsiveWidth(-5, screenWidth),
     marginRight: getResponsiveWidth(15, screenWidth),
     shadowColor: '#000',
@@ -1671,8 +1687,8 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   subcategoryLocationInput: {
     flex: 1,
-    height: getResponsiveValue(55, screenHeight),
-    fontSize: 16,
+    height: getResponsiveValue(55, screenHeight, 45, 65),
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#2d3748',
     fontWeight: '500',
   },
@@ -1736,7 +1752,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     zIndex: 99999,
   },
   locationOptionsTitle: {
-    fontSize: 20,
+    fontSize: Math.min(Math.max(screenWidth * 0.05, 18), 24),
     fontWeight: '700',
     color: '#1a202c',
     textAlign: 'center',
@@ -1775,7 +1791,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     elevation: 2,
   },
   locationOptionText: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#2d3748',
     marginLeft: getResponsiveWidth(18, screenWidth),
     fontWeight: '600',
@@ -1783,7 +1799,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   locationOptionCancelButton: {
     paddingVertical: getResponsiveValue(18, screenHeight),
     paddingHorizontal: getResponsiveWidth(22, screenWidth),
-    borderRadius: getResponsiveValue(15, screenHeight),
+    borderRadius: getResponsiveValue(15, screenHeight, 12, 18),
     backgroundColor: '#e53e3e',
     marginTop: getResponsiveValue(15, screenHeight),
     alignItems: 'center',
@@ -1797,7 +1813,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     elevation: 6,
   },
   locationOptionCancelText: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#ffffff',
     fontWeight: '700',
   },
@@ -1808,7 +1824,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     paddingVertical: getResponsiveValue(25, screenHeight),
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#4299e1',
     fontWeight: '600',
   },
@@ -1819,7 +1835,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     paddingVertical: getResponsiveValue(25, screenHeight),
   },
   noResultsText: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     color: '#4a5568',
     fontStyle: 'italic',
     fontWeight: '500',
@@ -1905,13 +1921,13 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     flex: 1,
   },
   serviceSuggestionTitle: {
-    fontSize: 16,
+    fontSize: Math.min(Math.max(screenWidth * 0.04, 14), 18),
     fontWeight: '600',
     color: '#1a202c',
     marginBottom: getResponsiveValue(3, screenHeight),
   },
   serviceSuggestionCategory: {
-    fontSize: 14,
+    fontSize: Math.min(Math.max(screenWidth * 0.035, 12), 16),
     color: '#4a5568',
     fontWeight: '500',
   },

@@ -51,7 +51,7 @@ interface Booking {
 }
 
 export default function Index() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { logout, user, isAuthenticated } = useAuth();
   const params = useLocalSearchParams();
   const { name: paramName, id: paramId, email: paramEmail } = params;
@@ -61,8 +61,20 @@ export default function Index() {
   const id = user?.id || paramId;
   const email = user?.email || paramEmail;
   
+  // Calculate responsive values based on screen size
+  const isSmallScreen = width < 375;
+  const isMediumScreen = width >= 375 && width < 768;
+  const isLargeScreen = width >= 768;
+  
+  // Scale factor for responsive sizing
+  const scale = width / 375; // Base width of 375px (iPhone X)
+  const moderateScale = (size: number, factor = 0.5) => size + (scale - 1) * size * factor;
+  
+  // Create responsive styles early
+  const styles = createStyles(width, height, scale, moderateScale, isLargeScreen);
   
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuClosedByOutside, setMenuClosedByOutside] = useState(false);
   const [worker, setWorker] = useState<Worker | null>(null);
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -73,7 +85,8 @@ export default function Index() {
   const [rejectPopupVisible, setRejectPopupVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectingBookingId, setRejectingBookingId] = useState<number | null>(null);
-  const slideAnim = useRef(new Animated.Value(300)).current;
+  const slideAnim = useRef(new Animated.Value(moderateScale(300))).current;
+  const isAnimating = useRef(false);
   const [shouldLogout, setShouldLogout] = useState(false);
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [showDisplayOverAppsPrompt, setShowDisplayOverAppsPrompt] = useState(false);
@@ -81,6 +94,21 @@ export default function Index() {
 
 
 
+
+  // Cleanup animation state on unmount
+  useEffect(() => {
+    return () => {
+      isAnimating.current = false;
+    };
+  }, []);
+
+  // Prevent menu from reopening automatically after outside close
+  useEffect(() => {
+    if (menuClosedByOutside && !menuOpen) {
+      // Menu was closed by outside click, ensure it stays closed
+      slideAnim.setValue(moderateScale(300));
+    }
+  }, [menuClosedByOutside, menuOpen, slideAnim, moderateScale]);
 
   // Location permission function
   const requestLocationPermission = async () => {
@@ -151,9 +179,6 @@ export default function Index() {
 
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
-        timeInterval: 5000,
-        distanceInterval: 5,
-        maximumAge: 30000, // Use cached location if less than 30 seconds old
       });
 
       const { latitude, longitude } = location.coords;
@@ -821,7 +846,7 @@ export default function Index() {
   const handleOutsideTouch = () => {
     Keyboard.dismiss();
     if (menuOpen) {
-      closeMenu();
+      forceCloseMenu();
     }
   };
 
@@ -829,25 +854,54 @@ export default function Index() {
     if (menuOpen) {
       closeMenu();
     } else {
+      // Reset the outside close flag when manually opening
+      setMenuClosedByOutside(false);
       openMenu();
     }
   };
 
   const openMenu = () => {
+    if (menuOpen || isAnimating.current) return; // Prevent multiple open calls
+    
+    isAnimating.current = true;
     setMenuOpen(true);
     Animated.timing(slideAnim, {
       toValue: 0,
       duration: 300,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      isAnimating.current = false;
+    });
   };
 
   const closeMenu = () => {
+    if (!menuOpen || isAnimating.current) return; // Prevent multiple close calls
+    
+    isAnimating.current = true;
     Animated.timing(slideAnim, {
-      toValue: 300,
+      toValue: moderateScale(300),
       duration: 300,
       useNativeDriver: true,
-    }).start(() => setMenuOpen(false));
+    }).start(() => {
+      setMenuOpen(false);
+      isAnimating.current = false;
+    });
+  };
+
+  // Force close menu without animation (for outside clicks)
+  const forceCloseMenu = () => {
+    if (!menuOpen) return;
+    
+    // Stop any ongoing animation
+    slideAnim.stopAnimation();
+    
+    // Immediately set to closed state
+    setMenuOpen(false);
+    setMenuClosedByOutside(true); // Mark as closed by outside click
+    isAnimating.current = false;
+    
+    // Reset animation value to closed position
+    slideAnim.setValue(moderateScale(300));
   };
 
   const handleLogout = async () => {
@@ -962,7 +1016,7 @@ export default function Index() {
   if (!isAuthenticated) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, color: '#666' }}>Redirecting to login...</Text>
+        <Text style={{ fontSize: moderateScale(18), color: '#666' }}>Redirecting to login...</Text>
       </View>
     );
   }
@@ -971,7 +1025,7 @@ export default function Index() {
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, color: '#666' }}>Loading worker data...</Text>
+        <Text style={{ fontSize: moderateScale(18), color: '#666' }}>Loading worker data...</Text>
       </View>
     );
   }
@@ -990,7 +1044,7 @@ export default function Index() {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
         {/* Header - Fixed outside ScrollView */}
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <View style={styles.headerContainer}>
             <View style={styles.headerLeft} />
             <Image
@@ -999,12 +1053,12 @@ export default function Index() {
               contentFit="contain"
             />
             <TouchableOpacity style={styles.personButton} onPress={toggleMenu}>
-              <Ionicons style={styles.personicon} name="person-circle-outline" size={28} color="black" />
+              <Ionicons style={styles.personicon} name="person-circle-outline" size={moderateScale(28)} color="black" />
             </TouchableOpacity>
           </View>
         </TouchableWithoutFeedback>
 
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <ScrollView 
             style={styles.scrollView} 
             showsVerticalScrollIndicator={false}
@@ -1014,7 +1068,7 @@ export default function Index() {
             onScrollBeginDrag={() => {
               Keyboard.dismiss();
               if (menuOpen) {
-                closeMenu();
+                forceCloseMenu();
               }
             }}
           >
@@ -1023,7 +1077,7 @@ export default function Index() {
               <View style={styles.bookingsSection}>
                 <View style={styles.bookingsHeader}>
                   <View style={styles.bookingsTitleContainer}>
-                    <Ionicons name="notifications" size={24} color="#3498db" />
+                    <Ionicons name="notifications" size={moderateScale(24)} color="#3498db" />
                     <Text style={styles.bookingsTitle}>
                       {activeTab === 'notifications' ? 'Notifications & Missed' : 'Total Bookings'}
                     </Text>
@@ -1075,7 +1129,7 @@ export default function Index() {
                         
                         <View style={styles.bookingDetails}>
                           <View style={styles.bookingRow}>
-                            <Ionicons name="person" size={16} color="#666" />
+                            <Ionicons name="person" size={moderateScale(16)} color="#666" />
                             <Text style={styles.bookingLabel}>Customer: </Text>
                             <Text style={styles.bookingValue}>
                               {booking.user_name || `User #${booking.user_id}`}
@@ -1083,7 +1137,7 @@ export default function Index() {
                           </View>
                           
                           <View style={styles.bookingRow}>
-                            <Ionicons name="call" size={16} color="#666" />
+                            <Ionicons name="call" size={moderateScale(16)} color="#666" />
                             <Text style={styles.bookingLabel}>Contact: </Text>
                             <Text style={styles.bookingValue}>
                               {booking.contact_number || 'N/A'}
@@ -1091,7 +1145,7 @@ export default function Index() {
                           </View>
                           
                           <View style={styles.bookingRow}>
-                            <Ionicons name="calendar" size={16} color="#666" />
+                            <Ionicons name="calendar" size={moderateScale(16)} color="#666" />
                             <Text style={styles.bookingLabel}>Booking For: </Text>
                             <Text style={styles.bookingValue}>
                               {new Date(booking.booking_time).toLocaleString("en-GB", {
@@ -1109,7 +1163,7 @@ export default function Index() {
                           {/* Work Location Row */}
                           {booking.work_location && (
                             <View style={styles.bookingRow}>
-                              <Ionicons name="location" size={16} color="#666" />
+                              <Ionicons name="location" size={moderateScale(16)} color="#666" />
                               <Text style={styles.bookingLabel}>Work Location: </Text>
                               <Text style={styles.bookingValue}>
                                 {booking.work_location}
@@ -1120,7 +1174,7 @@ export default function Index() {
                           {/* Description Row */}
                           {booking.description && (
                             <View style={styles.bookingRow}>
-                              <Ionicons name="document-text" size={18} color="#666" />
+                              <Ionicons name="document-text" size={moderateScale(18)} color="#666" />
                               <Text style={styles.bookingLabel}>Requirements: </Text>
                               <Text style={styles.bookingValue}>
                                 {booking.description}
@@ -1131,7 +1185,7 @@ export default function Index() {
                           {/* Work Documents Row */}
                           {booking.work_documents && (
                             <View style={styles.bookingRow}>
-                              <Ionicons name="attach" size={24} color="#666" />
+                              <Ionicons name="attach" size={moderateScale(24)} color="#666" />
                               <Text style={styles.bookingLabel}>Attachments: </Text>
                               <View style={styles.attachmentsContainer}>
                                 {booking.work_documents.split(',').map((docPath, index) => (
@@ -1142,13 +1196,13 @@ export default function Index() {
                                   >
                                     <Ionicons 
                                       name={docPath.includes('.mp4') || docPath.includes('.mov') || docPath.includes('.avi') || docPath.includes('.mkv') ? "videocam" : "image"} 
-                                      size={14} 
+                                      size={moderateScale(14)} 
                                       color="#3498db" 
                                     />
                                     <Text style={styles.attachmentText}>
                                       {docPath.includes('.mp4') || docPath.includes('.mov') || docPath.includes('.avi') || docPath.includes('.mkv') ? 'Video' : 'Photo'} {index + 1}
                                     </Text>
-                                    <Ionicons name="download" size={12} color="#3498db" />
+                                    <Ionicons name="download" size={moderateScale(12)} color="#3498db" />
                                   </TouchableOpacity>
                                 ))}
                               </View>
@@ -1164,7 +1218,7 @@ export default function Index() {
                                   style={[styles.actionButton, styles.acceptButton]}
                                   onPress={() => handleBookingAction(booking.id, 'accept')}
                                 >
-                                  <Ionicons name="checkmark" size={16} color="#ffffff" />
+                                  <Ionicons name="checkmark" size={moderateScale(16)} color="#ffffff" />
                                   <Text style={styles.actionButtonText}>Accept</Text>
                                 </TouchableOpacity>
                                 
@@ -1172,7 +1226,7 @@ export default function Index() {
                                   style={[styles.actionButton, styles.rejectButton]}
                                   onPress={() => showRejectPopup(booking.id)}
                                 >
-                                  <Ionicons name="close" size={16} color="#ffffff" />
+                                  <Ionicons name="close" size={moderateScale(16)} color="#ffffff" />
                                   <Text style={styles.actionButtonText}>Reject</Text>
                                 </TouchableOpacity>
                               </>
@@ -1182,7 +1236,7 @@ export default function Index() {
                                 style={[styles.actionButton, styles.completeButton, styles.completeButtonFull]}
                                 onPress={() => handleBookingAction(booking.id, 'complete')}
                               >
-                                <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
+                                <Ionicons name="checkmark-circle" size={moderateScale(18)} color="#ffffff" />
                                 <Text style={styles.actionButtonText}>Complete Job</Text>
                               </TouchableOpacity>
                             ) : (
@@ -1203,7 +1257,7 @@ export default function Index() {
                   </View>
                 ) : (
                   <View style={styles.noBookings}>
-                    <Ionicons name="checkmark-circle" size={48} color="#e5e7eb" />
+                    <Ionicons name="checkmark-circle" size={moderateScale(48)} color="#e5e7eb" />
                     <Text style={styles.noBookingsText}>No notifications</Text>
                     <Text style={styles.noBookingsSubtext}>You're all caught up!</Text>
                   </View>
@@ -1214,7 +1268,7 @@ export default function Index() {
         </TouchableWithoutFeedback>
         
         {/* Bottom Navigation Icons */}
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+        <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <View style={styles.bottomNavigation}>
             <TouchableOpacity 
               style={styles.bottomNavItem} 
@@ -1222,7 +1276,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="notifications" 
-                size={24} 
+                size={moderateScale(24)} 
                 color={activeTab === 'notifications' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -1239,7 +1293,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="list" 
-                size={24} 
+                size={moderateScale(24)} 
                 color={activeTab === 'totalBookings' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -1256,7 +1310,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="card" 
-                size={24} 
+                size={moderateScale(24)} 
                 color={activeTab === 'paymentHistory' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -1273,7 +1327,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="headset" 
-                size={24} 
+                size={moderateScale(24)} 
                 color={activeTab === 'customerCare' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -1288,7 +1342,7 @@ export default function Index() {
 
           {/* Menu Backdrop - Only show when menu is open */}
           {menuOpen && (
-            <TouchableWithoutFeedback onPress={handleOutsideTouch}>
+            <TouchableWithoutFeedback onPress={forceCloseMenu}>
               <View style={styles.menuBackdrop} />
             </TouchableWithoutFeedback>
           )}
@@ -1301,6 +1355,7 @@ export default function Index() {
                 transform: [{ translateX: slideAnim }],
               },
             ]}
+            pointerEvents={menuOpen ? 'auto' : 'none'}
           >
             <View style={styles.menuContent}>
               {/* Profile Section */}
@@ -1337,18 +1392,18 @@ export default function Index() {
               <View style={styles.menuItems}>
                 <TouchableOpacity style={styles.menuItem} onPress={handleEditProfile}>
                   <View style={styles.menuItemIcon}>
-                    <Ionicons name="create-outline" size={24} color="#3498db" />
+                    <Ionicons name="create-outline" size={moderateScale(24)} color="#3498db" />
                   </View>
                   <Text style={styles.menuText}>Edit Profile</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Ionicons name="chevron-forward" size={moderateScale(16)} color="#9ca3af" />
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
                   <View style={styles.menuItemIcon}>
-                    <Ionicons name="log-out-outline" size={24} color="#ef4444" />
+                    <Ionicons name="log-out-outline" size={moderateScale(24)} color="#ef4444" />
                   </View>
                   <Text style={styles.menuText}>Logout</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Ionicons name="chevron-forward" size={moderateScale(16)} color="#9ca3af" />
                 </TouchableOpacity>
               </View>
 
@@ -1368,7 +1423,7 @@ export default function Index() {
                 <View style={styles.popupHeader}>
                   <Text style={styles.popupTitle}>Reason for Rejection</Text>
                   <TouchableOpacity onPress={closeRejectPopup} style={styles.closeButton}>
-                    <Ionicons name="close" size={24} color="#666" />
+                    <Ionicons name="close" size={moderateScale(24)} color="#666" />
                   </TouchableOpacity>
                 </View>
                 
@@ -1417,13 +1472,13 @@ export default function Index() {
                     style={styles.closeButton} 
                     onPress={() => setShowNotificationPrompt(false)}
                   >
-                    <Ionicons name="close" size={24} color="#666" />
+                    <Ionicons name="close" size={moderateScale(24)} color="#666" />
                   </TouchableOpacity>
                 </View>
                 
                 <View style={styles.permissionContent}>
                   <View style={styles.iconContainer}>
-                    <Ionicons name="notifications" size={48} color="#FFD700" />
+                    <Ionicons name="notifications" size={moderateScale(48)} color="#FFD700" />
                   </View>
                   
                   <Text style={styles.permissionTitle}>Enable Notifications</Text>
@@ -1434,19 +1489,19 @@ export default function Index() {
                   
                   <View style={styles.benefitsList}>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>Get instant booking alerts</Text>
                     </View>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>Receive notifications when app is closed</Text>
                     </View>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>See alerts when phone is locked</Text>
                     </View>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>Never miss urgent requests</Text>
                     </View>
                   </View>
@@ -1457,7 +1512,7 @@ export default function Index() {
                     style={styles.allowButton} 
                     onPress={handleNotificationPermission}
                   >
-                    <Ionicons name="checkmark" size={20} color="#ffffff" />
+                    <Ionicons name="checkmark" size={moderateScale(20)} color="#ffffff" />
                     <Text style={styles.allowButtonText}>Allow</Text>
                   </TouchableOpacity>
                 </View>
@@ -1481,13 +1536,13 @@ export default function Index() {
                     style={styles.closeButton} 
                     onPress={closeDisplayOverAppsPrompt}
                   >
-                    <Ionicons name="close" size={24} color="#666" />
+                    <Ionicons name="close" size={moderateScale(24)} color="#666" />
                   </TouchableOpacity>
                 </View>
                 
                 <View style={styles.permissionContent}>
                   <View style={styles.iconContainer}>
-                    <Ionicons name="phone-portrait" size={48} color="#FF6B35" />
+                    <Ionicons name="phone-portrait" size={moderateScale(48)} color="#FF6B35" />
                   </View>
                   
                   <Text style={styles.permissionTitle}>Display Over Other Apps</Text>
@@ -1498,15 +1553,15 @@ export default function Index() {
                   
                   <View style={styles.benefitsList}>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>See notifications over other apps</Text>
                     </View>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>Never miss important alerts</Text>
                     </View>
                     <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
                       <Text style={styles.benefitText}>Quick access to booking details</Text>
                     </View>
                   </View>
@@ -1517,7 +1572,7 @@ export default function Index() {
                     style={styles.allowButton} 
                     onPress={handleDisplayOverAppsPermission}
                   >
-                    <Ionicons name="checkmark" size={20} color="#ffffff" />
+                    <Ionicons name="checkmark" size={moderateScale(20)} color="#ffffff" />
                     <Text style={styles.allowButtonText}>Allow</Text>
                   </TouchableOpacity>
                 </View>
@@ -1535,107 +1590,108 @@ export default function Index() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (width: number, height: number, scale: number, moderateScale: (size: number, factor?: number) => number, isLargeScreen: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
   innerContainer: {
-    padding: 20,
+    padding: moderateScale(20),
   },
   scrollView: {
     flex: 1,
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingBottom: 100, // Add padding to ensure content doesn't get hidden behind bottom navigation
+    paddingBottom: moderateScale(100),
   },
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: '3%',
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingHorizontal: moderateScale(12, 0.3),
+    paddingTop: moderateScale(40, 0.3),
+    paddingBottom: moderateScale(6),
     backgroundColor: '#A1CEDC',
+    marginTop: moderateScale(-40, 0.3),
   },
   headerLeft: {
-    width: 38, // Same width as the removed button to maintain layout
+    width: moderateScale(38),
   },
   mainlogo: {
-    height: 45,
-    width: '45%',
-    maxWidth: 180,
-    marginLeft: '-52%',
+    height: moderateScale(45),
+    width: isLargeScreen ? '35%' : '45%',
+    maxWidth: moderateScale(180),
+    marginLeft: isLargeScreen ? '-42%' : '-52%',
   },
   personButton: {
-    padding: 5,
+    padding: moderateScale(5),
   },
   personicon: {
-    marginLeft: -10,
+    marginLeft: moderateScale(-10),
   },
   menuContainer: {
     position: 'absolute',
     top: 0,
     right: 0,
     height: '100%',
-    width: 300,
+    width: isLargeScreen ? moderateScale(350) : moderateScale(300),
     backgroundColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: { width: -4, height: 0 },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowRadius: moderateScale(12),
     elevation: 8,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-    zIndex: 1001, // Higher than bottom navigation (1000)
+    borderTopLeftRadius: moderateScale(20),
+    borderBottomLeftRadius: moderateScale(20),
+    zIndex: 1001,
   },
   menuContent: {
     flex: 1,
-    paddingTop: 60,
+    paddingTop: moderateScale(20),
   },
   profileSection: {
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: moderateScale(20),
+    paddingHorizontal: moderateScale(20),
     backgroundColor: '#667eea',
-    borderTopLeftRadius: 20,
+    borderTopLeftRadius: moderateScale(20),
     position: 'relative',
     overflow: 'hidden',
-    marginTop: -60,
+    marginTop: moderateScale(-60, 0.3),
   },
   profileImageContainer: {
     position: 'relative',
-    marginBottom: 5,
-    marginTop: 40,
+    marginBottom: moderateScale(5),
+    marginTop: moderateScale(40, 0.3),
   },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 4,
+    width: moderateScale(100),
+    height: moderateScale(100),
+    borderRadius: moderateScale(50),
+    borderWidth: moderateScale(4),
     borderColor: 'rgba(255,255,255,0.3)',
   },
   profileImagePlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: moderateScale(100),
+    height: moderateScale(100),
+    borderRadius: moderateScale(50),
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 4,
+    borderWidth: moderateScale(4),
     borderColor: 'rgba(255,255,255,0.3)',
   },
   profileInitials: {
-    fontSize: 36,
+    fontSize: moderateScale(36),
     fontWeight: 'bold',
     color: '#ffffff',
   },
   workerName: {
-    fontSize: 22,
+    fontSize: moderateScale(22),
     fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 5,
+    marginBottom: moderateScale(5),
     textShadowColor: 'rgba(0,0,0,0.1)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -1643,24 +1699,24 @@ const styles = StyleSheet.create({
   menuDivider: {
     height: 1,
     backgroundColor: '#f1f5f9',
-    marginHorizontal: 20,
-    marginVertical: 10,
+    marginHorizontal: moderateScale(20),
+    marginVertical: moderateScale(10),
   },
   menuItems: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: moderateScale(20),
+    paddingTop: moderateScale(20),
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+    paddingVertical: moderateScale(18),
+    paddingHorizontal: moderateScale(16),
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
-    borderRadius: 12,
-    marginBottom: 8,
+    borderRadius: moderateScale(12),
+    marginBottom: moderateScale(8),
     backgroundColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1669,59 +1725,59 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   menuItemIcon: {
-    marginRight: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    marginRight: moderateScale(12),
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: moderateScale(20),
     backgroundColor: '#fef2f2',
     justifyContent: 'center',
     alignItems: 'center',
   },
   menuText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     color: '#374151',
     flex: 1,
     fontWeight: '500',
   },
   bottomSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-    paddingTop: 20,
+    paddingHorizontal: moderateScale(20),
+    paddingBottom: moderateScale(30),
+    paddingTop: moderateScale(20),
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
     marginTop: 'auto',
   },
   versionInfo: {
     alignItems: 'center',
-    paddingVertical: 15,
+    paddingVertical: moderateScale(15),
     backgroundColor: '#f8fafc',
-    borderRadius: 12,
+    borderRadius: moderateScale(12),
   },
   versionText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#9ca3af',
     fontWeight: '500',
   },
   bookingsSection: {
-    marginTop: 2,
+    marginTop: moderateScale(2),
   },
   bookingsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    marginTop: -10,
+    marginBottom: moderateScale(10),
+    marginTop: moderateScale(-10),
   },
   bookingsTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 95,
+    marginLeft: isLargeScreen ? moderateScale(120) : moderateScale(95),
   },
   bookingsTitle: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: 'bold',
     color: '#333',
-    marginLeft: 10,
+    marginLeft: moderateScale(10),
   },
   bookingsActions: {
     flexDirection: 'row',
@@ -1729,22 +1785,22 @@ const styles = StyleSheet.create({
   },
   bookingCount: {
     backgroundColor: '#3498db',
-    borderRadius: 15,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginRight: 20,
+    borderRadius: moderateScale(15),
+    paddingHorizontal: moderateScale(10),
+    paddingVertical: moderateScale(5),
+    marginRight: moderateScale(20),
   },
   bookingCountText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: 'bold',
   },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: moderateScale(20),
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     color: '#666',
   },
   bookingsList: {
@@ -1752,33 +1808,33 @@ const styles = StyleSheet.create({
   },
   bookingCard: {
     backgroundColor: '#ebeef1ff',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
+    borderRadius: moderateScale(10),
+    padding: moderateScale(15),
+    marginBottom: moderateScale(10),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-    marginLeft: -5,
-    marginRight: -5,
+    marginLeft: moderateScale(-5),
+    marginRight: moderateScale(-5),
   },
   bookingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: moderateScale(8),
   },
   bookingId: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: 'bold',
     color: '#333',
   },
   statusBadge: {
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minWidth: 80,
+    borderRadius: moderateScale(20),
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: moderateScale(6),
+    minWidth: moderateScale(80),
     alignItems: 'center',
   },
   statusBadgePending: {
@@ -1807,7 +1863,7 @@ const styles = StyleSheet.create({
     borderColor: '#d6d8db',
   },
   statusText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1833,32 +1889,32 @@ const styles = StyleSheet.create({
   bookingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 5,
+    marginBottom: moderateScale(5),
   },
   bookingLabel: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: '#666',
-    marginLeft: 5,
+    marginLeft: moderateScale(5),
   },
   bookingValue: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: '#333',
     fontWeight: '500',
   },
   bookingActions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 10,
+    marginTop: moderateScale(10),
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    marginHorizontal: 5,
+    paddingVertical: moderateScale(8),
+    paddingHorizontal: moderateScale(15),
+    borderRadius: moderateScale(8),
+    marginHorizontal: moderateScale(5),
     alignSelf: 'stretch',
   },
   acceptButton: {
@@ -1872,30 +1928,30 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: 'bold',
-    marginLeft: 5,
+    marginLeft: moderateScale(5),
   },
   noBookings: {
     alignItems: 'center',
-    paddingVertical: 30,
+    paddingVertical: moderateScale(30),
   },
   noBookingsText: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: 'bold',
     color: '#333',
-    marginTop: 10,
+    marginTop: moderateScale(10),
   },
   noBookingsSubtext: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: '#666',
-    marginTop: 5,
+    marginTop: moderateScale(5),
   },
   lastRefreshedText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#666',
     textAlign: 'center',
-    marginTop: 5,
+    marginTop: moderateScale(5),
     fontStyle: 'italic',
   },
   completeButtonFull: {
@@ -1906,45 +1962,45 @@ const styles = StyleSheet.create({
   statusInfoContainer: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: moderateScale(12),
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    borderRadius: moderateScale(8),
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
   statusInfoText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: '#6c757d',
     fontStyle: 'italic',
     textAlign: 'center',
   },
   bottomNavigation: {
-    position: 'absolute', // Make it absolutely positioned
-    bottom: 0, // Always at bottom
+    position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: moderateScale(15),
+    paddingHorizontal: moderateScale(20),
     justifyContent: 'space-around',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 8,
-    zIndex: 1000, // Ensure it's above other content
+    zIndex: 1000,
   },
   bottomNavItem: {
     alignItems: 'center',
     flex: 1,
   },
   bottomNavText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#9CA3AF',
-    marginTop: 5,
+    marginTop: moderateScale(5),
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -1967,61 +2023,61 @@ const styles = StyleSheet.create({
   },
   popupContainer: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
-    margin: 20,
+    borderRadius: moderateScale(16),
+    padding: moderateScale(20),
+    margin: moderateScale(20),
     width: '90%',
-    maxWidth: 400,
+    maxWidth: isLargeScreen ? moderateScale(450) : moderateScale(400),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowRadius: moderateScale(8),
     elevation: 8,
   },
   popupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: moderateScale(20),
   },
   popupTitle: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontWeight: 'bold',
     color: '#333',
     flex: 1,
   },
   closeButton: {
-    padding: 5,
+    padding: moderateScale(5),
   },
   popupContent: {
-    marginBottom: 20,
+    marginBottom: moderateScale(20),
   },
   popupLabel: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     color: '#666',
-    marginBottom: 12,
-    lineHeight: 22,
+    marginBottom: moderateScale(12),
+    lineHeight: moderateScale(22),
   },
   reasonInput: {
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    minHeight: 100,
+    borderRadius: moderateScale(8),
+    padding: moderateScale(12),
+    fontSize: moderateScale(16),
+    minHeight: moderateScale(100),
     textAlignVertical: 'top',
     backgroundColor: '#f9f9f9',
   },
   popupActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: moderateScale(12),
   },
   popupButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingVertical: moderateScale(12),
+    paddingHorizontal: moderateScale(20),
+    borderRadius: moderateScale(8),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2035,12 +2091,12 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     color: '#64748b',
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
   },
   submitButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: '600',
   },
   
@@ -2049,25 +2105,25 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginLeft: 5,
+    marginLeft: moderateScale(5),
   },
   attachmentItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f0f9ff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-    marginBottom: 4,
+    paddingHorizontal: moderateScale(8),
+    paddingVertical: moderateScale(4),
+    borderRadius: moderateScale(12),
+    marginRight: moderateScale(8),
+    marginBottom: moderateScale(4),
     borderWidth: 1,
     borderColor: '#bae6fd',
   },
   attachmentText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: '#3498db',
-    marginLeft: 4,
-    marginRight: 4,
+    marginLeft: moderateScale(4),
+    marginRight: moderateScale(4),
     fontWeight: '500',
   },
   // Menu backdrop style
@@ -2078,7 +2134,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 1000, // Below menu but above everything else
+    zIndex: 1000,
   },
   
   // Permission prompt styles
@@ -2095,60 +2151,60 @@ const styles = StyleSheet.create({
   },
   permissionContainer: {
     backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    margin: 20,
+    borderRadius: moderateScale(20),
+    padding: moderateScale(24),
+    margin: moderateScale(20),
     width: '90%',
-    maxWidth: 400,
+    maxWidth: isLargeScreen ? moderateScale(450) : moderateScale(400),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
-    shadowRadius: 16,
+    shadowRadius: moderateScale(16),
     elevation: 16,
   },
   permissionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: moderateScale(20),
   },
   stepIndicator: {
     backgroundColor: '#f0f0f0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: moderateScale(6),
+    borderRadius: moderateScale(15),
   },
   stepText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontWeight: 'bold',
     color: '#666',
   },
   permissionContent: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: moderateScale(24),
   },
   iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: moderateScale(80),
+    height: moderateScale(80),
+    borderRadius: moderateScale(40),
     backgroundColor: '#f8f9fa',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: moderateScale(16),
   },
   permissionTitle: {
-    fontSize: 24,
+    fontSize: moderateScale(24),
     fontWeight: 'bold',
     color: '#333',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: moderateScale(12),
   },
   permissionDescription: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     color: '#666',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 20,
+    lineHeight: moderateScale(24),
+    marginBottom: moderateScale(20),
   },
   benefitsList: {
     width: '100%',
@@ -2156,47 +2212,47 @@ const styles = StyleSheet.create({
   benefitItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 8,
+    marginBottom: moderateScale(8),
+    paddingHorizontal: moderateScale(8),
   },
   benefitText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: '#333',
-    marginLeft: 8,
+    marginLeft: moderateScale(8),
     flex: 1,
   },
   permissionActions: {
-    marginBottom: 16,
+    marginBottom: moderateScale(16),
   },
   allowButton: {
     backgroundColor: '#4CAF50',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: moderateScale(16),
+    paddingHorizontal: moderateScale(24),
+    borderRadius: moderateScale(12),
     shadowColor: '#4CAF50',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: moderateScale(8),
     elevation: 8,
   },
   allowButtonText: {
     color: '#ffffff',
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: 'bold',
-    marginLeft: 8,
+    marginLeft: moderateScale(8),
   },
   progressBar: {
-    height: 4,
+    height: moderateScale(4),
     backgroundColor: '#e0e0e0',
-    borderRadius: 2,
+    borderRadius: moderateScale(2),
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     backgroundColor: '#4CAF50',
-    borderRadius: 2,
+    borderRadius: moderateScale(2),
   },
 });

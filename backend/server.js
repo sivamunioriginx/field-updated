@@ -774,7 +774,7 @@ app.post('/api/bookings', async (req, res) => {
           const bookingData = {
             booking_id: booking_id,
             customer_name: customer.name || 'Customer',
-            customer_mobile: customer.mobile || contact_number || 'N/A',
+            customer_mobile: contact_number || 'N/A',  // Always use contact_number from booking
             work_location: work_location || 'Location not specified',
             description: description || 'Service request',
             booking_time: booking_time ? new Date(booking_time).toISOString() : new Date().toISOString(),
@@ -2995,7 +2995,7 @@ const startPeriodicNotifications = async () => {
         const bookingData = {
           booking_id: booking.booking_id,
           customer_name: customer.name || 'Customer',
-          customer_mobile: customer.mobile || booking.contact_number || 'N/A',
+          customer_mobile: booking.contact_number || 'N/A',  // Always use contact_number from booking
           work_location: booking.work_location || 'Location not specified',
           description: booking.description || 'Service request',
           booking_time: booking.booking_time ? new Date(booking.booking_time).toISOString() : new Date().toISOString(),
