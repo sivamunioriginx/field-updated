@@ -50,6 +50,10 @@ export default function HomeScreen() {
   const [mostBookedServices, setMostBookedServices] = useState<any[]>([]);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
 
+  // State for top offers
+  const [topOffers, setTopOffers] = useState<any[]>([]);
+  const [offerImageErrors, setOfferImageErrors] = useState<Set<number>>(new Set());
+
   // Fetch categories from API
   useEffect(() => {
     const fetchCategories = async () => {
@@ -120,6 +124,79 @@ export default function HomeScreen() {
       }
     };
     fetchSubcategories();
+  }, []);
+
+  // Set static top offers data
+  useEffect(() => {
+    const staticTopOffers = [
+      {
+        id: 1001,
+        title: 'Deep Tissue Massage',
+        rating: '4.8',
+        price: 499,
+        originalPrice: 999,
+        discount: 50,
+        image: null,
+        imageUrl: 'https://source.unsplash.com/featured/800x600?massage,therapy',
+        isLimitedTime: true,
+      },
+      {
+        id: 1002,
+        title: 'Hair Spa & Treatment',
+        rating: '4.7',
+        price: 699,
+        originalPrice: 1199,
+        discount: 42,
+        image: null,
+        imageUrl: 'https://source.unsplash.com/featured/800x600?hair,salon',
+        isLimitedTime: true,
+      },
+      {
+        id: 1003,
+        title: 'Full Body Waxing',
+        rating: '4.9',
+        price: 799,
+        originalPrice: 1299,
+        discount: 38,
+        image: null,
+        imageUrl: 'https://source.unsplash.com/featured/800x600?waxing,spa',
+        isLimitedTime: false,
+      },
+      {
+        id: 1004,
+        title: 'Bridal Makeup Package',
+        rating: '4.6',
+        price: 2499,
+        originalPrice: 4999,
+        discount: 50,
+        image: null,
+        imageUrl: 'https://source.unsplash.com/featured/800x600?bridal,makeup',
+        isLimitedTime: true,
+      },
+      {
+        id: 1005,
+        title: 'AC Repair & Service',
+        rating: '4.5',
+        price: 399,
+        originalPrice: 799,
+        discount: 50,
+        image: null,
+        imageUrl: 'https://source.unsplash.com/featured/800x600?airconditioner,repair',
+        isLimitedTime: false,
+      },
+      {
+        id: 1006,
+        title: 'Home Cleaning (3BHK)',
+        rating: '4.7',
+        price: 899,
+        originalPrice: 1499,
+        discount: 40,
+        image: null,
+        imageUrl: 'https://source.unsplash.com/featured/800x600?home,cleaning',
+        isLimitedTime: true,
+      },
+    ];
+    setTopOffers(staticTopOffers);
   }, []);
 
   // Rotate placeholder every 5 seconds
@@ -431,6 +508,71 @@ export default function HomeScreen() {
                       <Text style={styles.currentPrice}>₹{service.price}</Text>
                       {service.originalPrice && (
                         <Text style={styles.originalPrice}>₹{service.originalPrice}</Text>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Top Offers */}
+          <View style={styles.topOffersContainer}>
+            <Text style={styles.sectionTitle}>Top Offers</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              removeClippedSubviews={true}
+              decelerationRate="normal"
+              style={styles.servicesScroll}
+              contentContainerStyle={styles.servicesScrollContent}
+            >
+              {topOffers.map((offer, index) => (
+                <TouchableOpacity key={offer.id} style={styles.topOfferCard}>
+                  <View style={styles.serviceImageContainer}>
+                    {offer.discount && (
+                      <View style={styles.discountBadge}>
+                        <Text style={styles.discountText}>{offer.discount}% OFF</Text>
+                      </View>
+                    )}
+                    {offer.imageUrl && !offerImageErrors.has(offer.id) ? (
+                      <Image
+                        source={{ uri: offer.imageUrl }}
+                        style={styles.mostBookedServiceImage}
+                        contentFit="cover"
+                        onError={(error) => {
+                          console.log('Image load error for offer:', offer.title, error);
+                          setOfferImageErrors(prev => new Set(prev).add(offer.id));
+                        }}
+                        onLoad={() => {
+                          console.log('Image loaded successfully for offer:', offer.title);
+                        }}
+                      />
+                    ) : (
+                      <View style={styles.serviceImagePlaceholder}>
+                        <Text style={styles.mostBookedEmoji}>
+                          {offer.title.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.serviceDetails}>
+                    <Text style={styles.serviceTitle} numberOfLines={2}>
+                      {offer.title}
+                    </Text>
+                    <View style={styles.serviceRating}>
+                      <Text style={styles.ratingText}>★ {offer.rating}</Text>
+                    </View>
+                    {offer.isLimitedTime && (
+                      <View style={styles.limitedTimeBadge}>
+                        <Text style={styles.limitedTimeText}>⏰ Limited Time</Text>
+                      </View>
+                    )}
+                    <View style={styles.priceContainer}>
+                      <Text style={styles.currentPrice}>₹{offer.price}</Text>
+                      {offer.originalPrice && (
+                        <Text style={styles.originalPrice}>₹{offer.originalPrice}</Text>
                       )}
                     </View>
                   </View>
@@ -763,7 +905,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       backgroundColor: '#5B21B6',
     },
     mostBookedContainer: {
-      marginTop: 20,
+      marginTop: 8,
       marginBottom: 0,
     },
     sectionTitle: {
@@ -787,14 +929,15 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: '#F0F0F0',
-      shadowColor: '#000',
+      // Remove shadows/elevation to avoid visual separator line between sections
+      shadowColor: 'transparent',
       shadowOffset: {
         width: 0,
-        height: 2,
+        height: 0,
       },
-      shadowOpacity: 0.1,
-      shadowRadius: 3.84,
-      elevation: 5,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      elevation: 0,
     },
     serviceImageContainer: {
       height: getResponsiveValue(120, screenHeight, 100, 140),
@@ -884,6 +1027,56 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: 11,
       color: '#00BFFF',
       marginTop: 4,
+      fontWeight: '600',
+    },
+    topOffersContainer: {
+      marginTop: 8,
+      marginBottom: 20,
+    },
+    topOfferCard: {
+      width: getResponsiveWidth(160, screenWidth, 140, 180),
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(12, screenWidth),
+      marginRight: getResponsiveSpacing(12, screenWidth),
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: '#FFD700',
+      // Remove shadows/elevation for uniform look
+      shadowColor: 'transparent',
+      shadowOffset: {
+        width: 0,
+        height: 0,
+      },
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      elevation: 0,
+    },
+    discountBadge: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      backgroundColor: '#FF3B30',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      zIndex: 10,
+    },
+    discountText: {
+      color: '#FFF',
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    limitedTimeBadge: {
+      backgroundColor: '#FFE5E5',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      alignSelf: 'flex-start',
+      marginBottom: 8,
+    },
+    limitedTimeText: {
+      fontSize: 10,
+      color: '#D91656',
       fontWeight: '600',
     },
   });
