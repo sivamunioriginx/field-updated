@@ -1439,11 +1439,11 @@ app.get('/api/check-user-exists', async (req, res) => {
   }
 });
 
-// Get all categories (skills) endpoint
+// Get all categories endpoint
 app.get('/api/categories', async (req, res) => {
   try {
     const [categories] = await pool.execute(
-      'SELECT id, name FROM tbl_subcategory ORDER BY name ASC'
+      'SELECT id, title, image FROM tbl_category ORDER BY id DESC'
     );
     res.json({
       success: true,
@@ -1453,6 +1453,44 @@ app.get('/api/categories', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching categories',
+      error: error.message
+    });
+  }
+});
+
+// Get all subcategories endpoint
+app.get('/api/subcategories', async (req, res) => {
+  try {
+    const [subcategories] = await pool.execute(
+      'SELECT id, name, image FROM tbl_subcategory ORDER BY id DESC'
+    );
+    res.json({
+      success: true,
+      data: subcategories
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching subcategories',
+      error: error.message
+    });
+  }
+});
+
+// Get all banners endpoint
+app.get('/api/banners', async (req, res) => {
+  try {
+    const [banners] = await pool.execute(
+      'SELECT id, title, sub_title,image FROM tbl_banners ORDER BY id DESC'
+    );
+    res.json({
+      success: true,
+      data: banners
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching banners',
       error: error.message
     });
   }

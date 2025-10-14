@@ -76,7 +76,16 @@ CREATE TABLE tbl_subcategory (
 CREATE TABLE tbl_category (
   id INT AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(90) NOT NULL,
-  sub_title VARCHAR(50),
+  image varchar(255) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create banners table
+CREATE TABLE tbl_banners (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(90) NOT NULL,
+  sub_title VARCHAR(90) NOT NULL,
+  image varchar(255) NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

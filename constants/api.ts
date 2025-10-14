@@ -37,6 +37,8 @@ export const API_ENDPOINTS = {
   UPDATE_SERVICESEEKER: (id: string) => `${getBaseUrl()}/serviceseeker/${id}`,
   SERVICESEEKER_BY_MOBILE: (mobile: string) => `${getBaseUrl()}/serviceseeker/mobile/${mobile}`,
   CATEGORIES: `${getBaseUrl()}/categories`,
+  SUBCATEGORIES: `${getBaseUrl()}/subcategories`,
+  BANNERS: `${getBaseUrl()}/banners`,
   CATEGORY_SUBCATEGORY: `${getBaseUrl()}/category-subcategory`,
   CATEGORIE_SUGGESTIONS: (query: string) => `${getBaseUrl()}/categorie-suggestions?query=${encodeURIComponent(query)}`,
   WORKERS_NEARBY: (lat: number, lng: number, skillId: string) =>
