@@ -40,6 +40,7 @@ export const API_ENDPOINTS = {
   SUBCATEGORIES: `${getBaseUrl()}/subcategories`,
   BANNERS: `${getBaseUrl()}/banners`,
   CATEGORY_SUBCATEGORY: `${getBaseUrl()}/category-subcategory`,
+  CATEGORIES_WITH_SUBCATEGORIES: `${getBaseUrl()}/categories-with-subcategories`,
   CATEGORIE_SUGGESTIONS: (query: string) => `${getBaseUrl()}/categorie-suggestions?query=${encodeURIComponent(query)}`,
   WORKERS_NEARBY: (lat: number, lng: number, skillId: string) =>
     `${getBaseUrl()}/workers-nearby?lat=${lat}&lng=${lng}&skill_id=${skillId}`,

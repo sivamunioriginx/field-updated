@@ -1477,6 +1477,63 @@ app.get('/api/subcategories', async (req, res) => {
   }
 });
 
+// Get categories with their subcategories endpoint
+app.get('/api/categories-with-subcategories', async (req, res) => {
+  try {
+    const [results] = await pool.execute(
+      `SELECT 
+        c.id AS category_id,
+        c.title AS category_title,
+        c.image AS category_image,
+        s.id AS subcategory_id,
+        s.name AS subcategory_name,
+        s.image AS subcategory_image
+      FROM tbl_category c
+      LEFT JOIN tbl_subcategory s ON c.id = s.category_id
+      ORDER BY c.id, s.id`
+    );
+
+    // Group the results by category
+    const categoriesMap = new Map();
+    
+    results.forEach(row => {
+      const categoryId = row.category_id;
+      
+      if (!categoriesMap.has(categoryId)) {
+        categoriesMap.set(categoryId, {
+          id: categoryId,
+          title: row.category_title,
+          image: row.category_image,
+          subcategories: []
+        });
+      }
+      
+      // Add subcategory if it exists
+      if (row.subcategory_id) {
+        categoriesMap.get(categoryId).subcategories.push({
+          id: row.subcategory_id,
+          name: row.subcategory_name,
+          image: row.subcategory_image,
+          category_id: categoryId
+        });
+      }
+    });
+
+    const categoriesWithSubcategories = Array.from(categoriesMap.values());
+    
+    res.json({
+      success: true,
+      data: categoriesWithSubcategories
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching categories with subcategories',
+      error: error.message
+    });
+  }
+});
+
 // Get all banners endpoint
 app.get('/api/banners', async (req, res) => {
   try {
