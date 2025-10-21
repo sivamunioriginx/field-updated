@@ -167,7 +167,7 @@ export default function HomeScreen() {
             <Ionicons name="location-outline" size={20} color="#000000" />
             <View style={styles.locationTextContainer}>
               <Text style={styles.locationLabel}>Home</Text>
-              <Text style={styles.locationAddress}>Hchf, Asilmetta, Visakhapatnam, Andhr...</Text>
+              <Text style={styles.locationAddress}>main, Asilmetta, Visakhapatnam, Andhr...</Text>
             </View>
             <Ionicons name="chevron-down-outline" size={16} color="#000000" style={styles.chevronIcon} />
           </TouchableOpacity>
@@ -183,7 +183,7 @@ export default function HomeScreen() {
         <View style={styles.videoContainer}>
           <Video
             ref={videoRef}
-            source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/247016_medium.mp4` }}
+            source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/diwali (2).mp4` }}
             style={styles.video}
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay
@@ -205,6 +205,7 @@ export default function HomeScreen() {
 
         <ScrollView 
           style={styles.mainScrollView} 
+          contentContainerStyle={styles.mainScrollViewContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           decelerationRate="normal"
@@ -322,6 +323,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     return Math.max(4, (baseSpacing * screenWidth) / baseWidth);
   };
 
+  // Helper function to get responsive spacing that supports negative values
+  const getResponsiveSpacingWithNegative = (baseSpacing: number, screenWidth: number) => {
+    const baseWidth = 400;
+    return (baseSpacing * screenWidth) / baseWidth;
+  };
+
   // Device type detection
   const isSmallScreen = screenWidth < 350;
   const isMediumScreen = screenWidth >= 350 && screenWidth < 400;
@@ -351,6 +358,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       width: '100%',
       height: screenHeight * 0.35, // 35% of screen height
       marginTop: getResponsiveValue(-47, screenHeight, -60, -35),
+      marginBottom: getResponsiveValue(5, screenHeight, -60, -35),
     },
     video: {
       width: '100%',
@@ -405,6 +413,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       flex: 1,
       backgroundColor: '#FFFFFF',
     },
+    mainScrollViewContent: {
+      paddingBottom: getResponsiveSpacing(80, screenWidth),
+    },
     searchBarContainer: {
       position: 'absolute',
       bottom: '6%', // Position at 90% of video (10% from bottom)
@@ -433,15 +444,15 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: getResponsiveFontSize(14, screenWidth),
       color: '#000',
     },
-    categorySection: {
-      marginTop: getResponsiveSpacing(-8, screenWidth),
-      marginBottom: getResponsiveSpacing(5, screenWidth),
-    },
+      categorySection: {
+        marginTop: getResponsiveSpacing(20, screenWidth),
+        marginBottom: getResponsiveSpacingWithNegative(-14, screenWidth),
+      },
     categoryTitle: {
       fontSize: getResponsiveFontSize(18, screenWidth),
       fontWeight: '700',
       color: '#000',
-      marginBottom: getResponsiveSpacing(8, screenWidth),
+      marginBottom: getResponsiveSpacingWithNegative(4, screenWidth),
       paddingHorizontal: getResponsiveSpacing(16, screenWidth),
     },
     subcategoriesScroll: {
