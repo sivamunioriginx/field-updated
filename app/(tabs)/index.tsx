@@ -1,8 +1,9 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -31,6 +32,7 @@ interface CategoryWithSubcategories {
 export default function HomeScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const videoRef = useRef<Video>(null);
   
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
@@ -177,16 +179,28 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Fixed Search Bar */}
-        <View style={styles.searchBarContainer}>
-          <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder={currentPlaceholder}
-            placeholderTextColor="#999"
-            value={serviceInput}
-            onChangeText={handleServiceInputChange}
+        {/* Video Section */}
+        <View style={styles.videoContainer}>
+          <Video
+            ref={videoRef}
+            source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/247016_medium.mp4` }}
+            style={styles.video}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay
+            isLooping
+            isMuted
           />
+          {/* Search Bar positioned at 90% of video */}
+          <View style={styles.searchBarContainer}>
+            <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={currentPlaceholder}
+              placeholderTextColor="#999"
+              value={serviceInput}
+              onChangeText={handleServiceInputChange}
+            />
+          </View>
         </View>
 
         <ScrollView 
@@ -328,9 +342,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: getResponsiveWidth(16, screenWidth),
-      paddingTop: getResponsiveValue(38, screenHeight),
-      paddingBottom: getResponsiveValue(12, screenHeight),
+      paddingTop: getResponsiveValue(33, screenHeight, 25, 45),
+      paddingBottom: getResponsiveValue(14, screenHeight, 10, 18),
       backgroundColor: '#A1CEDC',
+    },
+    videoContainer: {
+      position: 'relative',
+      width: '100%',
+      height: screenHeight * 0.35, // 35% of screen height
+      marginTop: getResponsiveValue(-47, screenHeight, -60, -35),
+    },
+    video: {
+      width: '100%',
+      height: '100%',
     },
     locationContainer: {
       flexDirection: 'row',
@@ -382,18 +406,24 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       backgroundColor: '#FFFFFF',
     },
     searchBarContainer: {
+      position: 'absolute',
+      bottom: '6%', // Position at 90% of video (10% from bottom)
+      left: getResponsiveSpacing(16, screenWidth),
+      right: getResponsiveSpacing(16, screenWidth),
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: '#FFFFFF',
       borderRadius: getResponsiveSpacing(12, screenWidth),
-      marginHorizontal: getResponsiveSpacing(16, screenWidth),
-      marginTop: getResponsiveSpacing(8, screenWidth),
-      marginBottom: getResponsiveSpacing(2, screenWidth),
       paddingHorizontal: getResponsiveSpacing(12, screenWidth),
       height: getResponsiveValue(40, screenHeight, 35, 48),
       borderWidth: 1,
       borderColor: '#E0E0E0',
       zIndex: 10,
+      elevation: 5, // Shadow for Android
+      shadowColor: '#000', // Shadow for iOS
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
     },
     searchIcon: {
       marginRight: getResponsiveSpacing(8, screenWidth),
@@ -404,7 +434,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       color: '#000',
     },
     categorySection: {
-      marginTop: getResponsiveSpacing(2, screenWidth),
+      marginTop: getResponsiveSpacing(-8, screenWidth),
       marginBottom: getResponsiveSpacing(5, screenWidth),
     },
     categoryTitle: {

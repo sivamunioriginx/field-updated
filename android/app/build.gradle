@@ -209,14 +209,23 @@ android.applicationVariants.all { variant ->
         "merge${variant.name.capitalize()}ArtProfile",
         "process${variant.name.capitalize()}MainManifest",
         "process${variant.name.capitalize()}Manifest",
-        "merge${variant.name.capitalize()}Resources"
+        "merge${variant.name.capitalize()}Resources",
+        "merge${variant.name.capitalize()}Assets",
+        "package${variant.name.capitalize()}Resources",
+        "create${variant.name.capitalize()}CompatibleScreenManifests"
     ]
     
     taskNames.each { taskName ->
         def task = tasks.findByName(taskName)
         if (task) {
-            task.dependsOn copyGoogleServicesTask
+            task.mustRunAfter copyGoogleServicesTask
         }
+    }
+    
+    // Ensure copyGoogleServicesTask runs before preBuild
+    def preBuildTask = tasks.findByName("preBuild")
+    if (preBuildTask) {
+        preBuildTask.dependsOn copyGoogleServicesTask
     }
 }
 
