@@ -2,7 +2,7 @@ import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -42,53 +42,6 @@ export default function HomeScreen() {
   // State for categories with subcategories
   const [categoriesWithSubcategories, setCategoriesWithSubcategories] = useState<CategoryWithSubcategories[]>([]);
   const [categoryImageErrors, setCategoryImageErrors] = useState<Set<number>>(new Set());
-  
-  // Refs for auto-scrolling subcategories
-  const subcategoryScrollRefs = useRef<{ [key: number]: ScrollView | null }>({});
-  const currentScrollPositions = useRef<{ [key: number]: number }>({});
-
-  // Auto-scroll subcategories every 3 seconds
-  useEffect(() => {
-    if (categoriesWithSubcategories.length === 0) return;
-
-    const intervals: ReturnType<typeof setInterval>[] = [];
-
-    categoriesWithSubcategories.forEach((category) => {
-      if (category.subcategories && category.subcategories.length > 1) {
-        // Initialize scroll position for this category
-        if (currentScrollPositions.current[category.id] === undefined) {
-          currentScrollPositions.current[category.id] = 0;
-        }
-
-        const interval = setInterval(() => {
-          const scrollRef = subcategoryScrollRefs.current[category.id];
-          if (scrollRef) {
-            const cardWidth = 160 + 12; // card width + margin
-            const maxScrollX = (category.subcategories.length - 1) * cardWidth;
-            
-            // Move to next position
-            let nextScrollX = currentScrollPositions.current[category.id] + cardWidth;
-            if (nextScrollX > maxScrollX) {
-              nextScrollX = 0; // Reset to beginning
-            }
-            
-            currentScrollPositions.current[category.id] = nextScrollX;
-            
-            scrollRef.scrollTo({
-              x: nextScrollX,
-              animated: true,
-            });
-          }
-        }, 3000); // 3 seconds
-
-        intervals.push(interval);
-      }
-    });
-
-    return () => {
-      intervals.forEach(interval => clearInterval(interval));
-    };
-  }, [categoriesWithSubcategories]);
 
   // Fetch categories with subcategories using the new API
   useEffect(() => {
@@ -110,37 +63,6 @@ export default function HomeScreen() {
     };
     fetchCategoriesWithSubcategories();
   }, []);
-
-  // Auto-scroll subcategories every 3 seconds
-  useEffect(() => {
-    if (categoriesWithSubcategories.length === 0) return;
-
-    const intervals: ReturnType<typeof setInterval>[] = [];
-
-    categoriesWithSubcategories.forEach((category) => {
-      if (category.subcategories && category.subcategories.length > 1) {
-    const interval = setInterval(() => {
-          const scrollRef = subcategoryScrollRefs.current[category.id];
-          if (scrollRef) {
-            const cardWidth = 160 + 12; // card width + margin
-            const maxScrollX = (category.subcategories.length - 1) * cardWidth;
-            
-            // Simple auto-scroll logic - scroll to next position
-            scrollRef.scrollTo({
-              x: Math.random() * maxScrollX, // Random position for demo
-            animated: true,
-          });
-        }
-        }, 3000); // 3 seconds
-
-        intervals.push(interval);
-      }
-    });
-
-    return () => {
-      intervals.forEach(interval => clearInterval(interval));
-    };
-  }, [categoriesWithSubcategories]);
 
 
   const handleOutsideTouch = () => {
@@ -165,11 +87,14 @@ export default function HomeScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerContainer}>
-          <Image
-            source={require('@/assets/images/OriginX.png')}
-            style={styles.mainlogo}
-            contentFit="contain"
-          />
+          <TouchableOpacity style={styles.locationContainer}>
+            <Ionicons name="location-outline" size={20} color="#000000" />
+            <View style={styles.locationTextContainer}>
+              <Text style={styles.locationLabel}>Home</Text>
+              <Text style={styles.locationAddress}>Hchf, Asilmetta, Visakhapatnam, Andhr...</Text>
+            </View>
+            <Ionicons name="chevron-down-outline" size={16} color="#000000" style={styles.chevronIcon} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.cartIconContainer}>
             <Ionicons name="cart-outline" size={30} color="#000" />
             <View style={styles.cartBadge}>
@@ -206,9 +131,6 @@ export default function HomeScreen() {
             <View key={category.id} style={styles.categorySection}>
               <Text style={styles.categoryTitle}>{category.title}</Text>
             <ScrollView 
-                ref={(ref) => {
-                  subcategoryScrollRefs.current[category.id] = ref;
-                }}
               horizontal 
               showsHorizontalScrollIndicator={false}
               scrollEventThrottle={16}
@@ -242,7 +164,7 @@ export default function HomeScreen() {
                       )}
                     </View>
                     <View style={styles.subcategoryDetails}>
-                      <Text style={styles.subcategoryTitle} numberOfLines={2}>
+                      <Text style={styles.subcategoryTitle}>
                         {subcategory.name}
                     </Text>
                   </View>
@@ -327,13 +249,33 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: getResponsiveWidth(16, screenWidth),
-      paddingTop: getResponsiveValue(30, screenHeight),
-      paddingBottom: getResponsiveValue(3, screenHeight),
+      paddingTop: getResponsiveValue(38, screenHeight),
+      paddingBottom: getResponsiveValue(12, screenHeight),
       backgroundColor: '#A1CEDC',
     },
-    mainlogo: {
-      height: getResponsiveValue(50, screenHeight, 40, 60),
-      width: getResponsiveWidth(180, screenWidth, 150, 220),
+    locationContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    locationTextContainer: {
+      marginLeft: getResponsiveSpacing(8, screenWidth),
+      flex: 1,
+    },
+    locationLabel: {
+      fontSize: getResponsiveFontSize(16, screenWidth),
+      fontWeight: '700',
+      color: '#000000',
+    },
+    locationAddress: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      color: '#000000',
+      opacity: 0.9,
+      marginTop: 2,
+    },
+    chevronIcon: {
+      marginRight: getResponsiveSpacing(65, screenWidth),
+      marginTop: getResponsiveSpacing(22, screenWidth),
     },
     cartIconContainer: {
       position: 'relative',
@@ -369,7 +311,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       marginTop: getResponsiveSpacing(8, screenWidth),
       marginBottom: getResponsiveSpacing(12, screenWidth),
       paddingHorizontal: getResponsiveSpacing(12, screenWidth),
-      height: getResponsiveValue(48, screenHeight, 40, 56),
+      height: getResponsiveValue(40, screenHeight, 35, 48),
       borderWidth: 1,
       borderColor: '#E0E0E0',
       zIndex: 10,
@@ -400,25 +342,26 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingRight: getResponsiveSpacing(16, screenWidth),
     },
     subcategoryCard: {
-      width: getResponsiveWidth(160, screenWidth, 140, 180),
+      // Calculate width to show 3 full cards + 25% of next card
+      // Formula: (screenWidth - leftPadding - rightPadding - (marginRight * 2.25)) / 3.25
+      width: (screenWidth - getResponsiveSpacing(16, screenWidth) * 2 - getResponsiveSpacing(12, screenWidth) * 2.25) / 3.25,
       backgroundColor: '#FFFFFF',
       borderRadius: getResponsiveSpacing(12, screenWidth),
       marginRight: getResponsiveSpacing(12, screenWidth),
-      overflow: 'hidden',
+      padding: getResponsiveSpacing(8, screenWidth),
       borderWidth: 1,
       borderColor: '#e7e3e3ff',
-      shadowColor: 'transparent',
-      shadowOffset: {
-        width: 0,
-        height: 0,
-      },
-      shadowOpacity: 0,
-      shadowRadius: 0,
-      elevation: 0,
+      // Fixed total height so all cards align, but content inside is flexible
+      height: getResponsiveValue(170, screenHeight, 150, 190),
     },
     subcategoryImageContainer: {
-      height: getResponsiveValue(120, screenHeight, 100, 140),
+      // Flex makes image take remaining space after text
+      flex: 1,
       backgroundColor: '#F8F9FA',
+      borderRadius: getResponsiveSpacing(8, screenWidth),
+      overflow: 'hidden',
+      // Minimum height to ensure image is always visible
+      minHeight: 80,
     },
     subcategoryImage: {
       width: '100%',
@@ -431,19 +374,22 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       backgroundColor: '#E8F4F8',
     },
     subcategoryPlaceholderText: {
-      fontSize: 40,
+      fontSize: 28,
       color: '#00BFFF',
       fontWeight: '600',
     },
     subcategoryDetails: {
-      padding: getResponsiveSpacing(12, screenWidth),
+      padding: getResponsiveSpacing(6, screenWidth),
+      paddingTop: getResponsiveSpacing(6, screenWidth),
     },
     subcategoryTitle: {
-      fontSize: getResponsiveFontSize(14, screenWidth),
+      fontSize: getResponsiveFontSize(12, screenWidth),
       fontWeight: '600',
       color: '#000',
-      lineHeight: getResponsiveFontSize(18, screenWidth),
+      lineHeight: getResponsiveFontSize(16, screenWidth),
       textAlign: 'center',
+      flexWrap: 'wrap',
+      marginBottom: -10,
     },
     emptySubcategoryContainer: {
       padding: getResponsiveSpacing(20, screenWidth),
