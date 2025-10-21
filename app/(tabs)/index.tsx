@@ -37,7 +37,7 @@ export default function HomeScreen() {
   
   // State for search input
   const [serviceInput, setServiceInput] = useState('');
-  const [currentPlaceholder, setCurrentPlaceholder] = useState("Search for services");
+  const [currentPlaceholder, setCurrentPlaceholder] = useState("");
   
   // State for categories with subcategories
   const [categoriesWithSubcategories, setCategoriesWithSubcategories] = useState<CategoryWithSubcategories[]>([]);
@@ -47,12 +47,9 @@ export default function HomeScreen() {
   useEffect(() => {
     const fetchCategoriesWithSubcategories = async () => {
       try {
-        console.log('Fetching categories with subcategories from:', API_ENDPOINTS.CATEGORIES_WITH_SUBCATEGORIES);
         const response = await fetch(API_ENDPOINTS.CATEGORIES_WITH_SUBCATEGORIES);
         const data = await response.json();
-        console.log('Categories with subcategories response:', data);
         if (data.success && Array.isArray(data.data)) {
-          console.log('Setting categories with subcategories:', data.data);
           setCategoriesWithSubcategories(data.data);
         } else {
           console.log('No data or unsuccessful response:', data);
@@ -63,6 +60,83 @@ export default function HomeScreen() {
     };
     fetchCategoriesWithSubcategories();
   }, []);
+
+  // Typing animation for search placeholder
+  useEffect(() => {
+    // Extract all subcategory names from categories
+    const subcategoryNames: string[] = [];
+    categoriesWithSubcategories.forEach(category => {
+      if (category.subcategories && category.subcategories.length > 0) {
+        category.subcategories.forEach(subcategory => {
+          subcategoryNames.push(subcategory.name);
+        });
+      }
+    });
+
+    // If no subcategories, don't animate
+    if (subcategoryNames.length === 0) {
+      setCurrentPlaceholder("Search for services");
+      return;
+    }
+
+    let currentIndex = 0;
+    let isDeleting = false;
+    let charIndex = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let isMounted = true;
+
+    const typeSpeed = 100; // Speed of typing in ms
+    const deleteSpeed = 50; // Speed of deleting in ms
+    const pauseAfterComplete = 2000; // Pause after completing a word
+    const pauseAfterDelete = 500; // Pause after deleting completely
+
+    const animatePlaceholder = () => {
+      if (!isMounted) return;
+
+      const staticPrefix = "Search For ";
+      const currentName = subcategoryNames[currentIndex];
+
+      if (!isDeleting) {
+        // Typing
+        if (charIndex < currentName.length) {
+          const currentText = staticPrefix + currentName.substring(0, charIndex + 1);
+          setCurrentPlaceholder(currentText);
+          charIndex++;
+          timeoutId = setTimeout(animatePlaceholder, typeSpeed);
+        } else {
+          // Finished typing, wait then start deleting
+          timeoutId = setTimeout(() => {
+            isDeleting = true;
+            animatePlaceholder();
+          }, pauseAfterComplete);
+        }
+      } else {
+        // Deleting
+        if (charIndex > 0) {
+          charIndex--;
+          const currentText = staticPrefix + currentName.substring(0, charIndex);
+          setCurrentPlaceholder(currentText);
+          timeoutId = setTimeout(animatePlaceholder, deleteSpeed);
+        } else {
+          // Finished deleting, move to next subcategory
+          isDeleting = false;
+          currentIndex = (currentIndex + 1) % subcategoryNames.length;
+          timeoutId = setTimeout(animatePlaceholder, pauseAfterDelete);
+        }
+      }
+    };
+
+    // Start the animation
+    timeoutId = setTimeout(animatePlaceholder, 500);
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [categoriesWithSubcategories]);
 
 
   const handleOutsideTouch = () => {
@@ -239,6 +313,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   const isMediumScreen = screenWidth >= 350 && screenWidth < 400;
   const isLargeScreen = screenWidth >= 400;
 
+  // Calculate card width for consistent responsive behavior
+  const cardWidth = (screenWidth - getResponsiveSpacing(16, screenWidth) * 2 - getResponsiveSpacing(12, screenWidth) * 2.25) / 3.25;
+  // Card height proportional to width (aspect ratio: ~1.4:1)
+  const cardHeight = cardWidth * 1.4;
+
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -309,7 +388,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       borderRadius: getResponsiveSpacing(12, screenWidth),
       marginHorizontal: getResponsiveSpacing(16, screenWidth),
       marginTop: getResponsiveSpacing(8, screenWidth),
-      marginBottom: getResponsiveSpacing(12, screenWidth),
+      marginBottom: getResponsiveSpacing(2, screenWidth),
       paddingHorizontal: getResponsiveSpacing(12, screenWidth),
       height: getResponsiveValue(40, screenHeight, 35, 48),
       borderWidth: 1,
@@ -332,7 +411,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: getResponsiveFontSize(18, screenWidth),
       fontWeight: '700',
       color: '#000',
-      marginBottom: getResponsiveSpacing(12, screenWidth),
+      marginBottom: getResponsiveSpacing(8, screenWidth),
       paddingHorizontal: getResponsiveSpacing(16, screenWidth),
     },
     subcategoriesScroll: {
@@ -343,25 +422,25 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     subcategoryCard: {
       // Calculate width to show 3 full cards + 25% of next card
-      // Formula: (screenWidth - leftPadding - rightPadding - (marginRight * 2.25)) / 3.25
-      width: (screenWidth - getResponsiveSpacing(16, screenWidth) * 2 - getResponsiveSpacing(12, screenWidth) * 2.25) / 3.25,
+      width: cardWidth,
       backgroundColor: '#FFFFFF',
       borderRadius: getResponsiveSpacing(12, screenWidth),
       marginRight: getResponsiveSpacing(12, screenWidth),
-      padding: getResponsiveSpacing(8, screenWidth),
+      padding: getResponsiveSpacing(7, screenWidth),
       borderWidth: 1,
-      borderColor: '#e7e3e3ff',
-      // Fixed total height so all cards align, but content inside is flexible
-      height: getResponsiveValue(170, screenHeight, 150, 190),
+      borderColor: '#e8e0e0ff',
+      // borderColor: '#dbd5d5ff',
+      // Height proportional to width for true responsiveness
+      height: cardHeight,
     },
     subcategoryImageContainer: {
       // Flex makes image take remaining space after text
       flex: 1,
       backgroundColor: '#F8F9FA',
-      borderRadius: getResponsiveSpacing(8, screenWidth),
+      borderRadius: getResponsiveSpacing(6, screenWidth),
       overflow: 'hidden',
-      // Minimum height to ensure image is always visible
-      minHeight: 80,
+      // Minimum height responsive to card width (50% of card width)
+      minHeight: cardWidth * 0.5,
     },
     subcategoryImage: {
       width: '100%',
@@ -371,10 +450,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: '#E8F4F8',
     },
     subcategoryPlaceholderText: {
-      fontSize: 28,
+      fontSize: Math.max(20, Math.min(32, cardWidth * 0.25)),
       color: '#00BFFF',
       fontWeight: '600',
     },
@@ -389,7 +467,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       lineHeight: getResponsiveFontSize(16, screenWidth),
       textAlign: 'center',
       flexWrap: 'wrap',
-      marginBottom: -10,
+      marginBottom: -Math.abs(getResponsiveSpacing(8, screenWidth)),
     },
     emptySubcategoryContainer: {
       padding: getResponsiveSpacing(20, screenWidth),
