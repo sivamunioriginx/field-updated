@@ -1554,6 +1554,46 @@ app.get('/api/banners', async (req, res) => {
   }
 });
 
+// Search services endpoint (must come before /api/services/:subcategoryId)
+app.get('/api/services/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    console.log('Search query:', q);
+    
+    if (!q || q.length < 2) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    const [services] = await pool.execute(
+      'SELECT id, name, subcategory_id, image, created_at FROM tbl_services WHERE name LIKE ? ORDER BY id DESC LIMIT 20',
+      [`%${q}%`]
+    );
+
+    console.log('Found services:', services.length, services);
+
+    // Add full image URLs
+    const servicesWithImages = services.map(service => ({
+      ...service,
+      image: service.image ? `/uploads/services/${service.image}` : null
+    }));
+
+    res.json({
+      success: true,
+      data: servicesWithImages
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error searching services',
+      error: error.message
+    });
+  }
+});
+
 // Get services by subcategory ID endpoint
 app.get('/api/services/:subcategoryId', async (req, res) => {
   try {

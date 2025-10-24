@@ -36,6 +36,7 @@ export default function ServicesScreen() {
   
   const subcategoryId = params.subcategoryId as string;
   const subcategoryName = params.subcategoryName as string;
+  const searchQuery = params.searchQuery as string;
   
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,16 +47,29 @@ export default function ServicesScreen() {
   const [showHeader, setShowHeader] = useState(false);
   const videoRef = useRef<Video>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
-  const videoHeight = screenWidth < 360 ? screenHeight * 0.22 : screenWidth >= 768 ? screenHeight * 0.3 : screenHeight * 0.25; // Responsive video height
 
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
 
-  // Fetch services by subcategory ID
+  // Fetch services by subcategory ID or search query
   const fetchServices = async () => {
     try {
       setLoading(true);
-      const response = await fetch(API_ENDPOINTS.SERVICES_BY_SUBCATEGORY(subcategoryId));
+      let response;
+      
+      if (searchQuery) {
+        // Fetch services based on search query
+        response = await fetch(API_ENDPOINTS.SEARCH_SERVICES(searchQuery));
+      } else if (subcategoryId) {
+        // Fetch services by subcategory ID
+        response = await fetch(API_ENDPOINTS.SERVICES_BY_SUBCATEGORY(subcategoryId));
+      } else {
+        console.log('No subcategoryId or searchQuery provided');
+        setServices([]);
+        setLoading(false);
+        return;
+      }
+      
       const data = await response.json();
       
       if (data.success && Array.isArray(data.data)) {
@@ -85,10 +99,10 @@ export default function ServicesScreen() {
   };
 
   useEffect(() => {
-    if (subcategoryId) {
+    if (subcategoryId || searchQuery) {
       fetchServices();
     }
-  }, [subcategoryId]);
+  }, [subcategoryId, searchQuery]);
 
   // Ensure video plays when component mounts
   useEffect(() => {
@@ -164,7 +178,7 @@ export default function ServicesScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>
-            {subcategoryName || 'Services'}
+            {searchQuery ? `Search: ${searchQuery}` : (subcategoryName || 'Services')}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -268,9 +282,14 @@ export default function ServicesScreen() {
         {services.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="construct-outline" size={80} color="#ccc" />
-            <Text style={styles.emptyTitle}>No Services Available</Text>
+            <Text style={styles.emptyTitle}>
+              {searchQuery ? 'No Services Found' : 'No Services Available'}
+            </Text>
             <Text style={styles.emptySubtitle}>
-              No services found for this category. Check back later!
+              {searchQuery 
+                ? `No services found for "${searchQuery}". Try searching with different keywords.`
+                : 'No services found for this category. Check back later!'
+              }
             </Text>
           </View>
         ) : (
@@ -366,32 +385,46 @@ export default function ServicesScreen() {
 const createStyles = (screenHeight: number, screenWidth: number) => {
   // Enhanced responsive helper functions for better screen size adaptation
   
-  // Determine device type based on screen dimensions
-  const isSmallScreen = screenWidth < 360;
-  const isMediumScreen = screenWidth >= 360 && screenWidth < 414;
-  const isLargeScreen = screenWidth >= 414 && screenWidth < 768;
-  const isTabletScreen = screenWidth >= 768;
+  // Determine device type based on screen dimensions with more granular breakpoints
+  const isSmallScreen = screenWidth < 360; // Small phones (iPhone SE, etc.)
+  const isMediumScreen = screenWidth >= 360 && screenWidth < 414; // Standard phones
+  const isLargeScreen = screenWidth >= 414 && screenWidth < 768; // Large phones (iPhone Pro Max, etc.)
+  const isTabletScreen = screenWidth >= 768 && screenWidth < 1024; // Tablets
+  const isLargeTabletScreen = screenWidth >= 1024; // Large tablets/desktop
   
-  // Helper function to get responsive values based on screen width with better scaling
+  // Calculate aspect ratio for better responsive decisions
+  const aspectRatio = screenWidth / screenHeight;
+  const isPortrait = aspectRatio < 0.8;
+  const isLandscape = aspectRatio >= 1.2;
+  
+  // Enhanced responsive width calculation with better scaling and aspect ratio consideration
   const getResponsiveWidth = (baseValue: number, screenWidth: number, minValue?: number, maxValue?: number) => {
     let scaledValue;
     
     if (isSmallScreen) {
-      // For small screens, use more conservative scaling
-      scaledValue = baseValue * 0.85;
+      // For small screens, use conservative scaling
+      scaledValue = baseValue * 0.8;
     } else if (isMediumScreen) {
       // For medium screens, use standard scaling
       scaledValue = baseValue;
     } else if (isLargeScreen) {
       // For large phones, scale up slightly
-      scaledValue = baseValue * 1.1;
+      scaledValue = baseValue * 1.15;
     } else if (isTabletScreen) {
       // For tablets, scale up more
-      scaledValue = baseValue * 1.3;
+      scaledValue = baseValue * 1.4;
+    } else if (isLargeTabletScreen) {
+      // For large tablets/desktop, scale up significantly
+      scaledValue = baseValue * 1.6;
     } else {
       // For very large screens, use proportional scaling
       const baseWidth = 414; // iPhone 11 Pro Max as reference
       scaledValue = (baseValue * screenWidth) / baseWidth;
+    }
+    
+    // Adjust for landscape orientation
+    if (isLandscape) {
+      scaledValue *= 0.9; // Slightly reduce in landscape
     }
     
     if (minValue !== undefined && scaledValue < minValue) return minValue;
@@ -399,7 +432,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     return scaledValue;
   };
 
-  // Enhanced responsive font sizes with better scaling
+  // Enhanced responsive font sizes with better scaling and readability considerations
   const getResponsiveFontSize = (baseSize: number, screenWidth: number) => {
     let scaledSize;
     
@@ -410,17 +443,24 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     } else if (isLargeScreen) {
       scaledSize = baseSize * 1.1;
     } else if (isTabletScreen) {
-      scaledSize = baseSize * 1.2;
+      scaledSize = baseSize * 1.25;
+    } else if (isLargeTabletScreen) {
+      scaledSize = baseSize * 1.4;
     } else {
       const baseWidth = 414;
       scaledSize = (baseSize * screenWidth) / baseWidth;
     }
     
-    // Ensure font sizes stay within reasonable bounds
-    return Math.max(10, Math.min(28, scaledSize));
+    // Adjust for landscape orientation (slightly smaller fonts)
+    if (isLandscape) {
+      scaledSize *= 0.95;
+    }
+    
+    // Ensure font sizes stay within reasonable bounds for readability
+    return Math.max(10, Math.min(32, scaledSize));
   };
 
-  // Enhanced responsive spacing with better scaling
+  // Enhanced responsive spacing with better scaling and orientation awareness
   const getResponsiveSpacing = (baseSpacing: number, screenWidth: number) => {
     let scaledSpacing;
     
@@ -432,9 +472,16 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       scaledSpacing = baseSpacing * 1.1;
     } else if (isTabletScreen) {
       scaledSpacing = baseSpacing * 1.3;
+    } else if (isLargeTabletScreen) {
+      scaledSpacing = baseSpacing * 1.5;
     } else {
       const baseWidth = 414;
       scaledSpacing = (baseSpacing * screenWidth) / baseWidth;
+    }
+    
+    // Adjust for landscape orientation (reduce spacing)
+    if (isLandscape) {
+      scaledSpacing *= 0.85;
     }
     
     return Math.max(2, scaledSpacing);
@@ -462,7 +509,10 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     videoContainer: {
       width: '100%',
-      height: isSmallScreen ? screenHeight * 0.22 : isTabletScreen ? screenHeight * 0.3 : screenHeight * 0.25, // Responsive video height
+      height: isSmallScreen ? screenHeight * 0.22 : 
+              isTabletScreen ? screenHeight * 0.3 : 
+              isLargeTabletScreen ? screenHeight * 0.35 :
+              screenHeight * 0.25, // Enhanced responsive video height
       backgroundColor: '#000',
       position: 'relative',
     },
@@ -511,25 +561,55 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     videoBackButton: {
       position: 'absolute',
-      top: getResponsiveSpacing(isSmallScreen ? 35 : isTabletScreen ? 50 : 40, screenWidth),
-      left: getResponsiveSpacing(isSmallScreen ? 12 : isTabletScreen ? 20 : 16, screenWidth),
+      top: getResponsiveSpacing(
+        isSmallScreen ? 35 : 
+        isTabletScreen ? 50 : 
+        isLargeTabletScreen ? 60 : 40, 
+        screenWidth
+      ),
+      left: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 30 : 16, 
+        screenWidth
+      ),
       zIndex: 10,
     },
     videoBackButtonBackground: {
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       borderRadius: getResponsiveBorderRadius(20, screenWidth),
-      padding: getResponsivePadding(isSmallScreen ? 6 : isTabletScreen ? 12 : 8, screenWidth),
+      padding: getResponsivePadding(
+        isSmallScreen ? 6 : 
+        isTabletScreen ? 12 : 
+        isLargeTabletScreen ? 16 : 8, 
+        screenWidth
+      ),
     },
     videoSearchButton: {
       position: 'absolute',
-      top: getResponsiveSpacing(isSmallScreen ? 35 : isTabletScreen ? 50 : 40, screenWidth),
-      right: getResponsiveSpacing(isSmallScreen ? 12 : isTabletScreen ? 20 : 16, screenWidth),
+      top: getResponsiveSpacing(
+        isSmallScreen ? 35 : 
+        isTabletScreen ? 50 : 
+        isLargeTabletScreen ? 60 : 40, 
+        screenWidth
+      ),
+      right: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 30 : 16, 
+        screenWidth
+      ),
       zIndex: 10,
     },
     videoSearchButtonBackground: {
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       borderRadius: getResponsiveBorderRadius(20, screenWidth),
-      padding: getResponsivePadding(isSmallScreen ? 6 : isTabletScreen ? 12 : 8, screenWidth),
+      padding: getResponsivePadding(
+        isSmallScreen ? 6 : 
+        isTabletScreen ? 12 : 
+        isLargeTabletScreen ? 16 : 8, 
+        screenWidth
+      ),
     },
     centerContent: {
       justifyContent: 'center',
@@ -548,9 +628,24 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       zIndex: 1000,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: getResponsivePadding(16, screenWidth),
-      paddingTop: getResponsivePadding(isSmallScreen ? 30 : isTabletScreen ? 45 : 35, screenWidth),
-      paddingBottom: getResponsivePadding(5, screenWidth),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 16, 
+        screenWidth
+      ),
+      paddingTop: getResponsivePadding(
+        isSmallScreen ? 30 : 
+        isTabletScreen ? 45 : 
+        isLargeTabletScreen ? 55 : 35, 
+        screenWidth
+      ),
+      paddingBottom: getResponsivePadding(
+        isSmallScreen ? 5 : 
+        isTabletScreen ? 8 : 
+        isLargeTabletScreen ? 10 : 5, 
+        screenWidth
+      ),
       backgroundColor: '#FFFFFF',
       borderBottomWidth: 1,
       borderBottomColor: '#e2dcdcff',
@@ -592,8 +687,18 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     serviceCard: {
       backgroundColor: '#FFFFFF',
-      paddingVertical: getResponsivePadding(isSmallScreen ? 12 : isTabletScreen ? 20 : 16, screenWidth),
-      paddingHorizontal: getResponsivePadding(isSmallScreen ? 12 : isTabletScreen ? 20 : 16, screenWidth),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 16, 
+        screenWidth
+      ),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 16, 
+        screenWidth
+      ),
     },
     serviceContent: {
       flexDirection: 'row',
@@ -601,7 +706,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     serviceDetails: {
       flex: 1,
-      marginRight: getResponsiveSpacing(16, screenWidth),
+      marginRight: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 16, 
+        screenWidth
+      ),
     },
     serviceName: {
       fontSize: getResponsiveFontSize(16, screenWidth),
@@ -650,11 +760,26 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     serviceActions: {
       alignItems: 'center',
-      width: getResponsiveWidth(isSmallScreen ? 70 : isTabletScreen ? 100 : 80, screenWidth),
+      width: getResponsiveWidth(
+        isSmallScreen ? 70 : 
+        isTabletScreen ? 100 : 
+        isLargeTabletScreen ? 120 : 80, 
+        screenWidth
+      ),
     },
     serviceImageContainer: {
-      width: getResponsiveWidth(isSmallScreen ? 50 : isTabletScreen ? 80 : 60, screenWidth),
-      height: getResponsiveWidth(isSmallScreen ? 50 : isTabletScreen ? 80 : 60, screenWidth),
+      width: getResponsiveWidth(
+        isSmallScreen ? 50 : 
+        isTabletScreen ? 80 : 
+        isLargeTabletScreen ? 100 : 60, 
+        screenWidth
+      ),
+      height: getResponsiveWidth(
+        isSmallScreen ? 50 : 
+        isTabletScreen ? 80 : 
+        isLargeTabletScreen ? 100 : 60, 
+        screenWidth
+      ),
       borderRadius: getResponsiveBorderRadius(8, screenWidth),
       overflow: 'hidden',
       marginBottom: getResponsiveMargin(8, screenWidth),
@@ -675,9 +800,20 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       borderWidth: 1,
       borderColor: '#8B5CF6',
       borderRadius: getResponsiveBorderRadius(6, screenWidth),
-      paddingHorizontal: getResponsivePadding(isSmallScreen ? 8 : isTabletScreen ? 16 : 12, screenWidth),
-      paddingVertical: getResponsivePadding(isSmallScreen ? 4 : isTabletScreen ? 8 : 6, screenWidth),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 6 : 
+        isTabletScreen ? 12 : 
+        isLargeTabletScreen ? 16 : 8, 
+        screenWidth
+      ),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 3 : 
+        isTabletScreen ? 6 : 
+        isLargeTabletScreen ? 8 : 4, 
+        screenWidth
+      ),
       marginBottom: getResponsiveMargin(4, screenWidth),
+      marginTop: -20,
     },
     addButtonText: {
       fontSize: getResponsiveFontSize(12, screenWidth),
@@ -692,14 +828,29 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     separator: {
       height: 1,
       backgroundColor: '#e6ddddff',
-      marginHorizontal: getResponsiveMargin(isSmallScreen ? 12 : isTabletScreen ? 20 : 16, screenWidth),
+      marginHorizontal: getResponsiveMargin(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 16, 
+        screenWidth
+      ),
     },
     emptyContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingVertical: getResponsivePadding(isSmallScreen ? 40 : isTabletScreen ? 80 : 60, screenWidth),
-      paddingHorizontal: getResponsivePadding(isSmallScreen ? 20 : isTabletScreen ? 40 : 30, screenWidth),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 40 : 
+        isTabletScreen ? 80 : 
+        isLargeTabletScreen ? 100 : 60, 
+        screenWidth
+      ),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 20 : 
+        isTabletScreen ? 40 : 
+        isLargeTabletScreen ? 60 : 30, 
+        screenWidth
+      ),
     },
     emptyTitle: {
       fontSize: getResponsiveFontSize(20, screenWidth),
@@ -712,7 +863,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       color: '#999',
       textAlign: 'center',
       marginTop: getResponsiveMargin(8, screenWidth),
-      paddingHorizontal: getResponsivePadding(isSmallScreen ? 20 : isTabletScreen ? 60 : 40, screenWidth),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 20 : 
+        isTabletScreen ? 60 : 
+        isLargeTabletScreen ? 80 : 40, 
+        screenWidth
+      ),
     },
   });
 };

@@ -77,6 +77,7 @@ export const API_ENDPOINTS = {
   // Add endpoints for services
   SERVICES: `${getBaseUrl()}/services`,
   SERVICES_BY_SUBCATEGORY: (subcategoryId: string) => `${getBaseUrl()}/services/${subcategoryId}`,
+  SEARCH_SERVICES: (query: string) => `${getBaseUrl()}/services/search?q=${encodeURIComponent(query)}`,
 };
 
 export const API_BASE_URL = getBaseUrl();

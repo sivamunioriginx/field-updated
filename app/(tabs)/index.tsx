@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   useWindowDimensions,
@@ -151,6 +150,11 @@ export default function HomeScreen() {
     setServiceInput(text);
   };
 
+  const handleSearchInputPress = () => {
+    // Navigate to search screen when search input is pressed
+    router.push('/search-screen');
+  };
+
   const handleSubcategoryPress = (subcategory: Subcategory) => {
     // Navigate to services screen with subcategory details
     router.push({
@@ -205,14 +209,16 @@ export default function HomeScreen() {
           />
           {/* Search Bar positioned at 90% of video */}
           <View style={styles.searchBarContainer}>
-            <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={currentPlaceholder}
-              placeholderTextColor="#999"
-              value={serviceInput}
-              onChangeText={handleServiceInputChange}
-            />
+            <TouchableOpacity 
+              style={styles.searchBarTouchable} 
+              onPress={handleSearchInputPress}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
+              <Text style={styles.searchPlaceholderText}>
+                {currentPlaceholder}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -461,6 +467,17 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       flex: 1,
       fontSize: getResponsiveFontSize(14, screenWidth),
       color: '#000',
+    },
+    searchBarTouchable: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      height: '100%',
+    },
+    searchPlaceholderText: {
+      flex: 1,
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#999',
     },
       categorySection: {
         marginTop: getResponsiveSpacing(20, screenWidth),
