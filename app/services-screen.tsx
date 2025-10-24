@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -39,12 +40,14 @@ export default function ServicesScreen() {
   const searchQuery = params.searchQuery as string;
   
   const [services, setServices] = useState<Service[]>([]);
+  const [allServices, setAllServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [showHeader, setShowHeader] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
   const videoRef = useRef<Video>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -79,13 +82,16 @@ export default function ServicesScreen() {
           }
         });
         setServices(data.data);
+        setAllServices(data.data);
       } else {
         console.log('No services found or unsuccessful response:', data);
         setServices([]);
+        setAllServices([]);
       }
     } catch (error) {
       console.error('Error fetching services:', error);
       setServices([]);
+      setAllServices([]);
     } finally {
       setLoading(false);
     }
@@ -103,6 +109,13 @@ export default function ServicesScreen() {
       fetchServices();
     }
   }, [subcategoryId, searchQuery]);
+
+  // Initialize search input with current search query
+  useEffect(() => {
+    if (searchQuery) {
+      setSearchInput(searchQuery);
+    }
+  }, [searchQuery]);
 
   // Ensure video plays when component mounts
   useEffect(() => {
@@ -139,6 +152,38 @@ export default function ServicesScreen() {
     // Navigate to service details
   };
 
+  const handleSearch = () => {
+    if (searchInput.trim()) {
+      // Navigate to services screen with search query
+      router.push({
+        pathname: '/services-screen',
+        params: {
+          searchQuery: searchInput.trim(),
+        }
+      });
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchInput('');
+    setServices(allServices); // Reset to show all services
+  };
+
+  const closeHeader = () => {
+    setShowHeader(false);
+  };
+
+  const filterServices = (query: string) => {
+    if (query.length >= 2) {
+      const filtered = allServices.filter(service =>
+        service.name.toLowerCase().includes(query.toLowerCase())
+      );
+      setServices(filtered);
+    } else if (query.length === 0) {
+      setServices(allServices); // Show all services when search is cleared
+    }
+  };
+
   const handleScroll = (event: any) => {
     const scrollPosition = event.nativeEvent.contentOffset.y;
     
@@ -173,32 +218,46 @@ export default function ServicesScreen() {
         ]}
         pointerEvents={showHeader ? 'auto' : 'none'}
       >
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>
-            {searchQuery ? `Search: ${searchQuery}` : (subcategoryName || 'Services')}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="search-outline" size={24} color="#000" />
+        <View style={styles.searchBarContainer}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
+            <Ionicons name="arrow-back" size={20} color="#666" />
           </TouchableOpacity>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Look for services"
+            placeholderTextColor="#999"
+            value={searchInput}
+            onChangeText={(text) => {
+              setSearchInput(text);
+              filterServices(text);
+            }}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+          />
+          {searchInput.length > 0 && (
+            <TouchableOpacity style={styles.clearButton} onPress={clearSearch}>
+              <Ionicons name="close" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
 
       {/* Scrollable Content with Video */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
+      <TouchableOpacity 
+        style={styles.mainContent}
+        activeOpacity={1}
+        onPress={closeHeader}
       >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+        >
         {/* Video Section */}
         <View style={styles.videoContainer}>
         {videoLoading && !videoError && (
@@ -259,7 +318,10 @@ export default function ServicesScreen() {
         {!showHeader && (
           <TouchableOpacity 
             style={styles.videoBackButton} 
-            onPress={handleBackPress}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleBackPress();
+            }}
           >
             <View style={styles.videoBackButtonBackground}>
               <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
@@ -271,7 +333,10 @@ export default function ServicesScreen() {
         {!showHeader && (
           <TouchableOpacity 
             style={styles.videoSearchButton} 
-            onPress={() => console.log('Search pressed')}
+            onPress={(e) => {
+              e.stopPropagation();
+              setShowHeader(true);
+            }}
           >
             <View style={styles.videoSearchButtonBackground}>
               <Ionicons name="search-outline" size={24} color="#FFFFFF" />
@@ -298,7 +363,10 @@ export default function ServicesScreen() {
               <View key={service.id}>
                 <TouchableOpacity
                   style={styles.serviceCard}
-                  onPress={() => handleServicePress(service)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleServicePress(service);
+                  }}
                   activeOpacity={0.8}
                 >
                   <View style={styles.serviceContent}>
@@ -330,7 +398,10 @@ export default function ServicesScreen() {
                       {/* View Details Link */}
                       <TouchableOpacity 
                         style={styles.viewDetailsButton}
-                        onPress={() => handleViewDetails(service)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleViewDetails(service);
+                        }}
                       >
                         <Text style={styles.viewDetailsText}>View details</Text>
                       </TouchableOpacity>
@@ -359,7 +430,10 @@ export default function ServicesScreen() {
                       {/* Add Button */}
                       <TouchableOpacity 
                         style={styles.addButton}
-                        onPress={() => handleAddService(service)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleAddService(service);
+                        }}
                       >
                         <Text style={styles.addButtonText}>Add</Text>
                       </TouchableOpacity>
@@ -376,7 +450,8 @@ export default function ServicesScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </TouchableOpacity>
 
     </View>
   );
@@ -655,26 +730,39 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       shadowOpacity: 0.1,
       shadowRadius: 2,
     },
-    backButton: {
-      padding: getResponsiveSpacing(8, screenWidth),
-      marginRight: getResponsiveSpacing(8, screenWidth),
-    },
-    headerContent: {
+    searchBarContainer: {
       flex: 1,
-      alignItems: 'center',
+      position: 'relative',
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveBorderRadius(12, screenWidth),
+      height: getResponsiveSpacing(44, screenWidth),
+      borderWidth: 1,
+      borderColor: '#b3b2b2ff',
     },
-    headerTitle: {
-      fontSize: getResponsiveFontSize(18, screenWidth),
-      fontWeight: '600',
+    backButton: {
+      position: 'absolute',
+      left: getResponsiveSpacing(12, screenWidth),
+      top: '50%',
+      transform: [{ translateY: -getResponsiveSpacing(10, screenWidth) }],
+      zIndex: 1,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: getResponsiveFontSize(16, screenWidth),
       color: '#000',
+      paddingLeft: getResponsiveSpacing(40, screenWidth),
+      paddingRight: getResponsiveSpacing(40, screenWidth),
+      paddingVertical: getResponsiveSpacing(12, screenWidth),
     },
-    headerActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    clearButton: {
+      position: 'absolute',
+      right: getResponsiveSpacing(12, screenWidth),
+      top: '50%',
+      transform: [{ translateY: -getResponsiveSpacing(10, screenWidth) }],
+      zIndex: 1,
     },
-    headerButton: {
-      padding: getResponsiveSpacing(8, screenWidth),
-      marginLeft: getResponsiveSpacing(4, screenWidth),
+    mainContent: {
+      flex: 1,
     },
     scrollView: {
       flex: 1,
