@@ -80,6 +80,14 @@ CREATE TABLE tbl_category (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE tbl_services (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(90) NOT NULL,
+  subcategory_id VARCHAR(50),
+  image varchar(255) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create banners table
 CREATE TABLE tbl_banners (
   id INT AUTO_INCREMENT PRIMARY KEY,

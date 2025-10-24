@@ -73,6 +73,10 @@ export const API_ENDPOINTS = {
   // Add endpoints for worker location tracking
   WORKER_LOCATION: `${getBaseUrl()}/worker-location`,
   WORKER_LOCATION_BY_ID: (workerId: string) => `${getBaseUrl()}/worker-location/${workerId}`,
+  
+  // Add endpoints for services
+  SERVICES: `${getBaseUrl()}/services`,
+  SERVICES_BY_SUBCATEGORY: (subcategoryId: string) => `${getBaseUrl()}/services/${subcategoryId}`,
 };
 
 export const API_BASE_URL = getBaseUrl();

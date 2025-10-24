@@ -77,6 +77,7 @@ const createUploadsDir = async () => {
     await fs.mkdir('uploads/documents', { recursive: true });
     await fs.mkdir('uploads/subcategorys', { recursive: true });
     await fs.mkdir('uploads/workdocuments', { recursive: true }); // Add workdocuments directory
+    await fs.mkdir('uploads/services', { recursive: true }); // Add services directory
     // List existing profile images
     try {
       const profileFiles = await fs.readdir('uploads/profiles');
@@ -1548,6 +1549,68 @@ app.get('/api/banners', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching banners',
+      error: error.message
+    });
+  }
+});
+
+// Get services by subcategory ID endpoint
+app.get('/api/services/:subcategoryId', async (req, res) => {
+  try {
+    const { subcategoryId } = req.params;
+    
+    if (!subcategoryId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory ID is required'
+      });
+    }
+
+    const [services] = await pool.execute(
+      'SELECT id, name, subcategory_id, image, created_at FROM tbl_services WHERE subcategory_id = ? ORDER BY created_at DESC',
+      [subcategoryId]
+    );
+
+    // Add full image URLs
+    const servicesWithImages = services.map(service => ({
+      ...service,
+      image: service.image ? `/uploads/services/${service.image}` : null
+    }));
+
+    res.json({
+      success: true,
+      data: servicesWithImages
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching services',
+      error: error.message
+    });
+  }
+});
+
+// Get all services endpoint
+app.get('/api/services', async (req, res) => {
+  try {
+    const [services] = await pool.execute(
+      'SELECT id, name, subcategory_id, image, created_at FROM tbl_services ORDER BY created_at DESC'
+    );
+
+    // Add full image URLs
+    const servicesWithImages = services.map(service => ({
+      ...service,
+      image: service.image ? `/uploads/services/${service.image}` : null
+    }));
+
+    res.json({
+      success: true,
+      data: servicesWithImages
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching services',
       error: error.message
     });
   }

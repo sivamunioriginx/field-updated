@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
@@ -33,6 +34,7 @@ export default function HomeScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
   const videoRef = useRef<Video>(null);
+  const router = useRouter();
   
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
@@ -149,6 +151,17 @@ export default function HomeScreen() {
     setServiceInput(text);
   };
 
+  const handleSubcategoryPress = (subcategory: Subcategory) => {
+    // Navigate to services screen with subcategory details
+    router.push({
+      pathname: '/services-screen',
+      params: {
+        subcategoryId: subcategory.id.toString(),
+        subcategoryName: subcategory.name
+      }
+    });
+  };
+
   // Show loading screen while checking authentication
   if (authLoading) {
     return (
@@ -229,7 +242,12 @@ export default function HomeScreen() {
                 contentContainerStyle={styles.subcategoriesScrollContent}
               >
                 {category.subcategories.map((subcategory) => (
-                  <TouchableOpacity key={subcategory.id} style={styles.subcategoryCard}>
+                  <TouchableOpacity 
+                    key={subcategory.id} 
+                    style={styles.subcategoryCard}
+                    onPress={() => handleSubcategoryPress(subcategory)}
+                    activeOpacity={0.8}
+                  >
                     <View style={styles.subcategoryImageContainer}>
                       {subcategory.image && !categoryImageErrors.has(subcategory.id) ? (
                       <Image

@@ -34,6 +34,7 @@ export default function RootLayout() {
               <Stack.Screen name="workers-list" options={{ headerShown: false }} />
               <Stack.Screen name="workerindex" options={{ headerShown: false }} />
               <Stack.Screen name="serviceseekerindex" options={{ headerShown: false }} />
+              <Stack.Screen name="services-screen" options={{ headerShown: false }} />
               <Stack.Screen name="+not-found" />
             </Stack>
             <StatusBar style="auto" />
