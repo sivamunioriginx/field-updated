@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -55,6 +56,9 @@ export default function ServicesScreen() {
   const [videoError, setVideoError] = useState(false);
   const [showHeader, setShowHeader] = useState(false);
   const [searchInput, setSearchInput] = useState('');
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(null);
   const videoRef = useRef<Video>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -165,7 +169,11 @@ export default function ServicesScreen() {
   };
 
   const handleViewDetails = (service: Service) => {
-    // Navigate to service details
+    console.log('View details clicked for service:', service.name);
+    setSelectedService(service);
+    setExpandedFaqIndex(null); // Reset FAQ state when opening modal
+    setShowDetailsModal(true);
+    console.log('Modal should now be visible');
   };
 
   const handleSearch = () => {
@@ -187,6 +195,10 @@ export default function ServicesScreen() {
 
   const closeHeader = () => {
     setShowHeader(false);
+  };
+
+  const toggleFaq = (index: number) => {
+    setExpandedFaqIndex(expandedFaqIndex === index ? null : index);
   };
 
   const filterServices = (query: string) => {
@@ -472,6 +484,413 @@ export default function ServicesScreen() {
         )}
         </ScrollView>
       </TouchableOpacity>
+
+      {/* Service Details Modal */}
+      <Modal
+        visible={showDetailsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowDetailsModal(false);
+          setExpandedFaqIndex(null);
+        }}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowDetailsModal(false);
+            setExpandedFaqIndex(null);
+          }}
+        >
+          {/* Close Button - Outside Modal */}
+          <TouchableOpacity 
+            style={styles.modalCloseButton}
+            onPress={() => {
+              setShowDetailsModal(false);
+              setExpandedFaqIndex(null);
+            }}
+          >
+            <View style={styles.modalCloseButtonCircle}>
+              <Ionicons name="close" size={Math.max(20, Math.min(28, screenWidth * 0.06))} color="#000" />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.modalContainer}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+
+            <ScrollView 
+              style={styles.modalScrollView}
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {selectedService ? (
+                <>
+                  {/* Service Header */}
+                  <View style={styles.modalHeader}>
+                    <View style={styles.modalHeaderTop}>
+                      <View style={styles.modalHeaderLeft}>
+                        <Text style={styles.modalServiceName}>{selectedService.name}</Text>
+                        
+                        {/* Rating */}
+                        <View style={styles.modalRatingContainer}>
+                          <Ionicons name="star" size={Math.max(14, Math.min(18, screenWidth * 0.04))} color="#FFD700" />
+                          <Text style={styles.modalRatingText}>
+                            {(selectedService.rating && typeof selectedService.rating === 'number' && selectedService.rating > 0) 
+                              ? selectedService.rating.toFixed(2) 
+                              : '4.84'}
+                          </Text>
+                          <Text style={styles.modalReviewsText}>(20K reviews)</Text>
+                        </View>
+
+                        {/* Price and Duration */}
+                        <View style={styles.modalPriceRow}>
+                          <Text style={styles.modalPriceText}>₹{selectedService.price || '239'}</Text>
+                          <Text style={styles.modalDurationText}>• 30 mins</Text>
+                        </View>
+                      </View>
+
+                      {/* Add Button - Top Right */}
+                      <TouchableOpacity 
+                        style={styles.modalAddButton}
+                        onPress={() => {
+                          handleAddService(selectedService);
+                          setShowDetailsModal(false);
+                        }}
+                      >
+                        <Text style={styles.modalAddButtonText}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Divider */}
+                  <View style={styles.modalDivider} />
+
+                  {/* Our Process Section */}
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Our process</Text>
+                    
+                    <View style={styles.processStepsContainer}>
+                      {/* Step 1 */}
+                      <View style={styles.processStep}>
+                        <View style={styles.processStepNumberContainer}>
+                          <Text style={styles.processStepNumber}>1</Text>
+                          <View style={styles.processStepLine} />
+                        </View>
+                        <View style={styles.processStepContent}>
+                          <Text style={styles.processStepTitle}>Inspection</Text>
+                          <Text style={styles.processStepDescription}>
+                            We will check the space where you want to install the switchbox
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Step 2 */}
+                      <View style={styles.processStep}>
+                        <View style={styles.processStepNumberContainer}>
+                          <Text style={styles.processStepNumber}>2</Text>
+                          <View style={styles.processStepLine} />
+                        </View>
+                        <View style={styles.processStepContent}>
+                          <Text style={styles.processStepTitle}>Installation</Text>
+                          <Text style={styles.processStepDescription}>
+                            We will install the switchbox with care
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Step 3 */}
+                      <View style={styles.processStep}>
+                        <View style={styles.processStepNumberContainer}>
+                          <Text style={styles.processStepNumber}>3</Text>
+                          <View style={styles.processStepLine} />
+                        </View>
+                        <View style={styles.processStepContent}>
+                          <Text style={styles.processStepTitle}>Cleanup</Text>
+                          <Text style={styles.processStepDescription}>
+                            We will clean the area once work is done
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Step 4 */}
+                      <View style={styles.processStep}>
+                        <View style={styles.processStepNumberContainer}>
+                          <Text style={styles.processStepNumber}>4</Text>
+                          {/* No line for the last step */}
+                        </View>
+                        <View style={styles.processStepContent}>
+                          <Text style={styles.processStepTitle}>Warranty activation</Text>
+                          <Text style={styles.processStepDescription}>
+                            The service is covered by a 30-day warranty for any issues after installation
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Please Note Section */}
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Please note</Text>
+                    
+                    <View style={styles.notesContainer}>
+                      {/* Note 1 */}
+                      <View style={styles.noteItem}>
+                        <View style={styles.noteIconContainer}>
+                          <Ionicons name="information-circle" size={Math.max(16, Math.min(20, screenWidth * 0.045))} color="#666" />
+                        </View>
+                        <Text style={styles.noteText}>
+                          Provide a ladder, if required
+                        </Text>
+                      </View>
+
+                      {/* Note 2 */}
+                      <View style={styles.noteItem}>
+                        <View style={styles.noteIconContainer}>
+                          <Ionicons name="information-circle" size={Math.max(16, Math.min(20, screenWidth * 0.045))} color="#666" />
+                        </View>
+                        <Text style={styles.noteText}>
+                          If spare parts are needed, the electrician will source them from the local market
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* FAQ Section */}
+                  <View style={styles.faqSection}>
+                    <Text style={styles.faqTitle}>Frequently asked questions</Text>
+                    
+                    {[
+                      {
+                        question: 'Does the cost include spare parts?',
+                        answer: 'No, the amount you pay at booking is a visitation fee which will be adjusted in your final installation quote.'
+                      },
+                      {
+                        question: 'What if any issue occurs during installation?',
+                        answer: 'Our professionals are trained to handle any issues during installation. If something unexpected occurs, they will inform you immediately and provide solutions.'
+                      },
+                      {
+                        question: 'What if anything gets damaged?',
+                        answer: 'We take full responsibility for any damage caused during our service. All damages will be covered and repaired at no additional cost to you.'
+                      },
+                      {
+                        question: 'Are spare parts covered under warranty?',
+                        answer: 'Yes, all spare parts installed during the service are covered under our 30-day warranty for any manufacturing defects or installation issues.'
+                      },
+                      {
+                        question: 'Will the electrician buy installation material (wire, nails, etc.)?',
+                        answer: 'The electrician will assess the required materials during inspection and can purchase them from local markets. Material costs will be added to your final bill.'
+                      }
+                    ].map((faq, index) => (
+                      <View key={index} style={styles.faqItem}>
+                        <TouchableOpacity 
+                          style={styles.faqQuestion}
+                          onPress={() => toggleFaq(index)}
+                        >
+                          <Text style={styles.faqQuestionText}>{faq.question}</Text>
+                          <Ionicons 
+                            name={expandedFaqIndex === index ? "chevron-up" : "chevron-down"} 
+                            size={20} 
+                            color="#666" 
+                          />
+                        </TouchableOpacity>
+                        {expandedFaqIndex === index && (
+                          <Text style={styles.faqAnswer}>
+                            {faq.answer}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Share Section */}
+                  <View style={styles.shareSection}>
+                    <Text style={styles.shareTitle}>Share this service with your loved ones</Text>
+                    <TouchableOpacity style={styles.shareButton}>
+                      <Text style={styles.shareButtonText}>Share</Text>
+                      <Ionicons name="share-social-outline" size={18} color="#8B5CF6" style={styles.shareIcon} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Rating Section */}
+                  <View style={styles.ratingSection}>
+                    <View style={styles.ratingHeader}>
+                      <Ionicons name="star" size={24} color="#000" />
+                      <Text style={styles.ratingScore}>4.84</Text>
+                    </View>
+                    <Text style={styles.ratingReviews}>20K reviews</Text>
+
+                    {/* Rating Bars */}
+                    <View style={styles.ratingBars}>
+                      {/* 5 Stars */}
+                      <View style={styles.ratingBar}>
+                        <View style={styles.ratingBarLeft}>
+                          <Ionicons name="star" size={14} color="#000" />
+                          <Text style={styles.ratingBarLabel}>5</Text>
+                        </View>
+                        <View style={styles.ratingBarMiddle}>
+                          <View style={[styles.ratingBarFill, { width: '95%' }]} />
+                        </View>
+                        <Text style={styles.ratingBarCount}>19K</Text>
+                      </View>
+
+                      {/* 4 Stars */}
+                      <View style={styles.ratingBar}>
+                        <View style={styles.ratingBarLeft}>
+                          <Ionicons name="star" size={14} color="#000" />
+                          <Text style={styles.ratingBarLabel}>4</Text>
+                        </View>
+                        <View style={styles.ratingBarMiddle}>
+                          <View style={[styles.ratingBarFill, { width: '2%' }]} />
+                        </View>
+                        <Text style={styles.ratingBarCount}>440</Text>
+                      </View>
+
+                      {/* 3 Stars */}
+                      <View style={styles.ratingBar}>
+                        <View style={styles.ratingBarLeft}>
+                          <Ionicons name="star" size={14} color="#000" />
+                          <Text style={styles.ratingBarLabel}>3</Text>
+                        </View>
+                        <View style={styles.ratingBarMiddle}>
+                          <View style={[styles.ratingBarFill, { width: '1%' }]} />
+                        </View>
+                        <Text style={styles.ratingBarCount}>167</Text>
+                      </View>
+
+                      {/* 2 Stars */}
+                      <View style={styles.ratingBar}>
+                        <View style={styles.ratingBarLeft}>
+                          <Ionicons name="star" size={14} color="#000" />
+                          <Text style={styles.ratingBarLabel}>2</Text>
+                        </View>
+                        <View style={styles.ratingBarMiddle}>
+                          <View style={[styles.ratingBarFill, { width: '1%' }]} />
+                        </View>
+                        <Text style={styles.ratingBarCount}>113</Text>
+                      </View>
+
+                      {/* 1 Star */}
+                      <View style={styles.ratingBar}>
+                        <View style={styles.ratingBarLeft}>
+                          <Ionicons name="star" size={14} color="#000" />
+                          <Text style={styles.ratingBarLabel}>1</Text>
+                        </View>
+                        <View style={styles.ratingBarMiddle}>
+                          <View style={[styles.ratingBarFill, { width: '2%' }]} />
+                        </View>
+                        <Text style={styles.ratingBarCount}>392</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* All Reviews Section */}
+                  <View style={styles.allReviewsSection}>
+                    <View style={styles.allReviewsHeader}>
+                      <Text style={styles.allReviewsTitle}>All reviews</Text>
+                      <TouchableOpacity>
+                        <Text style={styles.filterButton}>Filter</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Filter Chips */}
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.filterChipsContainer}
+                    >
+                      <TouchableOpacity style={styles.filterChip}>
+                        <Text style={styles.filterChipText}>Most detailed</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.filterChip}>
+                        <Text style={styles.filterChipText}>In my area</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.filterChip}>
+                        <Text style={styles.filterChipText}>Frequent users</Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+
+                    {/* Review Cards */}
+                    <View style={styles.reviewsContainer}>
+                      {/* Review 1 */}
+                      <View style={styles.reviewCard}>
+                        <View style={styles.reviewHeader}>
+                          <Text style={styles.reviewerName}>Jitendra Dabhi</Text>
+                          <View style={styles.reviewRatingBadge}>
+                            <Ionicons name="star" size={12} color="#FFF" />
+                            <Text style={styles.reviewRatingText}>5</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.reviewDate}>Oct 23, 2025 • For new 15+ Amp Switch Box</Text>
+                        <Text style={styles.reviewText}>
+                          It was good and having good experience.{'\n'}
+                          I am writing this review to commend the outstanding service provided by Aadil Mansuri, an electrician from Urban Company, who rec .... <Text style={styles.readMoreText}>read more</Text>
+                        </Text>
+                      </View>
+
+                      {/* Review 2 */}
+                      <View style={styles.reviewCard}>
+                        <View style={styles.reviewHeader}>
+                          <Text style={styles.reviewerName}>Suresh Thakur</Text>
+                          <View style={[styles.reviewRatingBadge, styles.reviewRatingBadgeOrange]}>
+                            <Ionicons name="star" size={12} color="#FFF" />
+                            <Text style={styles.reviewRatingText}>2</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.reviewDate}>Oct 23, 2025 • For new 15+ Amp Switch Box, At home consultation for major work</Text>
+                        <Text style={styles.reviewText}>
+                          First of all your app does not clearly explain everything, it is bit confusing, for changing a power socket of 15amp cost me Rs. 868, isn't too high, you have to provide a customer friendly service where both sa .... <Text style={styles.readMoreText}>read more</Text>
+                        </Text>
+                      </View>
+
+                      {/* Review 3 */}
+                      <View style={styles.reviewCard}>
+                        <View style={styles.reviewHeader}>
+                          <Text style={styles.reviewerName}>Vimal</Text>
+                          <View style={styles.reviewRatingBadge}>
+                            <Ionicons name="star" size={12} color="#FFF" />
+                            <Text style={styles.reviewRatingText}>5</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.reviewDate}>Oct 25, 2025 • For new 15+ Amp Switch Box, CCTV Installation(WiFi)</Text>
+                        <Text style={styles.reviewText}>
+                          Very good . Polite and knowledgeable. Highly recommended
+                        </Text>
+                      </View>
+
+                      {/* Review 4 */}
+                      <View style={styles.reviewCard}>
+                        <View style={styles.reviewHeader}>
+                          <Text style={styles.reviewerName}>Virendra Shah</Text>
+                          <View style={styles.reviewRatingBadge}>
+                            <Ionicons name="star" size={12} color="#FFF" />
+                            <Text style={styles.reviewRatingText}>5</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.reviewDate}>Oct 22, 2025 • For new 15+ Amp Switch Box, Internal Wiring (upto 6m), Wiring with casing (upto 5m), Door Bell Installation, One Switchboard (Install), Bulb Holder</Text>
+                        <Text style={styles.reviewText} numberOfLines={3}>
+                          Excellent service by the technician. Very professional and courteous. Would highly recommend.
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Bottom Padding */}
+                  <View style={styles.modalBottomPadding} />
+                </>
+              ) : (
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalServiceName}>Loading service details...</Text>
+                </View>
+              )}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
     </View>
   );
@@ -977,6 +1396,663 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
         isLargeTabletScreen ? 80 : 40, 
         screenWidth
       ),
+    },
+    // Modal Styles - Responsive Design
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+      alignItems: 'stretch',
+    },
+    modalContainer: {
+      backgroundColor: '#FFFFFF',
+      borderTopLeftRadius: getResponsiveBorderRadius(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 24 : 
+        isLargeTabletScreen ? 28 : 20, 
+        screenWidth
+      ),
+      borderTopRightRadius: getResponsiveBorderRadius(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 24 : 
+        isLargeTabletScreen ? 28 : 20, 
+        screenWidth
+      ),
+      height: screenHeight * (isSmallScreen ? 0.85 : isTabletScreen ? 0.80 : 0.82),
+      maxHeight: screenHeight * (isSmallScreen ? 0.85 : isTabletScreen ? 0.80 : 0.82),
+      paddingTop: getResponsivePadding(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 16 : 
+        isLargeTabletScreen ? 20 : 14, 
+        screenWidth
+      ),
+      width: '100%',
+      elevation: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+    },
+    modalCloseButton: {
+      position: 'absolute',
+      top: getResponsiveSpacing(
+        isSmallScreen ? 40 : 
+        isTabletScreen ? 50 : 
+        isLargeTabletScreen ? 60 : 45, 
+        screenWidth
+      ),
+      right: getResponsiveSpacing(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      zIndex: 1000,
+    },
+    modalCloseButtonCircle: {
+      width: getResponsiveWidth(
+        isSmallScreen ? 36 : 
+        isTabletScreen ? 44 : 
+        isLargeTabletScreen ? 52 : 40, 
+        screenWidth
+      ),
+      height: getResponsiveWidth(
+        isSmallScreen ? 36 : 
+        isTabletScreen ? 44 : 
+        isLargeTabletScreen ? 52 : 40, 
+        screenWidth
+      ),
+      borderRadius: getResponsiveBorderRadius(
+        isSmallScreen ? 18 : 
+        isTabletScreen ? 22 : 
+        isLargeTabletScreen ? 26 : 20, 
+        screenWidth
+      ),
+      backgroundColor: '#FFFFFF',
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 5,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    modalScrollView: {
+      flex: 1,
+      backgroundColor: '#FFFFFF',
+    },
+    modalScrollContent: {
+      flexGrow: 1,
+      paddingBottom: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 16 : 
+        isLargeTabletScreen ? 20 : 14, 
+        screenWidth
+      ),
+    },
+    modalHeader: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      paddingTop: getResponsivePadding(
+        isSmallScreen ? 6 : 
+        isTabletScreen ? 8 : 
+        isLargeTabletScreen ? 10 : 8, 
+        screenWidth
+      ),
+      paddingBottom: getResponsivePadding(
+        isSmallScreen ? 2 : 
+        isTabletScreen ? 4 : 
+        isLargeTabletScreen ? 6 : 2, 
+        screenWidth
+      ),
+    },
+    modalHeaderTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+    },
+    modalHeaderLeft: {
+      flex: 1,
+      paddingRight: getResponsiveSpacing(12, screenWidth),
+    },
+    modalServiceName: {
+      fontSize: getResponsiveFontSize(20, screenWidth),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(4, screenWidth),
+      lineHeight: getResponsiveFontSize(26, screenWidth),
+    },
+    modalRatingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: getResponsiveSpacing(4, screenWidth),
+    },
+    modalRatingText: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      fontWeight: '500',
+      color: '#000',
+      marginLeft: getResponsiveSpacing(3, screenWidth),
+    },
+    modalReviewsText: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      color: '#666',
+      marginLeft: getResponsiveSpacing(3, screenWidth),
+    },
+    modalPriceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(4, screenWidth),
+    },
+    modalPriceText: {
+      fontSize: getResponsiveFontSize(15, screenWidth),
+      fontWeight: '700',
+      color: '#000',
+    },
+    modalDurationText: {
+      fontSize: getResponsiveFontSize(15, screenWidth),
+      color: '#666',
+    },
+    modalAddButton: {
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1.5,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveBorderRadius(6, screenWidth),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 24 : 
+        isLargeTabletScreen ? 28 : 20, 
+        screenWidth
+      ),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 5 : 
+        isTabletScreen ? 7 : 
+        isLargeTabletScreen ? 9 : 6, 
+        screenWidth
+      ),
+      alignSelf: 'flex-start',
+    },
+    modalAddButtonText: {
+      fontSize: getResponsiveFontSize(13, screenWidth),
+      color: '#8B5CF6',
+      fontWeight: '600',
+    },
+    modalDivider: {
+      height: 1,
+      backgroundColor: '#E0E0E0',
+      marginVertical: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 14 : 
+        isLargeTabletScreen ? 16 : 12, 
+        screenWidth
+      ),
+    },
+    modalSection: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      marginBottom: getResponsiveMargin(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+    },
+    modalSectionTitle: {
+      fontSize: getResponsiveFontSize(22, screenWidth),
+      fontWeight: '700',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 14 : 
+        isLargeTabletScreen ? 16 : 12, 
+        screenWidth
+      ),
+    },
+    processStepsContainer: {
+      // No gap needed - we'll handle spacing with paddingBottom
+    },
+    processStep: {
+      flexDirection: 'row',
+    },
+    processStepNumberContainer: {
+      alignItems: 'flex-start',
+      marginRight: getResponsiveSpacing(
+        isSmallScreen ? 20 : 
+        isTabletScreen ? 28 : 
+        isLargeTabletScreen ? 32 : 24, 
+        screenWidth
+      ),
+      position: 'relative',
+    },
+    processStepLine: {
+      position: 'absolute',
+      left: getResponsiveWidth(
+        isSmallScreen ? 13 : 
+        isTabletScreen ? 16 : 
+        isLargeTabletScreen ? 18 : 15, 
+        screenWidth
+      ),
+      top: getResponsiveSpacing(
+        isSmallScreen ? 28 : 
+        isTabletScreen ? 34 : 
+        isLargeTabletScreen ? 38 : 32, 
+        screenWidth
+      ),
+      bottom: 0,
+      width: 2,
+      backgroundColor: '#ece7e7ff',
+    },
+    processStepNumber: {
+      fontSize: getResponsiveFontSize(16, screenWidth),
+      fontWeight: '500',
+      color: '#000',
+      backgroundColor: '#ece7e7ff',
+      width: getResponsiveWidth(
+        isSmallScreen ? 28 : 
+        isTabletScreen ? 34 : 
+        isLargeTabletScreen ? 38 : 32, 
+        screenWidth
+      ),
+      height: getResponsiveWidth(
+        isSmallScreen ? 28 : 
+        isTabletScreen ? 34 : 
+        isLargeTabletScreen ? 38 : 32, 
+        screenWidth
+      ),
+      borderRadius: getResponsiveBorderRadius(
+        isSmallScreen ? 14 : 
+        isTabletScreen ? 17 : 
+        isLargeTabletScreen ? 19 : 16, 
+        screenWidth
+      ),
+      textAlign: 'center',
+      textAlignVertical: 'center',
+      lineHeight: getResponsiveWidth(
+        isSmallScreen ? 28 : 
+        isTabletScreen ? 34 : 
+        isLargeTabletScreen ? 38 : 32, 
+        screenWidth
+      ),
+    },
+    processStepContent: {
+      flex: 1,
+    },
+    processStepTitle: {
+      fontSize: getResponsiveFontSize(17, screenWidth),
+      fontWeight: '600',
+      color: '#000',
+      lineHeight: getResponsiveFontSize(22, screenWidth),
+      marginBottom: getResponsiveSpacing(2, screenWidth),
+    },
+    processStepDescription: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#666',
+      lineHeight: getResponsiveFontSize(19, screenWidth),
+      marginBottom: getResponsiveSpacing(0, screenWidth),
+    },
+    notesContainer: {
+      gap: getResponsiveSpacing(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 14 : 
+        isLargeTabletScreen ? 16 : 12, 
+        screenWidth
+      ),
+    },
+    noteItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    noteIconContainer: {
+      width: getResponsiveWidth(
+        isSmallScreen ? 24 : 
+        isTabletScreen ? 28 : 
+        isLargeTabletScreen ? 32 : 26, 
+        screenWidth
+      ),
+      height: getResponsiveWidth(
+        isSmallScreen ? 24 : 
+        isTabletScreen ? 28 : 
+        isLargeTabletScreen ? 32 : 26, 
+        screenWidth
+      ),
+      borderRadius: getResponsiveBorderRadius(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 14 : 
+        isLargeTabletScreen ? 16 : 13, 
+        screenWidth
+      ),
+      backgroundColor: '#E8E8E8',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: getResponsiveSpacing(10, screenWidth),
+      marginTop: getResponsiveSpacing(0, screenWidth),
+    },
+    noteText: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#333',
+      lineHeight: getResponsiveFontSize(20, screenWidth),
+      flex: 1,
+    },
+    modalBottomPadding: {
+      height: getResponsiveSpacing(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+    },
+    // FAQ Section Styles
+    faqSection: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      marginBottom: getResponsiveMargin(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+    },
+    faqTitle: {
+      fontSize: getResponsiveFontSize(18, screenWidth),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(16, screenWidth),
+    },
+    faqItem: {
+      borderBottomWidth: 1,
+      borderBottomColor: '#E0E0E0',
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 14 : 
+        isLargeTabletScreen ? 16 : 12, 
+        screenWidth
+      ),
+    },
+    faqQuestion: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    faqQuestionText: {
+      fontSize: getResponsiveFontSize(15, screenWidth),
+      fontWeight: '500',
+      color: '#000',
+      flex: 1,
+      paddingRight: getResponsiveSpacing(12, screenWidth),
+      lineHeight: getResponsiveFontSize(20, screenWidth),
+    },
+    faqAnswer: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#666',
+      lineHeight: getResponsiveFontSize(20, screenWidth),
+      marginTop: getResponsiveSpacing(8, screenWidth),
+    },
+    // Share Section Styles
+    shareSection: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      marginBottom: getResponsiveMargin(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      alignItems: 'center',
+    },
+    shareTitle: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: getResponsiveSpacing(12, screenWidth),
+    },
+    shareButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 10 : 
+        isTabletScreen ? 12 : 
+        isLargeTabletScreen ? 14 : 10, 
+        screenWidth
+      ),
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 20 : 
+        isTabletScreen ? 28 : 
+        isLargeTabletScreen ? 32 : 24, 
+        screenWidth
+      ),
+      borderWidth: 1.5,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveBorderRadius(8, screenWidth),
+      backgroundColor: '#FFFFFF',
+      minWidth: getResponsiveWidth(
+        isSmallScreen ? 120 : 
+        isTabletScreen ? 140 : 
+        isLargeTabletScreen ? 160 : 130, 
+        screenWidth
+      ),
+    },
+    shareButtonText: {
+      fontSize: getResponsiveFontSize(15, screenWidth),
+      color: '#8B5CF6',
+      fontWeight: '600',
+      marginRight: getResponsiveSpacing(8, screenWidth),
+    },
+    shareIcon: {
+      marginTop: getResponsiveSpacing(2, screenWidth),
+    },
+    // Rating Section Styles
+    ratingSection: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      marginBottom: getResponsiveMargin(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+    },
+    ratingHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: getResponsiveSpacing(4, screenWidth),
+    },
+    ratingScore: {
+      fontSize: getResponsiveFontSize(32, screenWidth),
+      fontWeight: '700',
+      color: '#000',
+      marginLeft: getResponsiveSpacing(8, screenWidth),
+    },
+    ratingReviews: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#666',
+      marginBottom: getResponsiveSpacing(16, screenWidth),
+    },
+    ratingBars: {
+      gap: getResponsiveSpacing(8, screenWidth),
+    },
+    ratingBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(8, screenWidth),
+    },
+    ratingBarLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: getResponsiveWidth(
+        isSmallScreen ? 32 : 
+        isTabletScreen ? 38 : 
+        isLargeTabletScreen ? 42 : 36, 
+        screenWidth
+      ),
+    },
+    ratingBarLabel: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#000',
+      marginLeft: getResponsiveSpacing(4, screenWidth),
+      fontWeight: '500',
+    },
+    ratingBarMiddle: {
+      flex: 1,
+      height: getResponsiveSpacing(6, screenWidth),
+      backgroundColor: '#E0E0E0',
+      borderRadius: getResponsiveBorderRadius(3, screenWidth),
+      overflow: 'hidden',
+    },
+    ratingBarFill: {
+      height: '100%',
+      backgroundColor: '#000',
+      borderRadius: getResponsiveBorderRadius(3, screenWidth),
+    },
+    ratingBarCount: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#666',
+      width: getResponsiveWidth(
+        isSmallScreen ? 40 : 
+        isTabletScreen ? 48 : 
+        isLargeTabletScreen ? 52 : 44, 
+        screenWidth
+      ),
+      textAlign: 'right',
+    },
+    // All Reviews Section Styles
+    allReviewsSection: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      marginBottom: getResponsiveMargin(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+    },
+    allReviewsHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: getResponsiveSpacing(16, screenWidth),
+    },
+    allReviewsTitle: {
+      fontSize: getResponsiveFontSize(20, screenWidth),
+      fontWeight: '700',
+      color: '#000',
+    },
+    filterButton: {
+      fontSize: getResponsiveFontSize(15, screenWidth),
+      color: '#8B5CF6',
+      fontWeight: '600',
+    },
+    filterChipsContainer: {
+      marginBottom: getResponsiveSpacing(16, screenWidth),
+    },
+    filterChip: {
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 14 : 
+        isTabletScreen ? 18 : 
+        isLargeTabletScreen ? 20 : 16, 
+        screenWidth
+      ),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 8 : 
+        isTabletScreen ? 10 : 
+        isLargeTabletScreen ? 12 : 9, 
+        screenWidth
+      ),
+      borderWidth: 1,
+      borderColor: '#D0D0D0',
+      borderRadius: getResponsiveBorderRadius(8, screenWidth),
+      marginRight: getResponsiveSpacing(10, screenWidth),
+      backgroundColor: '#FFFFFF',
+    },
+    filterChipText: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      color: '#666',
+      fontWeight: '500',
+    },
+    reviewsContainer: {
+      gap: getResponsiveSpacing(16, screenWidth),
+    },
+    reviewCard: {
+      paddingBottom: getResponsivePadding(16, screenWidth),
+      borderBottomWidth: 1,
+      borderBottomColor: '#E0E0E0',
+    },
+    reviewHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: getResponsiveSpacing(6, screenWidth),
+    },
+    reviewerName: {
+      fontSize: getResponsiveFontSize(16, screenWidth),
+      fontWeight: '600',
+      color: '#000',
+      flex: 1,
+    },
+    reviewRatingBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#0A9F50',
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 6 : 
+        isTabletScreen ? 8 : 
+        isLargeTabletScreen ? 10 : 7, 
+        screenWidth
+      ),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 3 : 
+        isTabletScreen ? 4 : 
+        isLargeTabletScreen ? 5 : 4, 
+        screenWidth
+      ),
+      borderRadius: getResponsiveBorderRadius(4, screenWidth),
+      gap: getResponsiveSpacing(3, screenWidth),
+    },
+    reviewRatingBadgeOrange: {
+      backgroundColor: '#FF6B35',
+    },
+    reviewRatingText: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      color: '#FFFFFF',
+      fontWeight: '600',
+    },
+    reviewDate: {
+      fontSize: getResponsiveFontSize(13, screenWidth),
+      color: '#666',
+      marginBottom: getResponsiveSpacing(8, screenWidth),
+      lineHeight: getResponsiveFontSize(18, screenWidth),
+    },
+    reviewText: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#333',
+      lineHeight: getResponsiveFontSize(20, screenWidth),
+    },
+    readMoreText: {
+      color: '#8B5CF6',
+      fontWeight: '600',
     },
   });
 };
