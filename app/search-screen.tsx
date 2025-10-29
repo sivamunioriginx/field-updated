@@ -1,10 +1,10 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,7 +33,10 @@ interface SearchResult {
   name: string;
   subcategory_id: string;
   image: string | null;
+  price?: number;
+  rating?: number;
   created_at: string;
+  type: 'service' | 'subcategory';
 }
 
 export default function SearchScreen() {
@@ -159,12 +162,18 @@ export default function SearchScreen() {
   };
 
   const handleSearchResultPress = (result: SearchResult) => {
-    router.push({
-      pathname: '/services-screen',
-      params: {
-        searchQuery: result.name,
-      }
-    });
+    // Only navigate for subcategories, do nothing for services
+    if (result.type === 'subcategory') {
+      // Navigate to services screen with subcategory ID
+      router.push({
+        pathname: '/services-screen',
+        params: {
+          subcategoryId: result.id.toString(),
+          subcategoryName: result.name
+        }
+      });
+    }
+    // If it's a service, do nothing
   };
 
   const clearSearch = () => {
@@ -216,39 +225,120 @@ export default function SearchScreen() {
               </View>
             ) : searchResults.length > 0 ? (
               <View style={styles.searchResultsContainer}>
-                {searchResults.map((result) => (
-                  <TouchableOpacity
-                    key={result.id}
-                    style={styles.searchResultItem}
-                    onPress={() => handleSearchResultPress(result)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.searchResultImageContainer}>
-                      {result.image ? (
-                        <Image 
-                          source={{ uri: `${getBaseUrl().replace('/api', '')}${result.image}` }} 
-                          style={styles.searchResultImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={styles.searchResultPlaceholder}>
-                          <Ionicons name="construct" size={24} color="#999" />
+                {searchResults.map((result, index) => (
+                  <View key={`${result.type}-${result.id}`}>
+                    {result.type === 'service' ? (
+                      /* Service Card Design - New Design */
+                      <>
+                        <View style={styles.searchResultCard}>
+                          <View style={styles.searchResultCardContent}>
+                            {/* Left Section - Service Details */}
+                            <View style={styles.searchResultDetails}>
+                              <Text style={styles.searchResultName} numberOfLines={2}>
+                                {result.name}
+                              </Text>
+                              
+                              {/* Rating */}
+                              <View style={styles.searchRatingContainer}>
+                                <Ionicons name="star" size={14} color="#FFD700" />
+                                <Text style={styles.searchRatingText}>
+                                  {(result.rating && typeof result.rating === 'number' && result.rating > 0) 
+                                    ? result.rating.toFixed(2) 
+                                    : '4.85'}
+                                </Text>
+                                <Text style={styles.searchReviewsText}>(138K reviews)</Text>
+                              </View>
+                              
+                              {/* Price */}
+                              <Text style={styles.searchPriceText}>
+                                Starts at ₹{result.price || '299'}
+                              </Text>
+                              
+                              {/* Description */}
+                              <View style={styles.searchDescriptionContainer}>
+                                <Text style={styles.searchDescriptionText}>
+                                  Professional service with quality materials
+                                </Text>
+                              </View>
+                              
+                              {/* View Details Link */}
+                              <View style={styles.searchViewDetailsButton}>
+                                <Text style={styles.searchViewDetailsText}>View details</Text>
+                              </View>
+                            </View>
+                            
+                            {/* Right Section - Image and Actions */}
+                            <View style={styles.searchResultActions}>
+                              {/* Service Image */}
+                              <View style={styles.searchResultImageContainer}>
+                                {result.image ? (
+                                  <Image 
+                                    source={{ uri: `${getBaseUrl().replace('/api', '')}${result.image}` }} 
+                                    style={styles.searchResultImage}
+                                    contentFit="cover"
+                                  />
+                                ) : (
+                                  <View style={styles.searchResultPlaceholder}>
+                                    <Ionicons name="construct-outline" size={30} color="#8B5CF6" />
+                                  </View>
+                                )}
+                              </View>
+                              
+                              {/* Add Button */}
+                              <TouchableOpacity 
+                                style={styles.searchAddButton}
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  // Handle add service
+                                }}
+                              >
+                                <Text style={styles.searchAddButtonText}>Add</Text>
+                              </TouchableOpacity>
+                              
+                              {/* Options Text */}
+                              <Text style={styles.searchOptionsText}>2 options</Text>
+                            </View>
+                          </View>
                         </View>
-                      )}
-                    </View>
-                    <View style={styles.searchResultContent}>
-                      <Text style={styles.searchResultTitle}>
-                        {result.name.split(new RegExp(`(${searchInput})`, 'gi')).map((part, index) => 
-                          part.toLowerCase() === searchInput.toLowerCase() ? (
-                            <Text key={index} style={styles.searchResultHighlight}>{part}</Text>
+                        
+                        {/* Separator Line */}
+                        {index < searchResults.length - 1 && <View style={styles.searchSeparator} />}
+                      </>
+                    ) : (
+                      /* Subcategory Simple List Design - Old Design */
+                      <TouchableOpacity
+                        style={styles.searchResultItem}
+                        onPress={() => handleSearchResultPress(result)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.searchResultItemImageContainer}>
+                          {result.image ? (
+                            <Image 
+                              source={{ uri: `${getBaseUrl().replace('/api', '')}${result.image}` }} 
+                              style={styles.searchResultImage}
+                              contentFit="cover"
+                            />
                           ) : (
-                            part
-                          )
-                        )}
-                      </Text>
-                      <Text style={styles.searchResultSubtitle}>Service</Text>
-                    </View>
-                  </TouchableOpacity>
+                            <View style={styles.searchResultPlaceholder}>
+                              <Ionicons name="construct" size={24} color="#999" />
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.searchResultContent}>
+                          <Text style={styles.searchResultTitle}>
+                            {result.name.split(new RegExp(`(${searchInput})`, 'gi')).map((part, idx) => 
+                              part.toLowerCase() === searchInput.toLowerCase() ? (
+                                <Text key={idx} style={styles.searchResultHighlight}>{part}</Text>
+                              ) : (
+                                part
+                              )
+                            )}
+                          </Text>
+                          <Text style={styles.searchResultSubtitle}>Category</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 ))}
               </View>
             ) : (
@@ -471,6 +561,7 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
     searchResultsContainer: {
       paddingHorizontal: getResponsiveValue(16),
     },
+    // Old Simple List Design for Subcategories
     searchResultItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -478,23 +569,12 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       borderBottomWidth: 1,
       borderBottomColor: '#F5F5F5',
     },
-    searchResultImageContainer: {
+    searchResultItemImageContainer: {
       width: getResponsiveValue(60),
       height: getResponsiveValue(60),
       borderRadius: getResponsiveValue(8),
       marginRight: getResponsiveValue(12),
       overflow: 'hidden',
-    },
-    searchResultImage: {
-      width: '100%',
-      height: '100%',
-    },
-    searchResultPlaceholder: {
-      width: '100%',
-      height: '100%',
-      backgroundColor: '#F8F9FA',
-      justifyContent: 'center',
-      alignItems: 'center',
     },
     searchResultContent: {
       flex: 1,
@@ -513,6 +593,25 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       fontSize: getResponsiveFontSize(14),
       color: '#666',
     },
+    // New Card Design for Services
+    searchResultImageContainer: {
+      width: getResponsiveValue(60),
+      height: getResponsiveValue(60),
+      borderRadius: getResponsiveValue(8),
+      overflow: 'hidden',
+      marginBottom: getResponsiveValue(8),
+    },
+    searchResultImage: {
+      width: '100%',
+      height: '100%',
+    },
+    searchResultPlaceholder: {
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#F5F5F5',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     noResultsContainer: {
       alignItems: 'center',
       paddingVertical: getResponsiveValue(40),
@@ -529,5 +628,94 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       color: '#999',
       textAlign: 'center',
     },
+    // New Card-based Search Result Styles
+    searchResultCard: {
+      backgroundColor: '#FFFFFF',
+      paddingVertical: getResponsiveValue(16),
+      paddingHorizontal: getResponsiveValue(16),
+    },
+    searchResultCardContent: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    searchResultDetails: {
+      flex: 1,
+      marginRight: getResponsiveValue(16),
+    },
+    searchResultName: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#000',
+      lineHeight: getResponsiveFontSize(20),
+      marginBottom: getResponsiveValue(6),
+    },
+    searchRatingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: getResponsiveValue(4),
+    },
+    searchRatingText: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '500',
+      color: '#000',
+      marginLeft: getResponsiveValue(4),
+    },
+    searchReviewsText: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+      marginLeft: getResponsiveValue(4),
+    },
+    searchPriceText: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveValue(8),
+    },
+    searchDescriptionContainer: {
+      marginBottom: getResponsiveValue(8),
+    },
+    searchDescriptionText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#666',
+      lineHeight: getResponsiveFontSize(18),
+    },
+    searchViewDetailsButton: {
+      alignSelf: 'flex-start',
+    },
+    searchViewDetailsText: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#8B5CF6',
+      fontWeight: '500',
+    },
+    searchResultActions: {
+      alignItems: 'center',
+      width: getResponsiveValue(80),
+    },
+    searchAddButton: {
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveValue(6),
+      paddingHorizontal: getResponsiveValue(8),
+      paddingVertical: getResponsiveValue(4),
+      marginBottom: getResponsiveValue(4),
+      marginTop: getResponsiveValue(-20),
+    },
+    searchAddButtonText: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#8B5CF6',
+      fontWeight: '600',
+    },
+    searchOptionsText: {
+      fontSize: getResponsiveFontSize(11),
+      color: '#999',
+      textAlign: 'center',
+    },
+    searchSeparator: {
+      height: 1,
+      backgroundColor: '#e6ddddff',
+      marginHorizontal: getResponsiveValue(16),
+    },
   });
 };
+

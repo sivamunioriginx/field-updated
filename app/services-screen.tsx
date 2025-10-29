@@ -22,6 +22,8 @@ interface Service {
   name: string;
   subcategory_id: string;
   image: string;
+  price?: number;
+  rating?: number;
   created_at: string;
 }
 
@@ -393,13 +395,17 @@ export default function ServicesScreen() {
                       {/* Rating */}
                       <View style={styles.ratingContainer}>
                         <Ionicons name="star" size={14} color="#FFD700" />
-                        <Text style={styles.ratingText}>4.85</Text>
+                        <Text style={styles.ratingText}>
+                          {(service.rating && typeof service.rating === 'number' && service.rating > 0) 
+                            ? service.rating.toFixed(2) 
+                            : '4.85'}
+                        </Text>
                         <Text style={styles.reviewsText}>(138K reviews)</Text>
                       </View>
                       
                       {/* Price */}
                       <Text style={styles.priceText}>
-                        Starts at ₹299
+                        Starts at ₹{service.price || '299'}
                       </Text>
                       
                       {/* Description (optional) */}

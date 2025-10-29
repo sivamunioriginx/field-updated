@@ -1587,6 +1587,8 @@ app.get('/api/top-services', async (req, res) => {
         name: service.name,
         subcategory_id: service.subcategory_id,
         image: service.image ? `/uploads/services/${service.image}` : null,
+        price: service.price,
+        rating: service.rating,
         created_at: service.created_at
       }));
     } else {
@@ -1630,6 +1632,7 @@ app.get('/api/top-deals', async (req, res) => {
         d.discount,
         d.original_price,
         d.deal_price,
+        s.rating,
         d.created_at,
         s.name AS service_name,
         sc.name AS subcategory_name,
@@ -1651,6 +1654,8 @@ app.get('/api/top-deals', async (req, res) => {
         name: deal.name,
         subcategory_id: deal.subcategory_id,
         image: deal.image ? `/uploads/services/${deal.image}` : null,
+        price: deal.deal_price,
+        rating: deal.rating,
         created_at: deal.created_at
       }));
     } else {
@@ -1682,7 +1687,7 @@ app.get('/api/top-deals', async (req, res) => {
   }
 });
 
-// Search services endpoint (must come before /api/services/:subcategoryId)
+// Search services and subcategories endpoint (must come before /api/services/:subcategoryId)
 app.get('/api/services/search', async (req, res) => {
   try {
     const { q } = req.query;
@@ -1695,22 +1700,48 @@ app.get('/api/services/search', async (req, res) => {
       });
     }
 
+    // Search in tbl_services
     const [services] = await pool.execute(
-      'SELECT id, name, subcategory_id, image, created_at FROM tbl_services WHERE name LIKE ? ORDER BY id DESC LIMIT 20',
+      'SELECT id, name, subcategory_id, image, price, rating, created_at FROM tbl_services WHERE name LIKE ? ORDER BY id DESC LIMIT 20',
       [`%${q}%`]
     );
 
-    console.log('Found services:', services.length, services);
+    // Search in tbl_subcategory
+    const [subcategories] = await pool.execute(
+      'SELECT id, name, category_id, image, created_at FROM tbl_subcategory WHERE name LIKE ? ORDER BY id DESC LIMIT 20',
+      [`%${q}%`]
+    );
 
-    // Add full image URLs
+    console.log('Found services:', services.length);
+    console.log('Found subcategories:', subcategories.length);
+
+    // Combine and format results
     const servicesWithImages = services.map(service => ({
-      ...service,
-      image: service.image ? `/uploads/services/${service.image}` : null
+      id: service.id,
+      name: service.name,
+      subcategory_id: service.subcategory_id,
+      image: service.image ? `/uploads/services/${service.image}` : null,
+      price: service.price,
+      rating: service.rating,
+      created_at: service.created_at,
+      type: 'service'
     }));
+
+    const subcategoriesWithImages = subcategories.map(subcategory => ({
+      id: subcategory.id,
+      name: subcategory.name,
+      subcategory_id: subcategory.id, // For subcategories, use their own ID
+      image: subcategory.image ? `/uploads/subcategorys/${subcategory.image}` : null,
+      created_at: subcategory.created_at,
+      type: 'subcategory'
+    }));
+
+    // Combine results (subcategories first, then services)
+    const allResults = [...subcategoriesWithImages, ...servicesWithImages];
 
     res.json({
       success: true,
-      data: servicesWithImages
+      data: allResults
     });
   } catch (error) {
     console.error('Search error:', error);
@@ -1753,7 +1784,7 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
     // Get all services for these subcategories
     const placeholders = subcategoryIds.map(() => '?').join(',');
     const [services] = await pool.execute(
-      `SELECT id, name, subcategory_id, image, created_at FROM tbl_services WHERE subcategory_id IN (${placeholders}) ORDER BY created_at DESC`,
+      `SELECT id, name, subcategory_id, image, price, rating, created_at FROM tbl_services WHERE subcategory_id IN (${placeholders}) ORDER BY created_at DESC`,
       subcategoryIds
     );
 
@@ -1790,7 +1821,7 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
     }
 
     const [services] = await pool.execute(
-      'SELECT id, name, subcategory_id, image, created_at FROM tbl_services WHERE subcategory_id = ? ORDER BY created_at DESC',
+      'SELECT id, name, subcategory_id, image, price, rating, created_at FROM tbl_services WHERE subcategory_id = ? ORDER BY created_at DESC',
       [subcategoryId]
     );
 
