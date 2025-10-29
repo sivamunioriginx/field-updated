@@ -29,6 +29,23 @@ interface CategoryWithSubcategories {
   subcategories: Subcategory[];
 }
 
+interface TopService {
+  id: number;
+  name: string;
+  image: string;
+  rating: number;
+  price: string;
+}
+
+interface TopDeal {
+  id: number;
+  name: string;
+  image: string;
+  discount: string;
+  originalPrice: string;
+  dealPrice: string;
+}
+
 export default function HomeScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
@@ -45,6 +62,12 @@ export default function HomeScreen() {
   // State for categories with subcategories
   const [categoriesWithSubcategories, setCategoriesWithSubcategories] = useState<CategoryWithSubcategories[]>([]);
   const [categoryImageErrors, setCategoryImageErrors] = useState<Set<number>>(new Set());
+  
+  // State for top services and top deals
+  const [topServices, setTopServices] = useState<TopService[]>([]);
+  const [topDeals, setTopDeals] = useState<TopDeal[]>([]);
+  const [serviceImageErrors, setServiceImageErrors] = useState<Set<number>>(new Set());
+  const [dealImageErrors, setDealImageErrors] = useState<Set<number>>(new Set());
 
   // Fetch categories with subcategories using the new API
   useEffect(() => {
@@ -62,6 +85,42 @@ export default function HomeScreen() {
       }
     };
     fetchCategoriesWithSubcategories();
+  }, []);
+
+  // Fetch top services
+  useEffect(() => {
+    const fetchTopServices = async () => {
+      try {
+        const response = await fetch(`${getBaseUrl()}/top-services`);
+        const data = await response.json();
+        if (data.success && Array.isArray(data.data)) {
+          setTopServices(data.data);
+        } else {
+          console.log('No top services data or unsuccessful response:', data);
+        }
+      } catch (error) {
+        console.error('Error fetching top services:', error);
+      }
+    };
+    fetchTopServices();
+  }, []);
+
+  // Fetch top deals
+  useEffect(() => {
+    const fetchTopDeals = async () => {
+      try {
+        const response = await fetch(`${getBaseUrl()}/top-deals`);
+        const data = await response.json();
+        if (data.success && Array.isArray(data.data)) {
+          setTopDeals(data.data);
+        } else {
+          console.log('No top deals data or unsuccessful response:', data);
+        }
+      } catch (error) {
+        console.error('Error fetching top deals:', error);
+      }
+    };
+    fetchTopDeals();
   }, []);
 
   // Typing animation for search placeholder
@@ -235,9 +294,26 @@ export default function HomeScreen() {
           {/* Categories with Subcategories */}
           {categoriesWithSubcategories
             .filter(category => category.subcategories && category.subcategories.length > 0)
-            .map((category) => (
-            <View key={category.id} style={styles.categorySection}>
-              <Text style={styles.categoryTitle}>{category.title}</Text>
+            .map((category, index) => (
+            <View key={category.id} style={[styles.categorySection, index > 0 && styles.categorySectionSpacing]}>
+              <View style={styles.categoryHeader}>
+                <Text style={styles.categoryTitle}>{category.title}</Text>
+                <TouchableOpacity 
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Navigate to services screen with category ID
+                    router.push({
+                      pathname: '/services-screen',
+                      params: {
+                        categoryId: category.id.toString(),
+                        categoryName: category.title
+                      }
+                    });
+                  }}
+                >
+                  <Text style={styles.showAllText}>Show All</Text>
+                </TouchableOpacity>
+              </View>
             <ScrollView 
               horizontal 
               showsHorizontalScrollIndicator={false}
@@ -286,6 +362,156 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
           ))}
+
+          {/* Top Services Near By You */}
+          {topServices.length > 0 && (
+            <View style={styles.topServicesSection}>
+              <View style={styles.categoryHeader}>
+                <Text style={styles.categoryTitle}>Top Services Near By You</Text>
+                <TouchableOpacity 
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Navigate to services screen with topServices flag
+                    router.push({
+                      pathname: '/services-screen',
+                      params: {
+                        showTopServices: 'true',
+                        screenTitle: 'Top Services Near By You'
+                      }
+                    });
+                  }}
+                >
+                  <Text style={styles.showAllText}>Show All</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                removeClippedSubviews={true}
+                decelerationRate="normal"
+                style={styles.servicesScroll}
+                contentContainerStyle={styles.servicesScrollContent}
+              >
+                {topServices.map((service) => (
+                  <TouchableOpacity 
+                    key={service.id} 
+                    style={styles.serviceCard}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.serviceImageContainer}>
+                      {service.image && !serviceImageErrors.has(service.id) ? (
+                        <Image
+                          source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/services/${service.image}` }}
+                          style={styles.serviceImage}
+                          contentFit="cover"
+                          onError={(error) => {
+                            console.log('Service image load error:', service.name, error);
+                            setServiceImageErrors(prev => new Set(prev).add(service.id));
+                          }}
+                          onLoad={() => {
+                            console.log('Service image loaded:', service.name);
+                          }}
+                        />
+                      ) : (
+                        <View style={styles.serviceImagePlaceholder}>
+                          <Text style={styles.servicePlaceholderText}>
+                            {service.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.serviceDetails}>
+                      <Text style={styles.serviceTitle} numberOfLines={2}>
+                        {service.name}
+                      </Text>
+                      <View style={styles.serviceRatingRow}>
+                        <Ionicons name="star" size={14} color="#FFD700" />
+                        <Text style={styles.serviceRatingText}>{service.rating.toFixed(1)}</Text>
+                      </View>
+                      <Text style={styles.servicePriceText}>₹{service.price}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Top Deals */}
+          {topDeals.length > 0 && (
+            <View style={styles.topServicesSection}>
+              <View style={styles.categoryHeader}>
+                <Text style={styles.categoryTitle}>Top Deals</Text>
+                <TouchableOpacity 
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Navigate to services screen with topDeals flag
+                    router.push({
+                      pathname: '/services-screen',
+                      params: {
+                        showTopDeals: 'true',
+                        screenTitle: 'Top Deals'
+                      }
+                    });
+                  }}
+                >
+                  <Text style={styles.showAllText}>Show All</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                removeClippedSubviews={true}
+                decelerationRate="normal"
+                style={styles.dealsScroll}
+                contentContainerStyle={styles.dealsScrollContent}
+              >
+                {topDeals.map((deal) => (
+                  <TouchableOpacity 
+                    key={deal.id} 
+                    style={styles.dealCard}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.dealImageContainer}>
+                      {deal.image && !dealImageErrors.has(deal.id) ? (
+                        <Image
+                          source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/services/${deal.image}` }}
+                          style={styles.dealImage}
+                          contentFit="cover"
+                          onError={(error) => {
+                            console.log('Deal image load error:', deal.name, error);
+                            setDealImageErrors(prev => new Set(prev).add(deal.id));
+                          }}
+                          onLoad={() => {
+                            console.log('Deal image loaded:', deal.name);
+                          }}
+                        />
+                      ) : (
+                        <View style={styles.dealImagePlaceholder}>
+                          <Text style={styles.dealPlaceholderText}>
+                            {deal.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      {deal.discount && (
+                        <View style={styles.discountBadge}>
+                          <Text style={styles.discountText}>{deal.discount}% OFF</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.dealDetails}>
+                      <Text style={styles.dealTitle} numberOfLines={2}>
+                        {deal.name}
+                      </Text>
+                      <Text style={styles.dealPriceText}>₹{deal.dealPrice}</Text>
+                      <Text style={styles.originalPriceText}>₹{deal.originalPrice}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </ScrollView>
 
         {/* Bottom Navigation */}
@@ -529,16 +755,33 @@ export default function HomeScreen() {
       color: '#999',
     },
       categorySection: {
-        marginTop: getResponsiveSpacing(8),
+        marginTop: getResponsiveSpacing(1),
         marginBottom: getResponsiveSpacingWithNegative(-14),
       },
+    categorySectionSpacing: {
+        marginTop: getResponsiveSpacing(15),
+      },
+    topServicesSection: {
+        marginTop: getResponsiveSpacing(24),
+        marginBottom: getResponsiveSpacingWithNegative(-14),
+      },
+    categoryHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveSpacing(16),
+      marginBottom: getResponsiveSpacingWithNegative(7),
+      marginTop: getResponsiveSpacingWithNegative(7),
+    },
     categoryTitle: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
       color: '#000',
-      marginBottom: getResponsiveSpacingWithNegative(7),
-      marginTop: getResponsiveSpacingWithNegative(7),
-      paddingHorizontal: getResponsiveSpacing(16),
+    },
+    showAllText: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#00BFFF',
     },
     subcategoriesScroll: {
       paddingLeft: getResponsiveSpacing(16),
@@ -631,6 +874,161 @@ export default function HomeScreen() {
       color: '#00BFFF',
       marginTop: getResponsiveSpacing(4),
       fontWeight: '600',
+    },
+    // Top Services styles - New Design
+    servicesScroll: {
+      paddingLeft: getResponsiveSpacing(16),
+    },
+    servicesScrollContent: {
+      paddingRight: getResponsiveSpacing(16),
+    },
+    serviceCard: {
+      width: (screenWidth - getResponsiveSpacing(16) - getResponsiveSpacing(32)) / 2.5,
+      height: (screenWidth - getResponsiveSpacing(16) - getResponsiveSpacing(32)) / 2.5 * 1.5,
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(12),
+      marginRight: getResponsiveSpacing(16),
+      overflow: 'hidden',
+      // borderWidth: 1,
+      // borderColor: '#E8E8E8',
+      // elevation: 2,
+      // shadowColor: '#000',
+      // shadowOffset: { width: 0, height: 2 },
+      // shadowOpacity: 0.1,
+      shadowRadius: 4,
+    },
+    serviceImageContainer: {
+      width: '100%',
+      flex: 1,
+      backgroundColor: '#F5F5F5',
+    },
+    serviceImage: {
+      width: '100%',
+      height: '100%',
+    },
+    serviceImagePlaceholder: {
+      width: '100%',
+      height: '100%',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#F0F0F0',
+    },
+    servicePlaceholderText: {
+      fontSize: getResponsiveFontSize(32),
+      color: '#00BFFF',
+      fontWeight: '600',
+    },
+    serviceDetails: {
+      padding: getResponsiveSpacing(12),
+      paddingTop: getResponsiveSpacing(10),
+      paddingBottom: getResponsiveSpacing(12),
+      flexShrink: 0,
+    },
+    serviceTitle: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(6),
+      lineHeight: getResponsiveFontSize(18),
+    },
+    serviceRatingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(4),
+      marginBottom: getResponsiveSpacing(4),
+    },
+    serviceRatingText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#333',
+      fontWeight: '600',
+    },
+    servicePriceText: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#000',
+      fontWeight: '700',
+    },
+    // Top Deals styles - New Design
+    dealsScroll: {
+      paddingLeft: getResponsiveSpacing(16),
+    },
+    dealsScrollContent: {
+      paddingRight: getResponsiveSpacing(16),
+    },
+    dealCard: {
+      width: (screenWidth - getResponsiveSpacing(16) - getResponsiveSpacing(32)) / 2.5,
+      height: (screenWidth - getResponsiveSpacing(16) - getResponsiveSpacing(32)) / 2.5 * 1.5,
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(12),
+      marginRight: getResponsiveSpacing(16),
+      overflow: 'hidden',
+      // borderWidth: 1,
+      // borderColor: '#E8E8E8',
+      // elevation: 2,
+      // shadowColor: '#000',
+      // shadowOffset: { width: 0, height: 2 },
+      // shadowOpacity: 0.1,
+      shadowRadius: 4,
+    },
+    dealImageContainer: {
+      width: '100%',
+      flex: 1,
+      backgroundColor: '#F5F5F5',
+      position: 'relative',
+    },
+    dealImage: {
+      width: '100%',
+      height: '100%',
+    },
+    dealImagePlaceholder: {
+      width: '100%',
+      height: '100%',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#F0F0F0',
+    },
+    dealPlaceholderText: {
+      fontSize: getResponsiveFontSize(32),
+      color: '#00BFFF',
+      fontWeight: '600',
+    },
+    discountBadge: {
+      position: 'absolute',
+      top: getResponsiveSpacing(3),
+      right: getResponsiveSpacing(3),
+      backgroundColor: '#FF3B30',
+      borderRadius: getResponsiveSpacing(6),
+      paddingHorizontal: getResponsiveSpacing(10),
+      paddingVertical: getResponsiveSpacing(5),
+    },
+    discountText: {
+      color: '#FFFFFF',
+      fontSize: getResponsiveFontSize(11),
+      fontWeight: '700',
+    },
+    dealDetails: {
+      padding: getResponsiveSpacing(12),
+      paddingTop: getResponsiveSpacing(10),
+      paddingBottom: getResponsiveSpacing(12),
+      flexShrink: 0,
+    },
+    dealTitle: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(6),
+      lineHeight: getResponsiveFontSize(18),
+    },
+    dealPriceText: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#000',
+      fontWeight: '700',
+      marginBottom: getResponsiveSpacing(3),
+    },
+    originalPriceText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#999',
+      textDecorationLine: 'line-through',
+      fontWeight: '500',
     },
   });
 };

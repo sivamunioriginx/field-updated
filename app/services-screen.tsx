@@ -37,7 +37,12 @@ export default function ServicesScreen() {
   
   const subcategoryId = params.subcategoryId as string;
   const subcategoryName = params.subcategoryName as string;
+  const categoryId = params.categoryId as string;
+  const categoryName = params.categoryName as string;
   const searchQuery = params.searchQuery as string;
+  const showTopServices = params.showTopServices as string;
+  const showTopDeals = params.showTopDeals as string;
+  const screenTitle = params.screenTitle as string;
   
   const [services, setServices] = useState<Service[]>([]);
   const [allServices, setAllServices] = useState<Service[]>([]);
@@ -54,7 +59,7 @@ export default function ServicesScreen() {
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
 
-  // Fetch services by subcategory ID or search query
+  // Fetch services by category ID, subcategory ID, search query, top services, or top deals
   const fetchServices = async () => {
     try {
       setLoading(true);
@@ -63,11 +68,20 @@ export default function ServicesScreen() {
       if (searchQuery) {
         // Fetch services based on search query
         response = await fetch(API_ENDPOINTS.SEARCH_SERVICES(searchQuery));
+      } else if (showTopServices === 'true') {
+        // Fetch all top services using existing endpoint
+        response = await fetch(`${getBaseUrl()}/top-services?format=services`);
+      } else if (showTopDeals === 'true') {
+        // Fetch all top deals using existing endpoint
+        response = await fetch(`${getBaseUrl()}/top-deals?format=services`);
+      } else if (categoryId) {
+        // Fetch services by category ID (all services in category)
+        response = await fetch(`${getBaseUrl()}/services-by-category/${categoryId}`);
       } else if (subcategoryId) {
         // Fetch services by subcategory ID
         response = await fetch(API_ENDPOINTS.SERVICES_BY_SUBCATEGORY(subcategoryId));
       } else {
-        console.log('No subcategoryId or searchQuery provided');
+        console.log('No categoryId, subcategoryId, showTopServices, showTopDeals or searchQuery provided');
         setServices([]);
         setLoading(false);
         return;
@@ -105,10 +119,10 @@ export default function ServicesScreen() {
   };
 
   useEffect(() => {
-    if (subcategoryId || searchQuery) {
+    if (categoryId || subcategoryId || searchQuery || showTopServices === 'true' || showTopDeals === 'true') {
       fetchServices();
     }
-  }, [subcategoryId, searchQuery]);
+  }, [categoryId, subcategoryId, searchQuery, showTopServices, showTopDeals]);
 
   // Initialize search input with current search query
   useEffect(() => {

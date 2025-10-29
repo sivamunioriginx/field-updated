@@ -78,6 +78,7 @@ const createUploadsDir = async () => {
     await fs.mkdir('uploads/subcategorys', { recursive: true });
     await fs.mkdir('uploads/workdocuments', { recursive: true }); // Add workdocuments directory
     await fs.mkdir('uploads/services', { recursive: true }); // Add services directory
+    await fs.mkdir('uploads/deals', { recursive: true }); // Add deals directory
     // List existing profile images
     try {
       const profileFiles = await fs.readdir('uploads/profiles');
@@ -1554,6 +1555,133 @@ app.get('/api/banners', async (req, res) => {
   }
 });
 
+// Get top services near by you endpoint
+app.get('/api/top-services', async (req, res) => {
+  try {
+    const { format } = req.query;
+    
+    const [results] = await pool.execute(
+      `SELECT 
+        s.id,
+        s.name,
+        s.subcategory_id,
+        s.image,
+        s.price,
+        s.rating,
+        s.created_at,
+        sc.name AS subcategory_name,
+        c.title AS category_title
+      FROM tbl_services s
+      LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+      LEFT JOIN tbl_category c ON sc.category_id = c.id
+      WHERE s.is_top_service = 1
+      ORDER BY s.rating DESC, s.id DESC`
+    );
+    
+    // Format based on query parameter
+    let topServices;
+    if (format === 'services') {
+      // Format for services-screen.tsx (show all services)
+      topServices = results.map(service => ({
+        id: service.id,
+        name: service.name,
+        subcategory_id: service.subcategory_id,
+        image: service.image ? `/uploads/services/${service.image}` : null,
+        created_at: service.created_at
+      }));
+    } else {
+      // Format for home screen (default) - limit to 10
+      topServices = results.slice(0, 10).map(service => ({
+        id: service.id,
+        name: service.name,
+        image: service.image,
+        price: service.price.toString(),
+        rating: parseFloat(service.rating),
+        subcategory: service.subcategory_name,
+        category: service.category_title
+      }));
+    }
+    
+    res.json({
+      success: true,
+      data: topServices
+    });
+  } catch (error) {
+    console.error('Error fetching top services:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching top services',
+      error: error.message
+    });
+  }
+});
+
+// Get top deals endpoint
+app.get('/api/top-deals', async (req, res) => {
+  try {
+    const { format } = req.query;
+    
+    const [results] = await pool.execute(
+      `SELECT 
+        d.id,
+        s.name AS name,
+        s.subcategory_id,
+        s.image AS image,
+        d.discount,
+        d.original_price,
+        d.deal_price,
+        d.created_at,
+        s.name AS service_name,
+        sc.name AS subcategory_name,
+        c.title AS category_title
+      FROM tbl_deals d
+      LEFT JOIN tbl_services s ON d.service_id = s.id
+      LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+      LEFT JOIN tbl_category c ON sc.category_id = c.id
+      WHERE d.is_active = 1
+      ORDER BY d.id DESC`
+    );
+    
+    // Format based on query parameter
+    let topDeals;
+    if (format === 'services') {
+      // Format for services-screen.tsx (show all deals)
+      topDeals = results.map(deal => ({
+        id: deal.id,
+        name: deal.name,
+        subcategory_id: deal.subcategory_id,
+        image: deal.image ? `/uploads/services/${deal.image}` : null,
+        created_at: deal.created_at
+      }));
+    } else {
+      // Format for home screen (default)
+      topDeals = results.slice(0, 10).map(deal => ({
+        id: deal.id,
+        name: deal.name,
+        image: deal.image,
+        discount: deal.discount,
+        originalPrice: deal.original_price.toString(),
+        dealPrice: deal.deal_price.toString(),
+        service: deal.service_name,
+        subcategory: deal.subcategory_name,
+        category: deal.category_title
+      }));
+    }
+    
+    res.json({
+      success: true,
+      data: topDeals
+    });
+  } catch (error) {
+    console.error('Error fetching top deals:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching top deals',
+      error: error.message
+    });
+  }
+});
+
 // Search services endpoint (must come before /api/services/:subcategoryId)
 app.get('/api/services/search', async (req, res) => {
   try {
@@ -1589,6 +1717,61 @@ app.get('/api/services/search', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error searching services',
+      error: error.message
+    });
+  }
+});
+
+// Get services by category ID endpoint (all subcategories in a category)
+app.get('/api/services-by-category/:categoryId', async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category ID is required'
+      });
+    }
+
+    // First get all subcategories for this category
+    const [subcategories] = await pool.execute(
+      'SELECT id FROM tbl_subcategory WHERE category_id = ?',
+      [categoryId]
+    );
+
+    if (subcategories.length === 0) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Get subcategory IDs
+    const subcategoryIds = subcategories.map(sub => sub.id);
+
+    // Get all services for these subcategories
+    const placeholders = subcategoryIds.map(() => '?').join(',');
+    const [services] = await pool.execute(
+      `SELECT id, name, subcategory_id, image, created_at FROM tbl_services WHERE subcategory_id IN (${placeholders}) ORDER BY created_at DESC`,
+      subcategoryIds
+    );
+
+    // Add full image URLs
+    const servicesWithImages = services.map(service => ({
+      ...service,
+      image: service.image ? `/uploads/services/${service.image}` : null
+    }));
+
+    res.json({
+      success: true,
+      data: servicesWithImages
+    });
+  } catch (error) {
+    console.error('Error fetching services by category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching services',
       error: error.message
     });
   }

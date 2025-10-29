@@ -85,7 +85,22 @@ CREATE TABLE tbl_services (
   name VARCHAR(90) NOT NULL,
   subcategory_id VARCHAR(50),
   image varchar(255) NOT NULL,
+  price DECIMAL(10,2) DEFAULT 0,
+  rating DECIMAL(3,2) DEFAULT 0,
+  is_top_service TINYINT DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create deals table
+CREATE TABLE tbl_deals (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  service_id INT NOT NULL,
+  discount VARCHAR(20) NOT NULL,
+  original_price DECIMAL(10,2) NOT NULL,
+  deal_price DECIMAL(10,2) NOT NULL,
+  is_active TINYINT DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (service_id) REFERENCES tbl_services(id) ON DELETE CASCADE
 );
 
 -- Create banners table
