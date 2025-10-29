@@ -181,15 +181,15 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={styles.headerContainer}>
           <TouchableOpacity style={styles.locationContainer}>
-            <Ionicons name="location-outline" size={20} color="#000000" />
+            <Ionicons name="location-outline" size={styles.locationIcon.fontSize} color="#000000" />
             <View style={styles.locationTextContainer}>
               <Text style={styles.locationLabel}>Home</Text>
-              <Text style={styles.locationAddress}>main, Asilmetta, Visakhapatnam, Andhr...</Text>
+              <Text style={styles.locationAddress} numberOfLines={1} ellipsizeMode="tail">main, Asilmetta, Visakhapatnam, Andhr...</Text>
             </View>
-            <Ionicons name="chevron-down-outline" size={16} color="#000000" style={styles.chevronIcon} />
+            <Ionicons name="chevron-down-outline" size={styles.chevronIcon.fontSize} color="#000000" style={styles.chevronIcon} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.cartIconContainer}>
-            <Ionicons name="cart-outline" size={30} color="#000" />
+            <Ionicons name="cart-outline" size={styles.cartIcon.fontSize} color="#000" />
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>2</Text>
             </View>
@@ -214,7 +214,7 @@ export default function HomeScreen() {
               onPress={handleSearchInputPress}
               activeOpacity={0.7}
             >
-              <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
+              <Ionicons name="search-outline" size={styles.searchIcon.fontSize} color="#666" style={styles.searchIcon} />
               <Text style={styles.searchPlaceholderText}>
                 {currentPlaceholder}
               </Text>
@@ -291,23 +291,23 @@ export default function HomeScreen() {
         {/* Bottom Navigation */}
         <View style={styles.bottomNav}>
           <TouchableOpacity style={styles.navItem}>
-            <Ionicons name="home" size={26} color="#00BFFF" />
+            <Ionicons name="home" size={styles.navIconSize} color="#00BFFF" />
             <Text style={styles.navLabelActive}>Home</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem}>
-            <Ionicons name="navigate-outline" size={26} color="#999" />
+            <Ionicons name="navigate-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Explore</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem}>
-            <Ionicons name="list-outline" size={26} color="#999" />
+            <Ionicons name="list-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Bookings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem}>
-            <Ionicons name="call-outline" size={26} color="#999" />
+            <Ionicons name="call-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Support</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem}>
-            <Ionicons name="person-outline" size={26} color="#999" />
+            <Ionicons name="person-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Account</Text>
           </TouchableOpacity>
         </View>
@@ -316,52 +316,89 @@ export default function HomeScreen() {
   );
 }
 
-const createStyles = (screenHeight: number, screenWidth: number) => {
+  const createStyles = (screenHeight: number, screenWidth: number) => {
+  // Base dimensions for better scaling (using standard mobile dimensions)
+  const baseWidth = 375; // iPhone standard - better scaling base
+  const baseHeight = 812; // iPhone standard - better scaling base
+  
+  // Calculate responsive icon sizes once
+  const moderateScale = (size: number) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * 0.5;
+  };
+  
+  const navIconSize = Math.max(18, Math.min(30, moderateScale(24)));
+  
+  // Moderate scale function to prevent extreme sizes
+  const scale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+
+  const scaleHeight = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenHeight) / baseHeight;
+    return size + (scaledSize - size) * factor;
+  };
+
   // Helper function to get responsive values based on screen height with min/max constraints
-  const getResponsiveValue = (baseValue: number, screenHeight: number, minValue?: number, maxValue?: number) => {
-    const baseHeight = 800;
-    const scaledValue = (baseValue * screenHeight) / baseHeight;
+  const getResponsiveValue = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scaleHeight(baseValue, 1);
     if (minValue !== undefined && scaledValue < minValue) return minValue;
     if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
     return scaledValue;
   };
 
   // Helper function to get responsive values based on screen width with min/max constraints
-  const getResponsiveWidth = (baseValue: number, screenWidth: number, minValue?: number, maxValue?: number) => {
-    const baseWidth = 400;
-    const scaledValue = (baseValue * screenWidth) / baseWidth;
+  const getResponsiveWidth = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scale(baseValue, 1);
     if (minValue !== undefined && scaledValue < minValue) return minValue;
     if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
     return scaledValue;
   };
 
-  // Helper function to get responsive font sizes
-  const getResponsiveFontSize = (baseSize: number, screenWidth: number) => {
-    const baseWidth = 400;
-    return Math.max(12, Math.min(24, (baseSize * screenWidth) / baseWidth));
+  // Helper function to get responsive font sizes with moderate scaling
+  const getResponsiveFontSize = (baseSize: number) => {
+    const scaledSize = scale(baseSize, 0.5);
+    return Math.max(10, Math.min(28, scaledSize));
   };
 
-  // Helper function to get responsive padding/margins
-  const getResponsiveSpacing = (baseSpacing: number, screenWidth: number) => {
-    const baseWidth = 400;
-    return Math.max(4, (baseSpacing * screenWidth) / baseWidth);
+  // Helper function to get responsive padding/margins with moderate scaling
+  const getResponsiveSpacing = (baseSpacing: number) => {
+    return Math.max(2, scale(baseSpacing, 0.5));
   };
 
   // Helper function to get responsive spacing that supports negative values
-  const getResponsiveSpacingWithNegative = (baseSpacing: number, screenWidth: number) => {
-    const baseWidth = 400;
-    return (baseSpacing * screenWidth) / baseWidth;
+  const getResponsiveSpacingWithNegative = (baseSpacing: number) => {
+    return scale(baseSpacing, 0.5);
   };
 
-  // Device type detection
-  const isSmallScreen = screenWidth < 350;
-  const isMediumScreen = screenWidth >= 350 && screenWidth < 400;
-  const isLargeScreen = screenWidth >= 400;
+  // Device type detection with more accurate breakpoints
+  const isSmallScreen = screenWidth < 360; // Small phones
+  const isMediumScreen = screenWidth >= 360 && screenWidth < 414; // Regular phones  
+  const isLargeScreen = screenWidth >= 414 && screenWidth < 768; // Large phones
+  const isTablet = screenWidth >= 768; // Tablets
+  
+  // Calculate responsive video height based on device type
+  const getVideoHeight = () => {
+    if (isTablet) return screenHeight * 0.28;
+    if (isSmallScreen) return screenHeight * 0.40;
+    if (isMediumScreen) return screenHeight * 0.38;
+    return screenHeight * 0.35; // Large screens
+  };
 
-  // Calculate card width for consistent responsive behavior
-  const cardWidth = (screenWidth - getResponsiveSpacing(16, screenWidth) * 2 - getResponsiveSpacing(12, screenWidth) * 2.25) / 3.25;
-  // Card height proportional to width (aspect ratio: ~1.4:1)
-  const cardHeight = cardWidth * 1.4;
+  // Calculate card width for consistent responsive behavior with improved spacing
+  const cardWidth = (screenWidth - getResponsiveWidth(16) * 2 - getResponsiveSpacing(12) * 2.5) / 3.5;
+  // Card height proportional to width (aspect ratio: ~1.3:1 for better appearance)
+  const cardHeight = cardWidth * 1.3;
+  
+  const videoHeight = getVideoHeight();
+  const getSearchBarBottomPercentage = () => {
+    if (isTablet) return 0.07; // Tablets
+    if (isSmallScreen) return 0.01; // Small screens (emulator) - works at 0.01
+    if (isMediumScreen) return 0.01; // Medium screens
+    return 0.06; // Large screens (Oppo A78 5G and similar) - works at 0.05
+  };
+  const searchBarBottomPosition = videoHeight * getSearchBarBottomPercentage();
 
   return StyleSheet.create({
     container: {
@@ -372,17 +409,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: getResponsiveWidth(16, screenWidth),
-      paddingTop: getResponsiveValue(33, screenHeight, 25, 45),
-      paddingBottom: getResponsiveValue(14, screenHeight, 10, 18),
+      paddingHorizontal: getResponsiveWidth(16),
+      paddingTop: getResponsiveValue(33, 25, 45),
+      paddingBottom: getResponsiveValue(3, 0, 10),
       backgroundColor: '#A1CEDC',
+      zIndex: 100,
+      elevation: 100,
     },
     videoContainer: {
       position: 'relative',
       width: '100%',
-      height: screenHeight * 0.35, // 35% of screen height
-      marginTop: getResponsiveValue(-47, screenHeight, -60, -35),
-      marginBottom: getResponsiveValue(5, screenHeight, -60, -35),
+      height: getVideoHeight(), // Responsive height based on device
+      marginTop: getResponsiveValue(-50, -60, -40),
+      marginBottom: getResponsiveValue(-15, -20, -10),
     },
     video: {
       width: '100%',
@@ -392,45 +431,54 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       flexDirection: 'row',
       alignItems: 'center',
       flex: 1,
+      maxWidth: '70%', // Prevent overflow on small screens
+    },
+    locationIcon: {
+      fontSize: getResponsiveFontSize(20), // Icon size
     },
     locationTextContainer: {
-      marginLeft: getResponsiveSpacing(8, screenWidth),
+      marginLeft: getResponsiveSpacing(8),
       flex: 1,
     },
     locationLabel: {
-      fontSize: getResponsiveFontSize(16, screenWidth),
+      fontSize: getResponsiveFontSize(16),
       fontWeight: '700',
       color: '#000000',
     },
     locationAddress: {
-      fontSize: getResponsiveFontSize(12, screenWidth),
+      fontSize: getResponsiveFontSize(12),
       color: '#000000',
       opacity: 0.9,
-      marginTop: 2,
+      marginTop: getResponsiveSpacingWithNegative(-3),
     },
     chevronIcon: {
-      marginRight: getResponsiveSpacing(65, screenWidth),
-      marginTop: getResponsiveSpacing(22, screenWidth),
+      fontSize: getResponsiveFontSize(16), // Icon size
+      marginLeft: getResponsiveSpacing(4),
+      alignSelf: 'flex-end',
+      marginBottom: getResponsiveSpacingWithNegative(-2),
     },
     cartIconContainer: {
       position: 'relative',
-      padding: 4,
+      padding: getResponsiveSpacing(4),
+    },
+    cartIcon: {
+      fontSize: getResponsiveFontSize(28), // Icon size
     },
     cartBadge: {
       position: 'absolute',
       top: 0,
       right: 0,
       backgroundColor: '#FF3B30',
-      borderRadius: 10,
-      minWidth: 18,
-      height: 18,
+      borderRadius: getResponsiveSpacing(10),
+      minWidth: getResponsiveFontSize(16),
+      height: getResponsiveFontSize(16),
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: 4,
+      paddingHorizontal: getResponsiveSpacing(4),
     },
     cartBadgeText: {
       color: '#FFFFFF',
-      fontSize: 11,
+      fontSize: getResponsiveFontSize(10),
       fontWeight: '700',
     },
     mainScrollView: {
@@ -438,19 +486,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       backgroundColor: '#FFFFFF',
     },
     mainScrollViewContent: {
-      paddingBottom: getResponsiveSpacing(80, screenWidth),
+      paddingBottom: getResponsiveSpacing(80),
     },
     searchBarContainer: {
       position: 'absolute',
-      bottom: '6%', // Position at 90% of video (10% from bottom)
-      left: getResponsiveSpacing(16, screenWidth),
-      right: getResponsiveSpacing(16, screenWidth),
+      bottom: searchBarBottomPosition, // Positioned at 95% of video (5% from bottom) on all devices
+      left: getResponsiveSpacing(16),
+      right: getResponsiveSpacing(16),
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: '#FFFFFF',
-      borderRadius: getResponsiveSpacing(12, screenWidth),
-      paddingHorizontal: getResponsiveSpacing(12, screenWidth),
-      height: getResponsiveValue(40, screenHeight, 35, 48),
+      borderRadius: getResponsiveSpacing(12),
+      paddingHorizontal: getResponsiveSpacing(12),
+      height: getResponsiveValue(40, 35, 48),
       borderWidth: 1,
       borderColor: '#E0E0E0',
       zIndex: 10,
@@ -461,11 +509,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       shadowRadius: 3.84,
     },
     searchIcon: {
-      marginRight: getResponsiveSpacing(8, screenWidth),
+      fontSize: getResponsiveFontSize(20), // Icon size
+      marginRight: getResponsiveSpacing(8),
     },
     searchInput: {
       flex: 1,
-      fontSize: getResponsiveFontSize(14, screenWidth),
+      fontSize: getResponsiveFontSize(14),
       color: '#000',
     },
     searchBarTouchable: {
@@ -476,33 +525,34 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     searchPlaceholderText: {
       flex: 1,
-      fontSize: getResponsiveFontSize(14, screenWidth),
+      fontSize: getResponsiveFontSize(14),
       color: '#999',
     },
       categorySection: {
-        marginTop: getResponsiveSpacing(20, screenWidth),
-        marginBottom: getResponsiveSpacingWithNegative(-14, screenWidth),
+        marginTop: getResponsiveSpacing(8),
+        marginBottom: getResponsiveSpacingWithNegative(-14),
       },
     categoryTitle: {
-      fontSize: getResponsiveFontSize(18, screenWidth),
+      fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
       color: '#000',
-      marginBottom: getResponsiveSpacingWithNegative(4, screenWidth),
-      paddingHorizontal: getResponsiveSpacing(16, screenWidth),
+      marginBottom: getResponsiveSpacingWithNegative(7),
+      marginTop: getResponsiveSpacingWithNegative(7),
+      paddingHorizontal: getResponsiveSpacing(16),
     },
     subcategoriesScroll: {
-      paddingLeft: getResponsiveSpacing(16, screenWidth),
+      paddingLeft: getResponsiveSpacing(16),
     },
     subcategoriesScrollContent: {
-      paddingRight: getResponsiveSpacing(16, screenWidth),
+      paddingRight: getResponsiveSpacing(16),
     },
     subcategoryCard: {
       // Calculate width to show 3 full cards + 25% of next card
       width: cardWidth,
       backgroundColor: '#FFFFFF',
-      borderRadius: getResponsiveSpacing(12, screenWidth),
-      marginRight: getResponsiveSpacing(12, screenWidth),
-      padding: getResponsiveSpacing(7, screenWidth),
+      borderRadius: getResponsiveSpacing(12),
+      marginRight: getResponsiveSpacing(12),
+      padding: getResponsiveSpacing(7),
       borderWidth: 1,
       borderColor: '#e8e0e0ff',
       // borderColor: '#dbd5d5ff',
@@ -513,7 +563,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       // Flex makes image take remaining space after text
       flex: 1,
       backgroundColor: '#F8F9FA',
-      borderRadius: getResponsiveSpacing(6, screenWidth),
+      borderRadius: getResponsiveSpacing(6),
       overflow: 'hidden',
       // Minimum height responsive to card width (50% of card width)
       minHeight: cardWidth * 0.5,
@@ -533,25 +583,25 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontWeight: '600',
     },
     subcategoryDetails: {
-      padding: getResponsiveSpacing(6, screenWidth),
-      paddingTop: getResponsiveSpacing(6, screenWidth),
+      padding: getResponsiveSpacing(6),
+      paddingTop: getResponsiveSpacing(6),
     },
     subcategoryTitle: {
-      fontSize: getResponsiveFontSize(12, screenWidth),
+      fontSize: getResponsiveFontSize(12),
       fontWeight: '600',
       color: '#000',
-      lineHeight: getResponsiveFontSize(16, screenWidth),
+      lineHeight: getResponsiveFontSize(16),
       textAlign: 'center',
       flexWrap: 'wrap',
-      marginBottom: -Math.abs(getResponsiveSpacing(8, screenWidth)),
+      marginBottom: -Math.abs(getResponsiveSpacing(8)),
     },
     emptySubcategoryContainer: {
-      padding: getResponsiveSpacing(20, screenWidth),
+      padding: getResponsiveSpacing(20),
       alignItems: 'center',
       justifyContent: 'center',
     },
     emptySubcategoryText: {
-      fontSize: getResponsiveFontSize(14, screenWidth),
+      fontSize: getResponsiveFontSize(14),
       color: '#999',
     },
     bottomNav: {
@@ -561,24 +611,25 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       backgroundColor: '#FFF',
       borderTopWidth: 1,
       borderTopColor: '#F0F0F0',
-      paddingVertical: getResponsiveSpacing(8, screenWidth),
-      paddingBottom: getResponsiveSpacing(5, screenWidth),
-      paddingTop: getResponsiveSpacing(5, screenWidth),
+      paddingVertical: getResponsiveSpacing(8),
+      paddingBottom: getResponsiveSpacing(5),
+      paddingTop: getResponsiveSpacing(5),
     },
     navItem: {
       alignItems: 'center',
       justifyContent: 'center',
       flex: 1,
     },
+    navIconSize: getResponsiveFontSize(24), // Responsive icon size
     navLabel: {
-      fontSize: getResponsiveFontSize(11, screenWidth),
+      fontSize: getResponsiveFontSize(11),
       color: '#999',
-      marginTop: 4,
+      marginTop: getResponsiveSpacing(4),
     },
     navLabelActive: {
-      fontSize: getResponsiveFontSize(11, screenWidth),
+      fontSize: getResponsiveFontSize(11),
       color: '#00BFFF',
-      marginTop: 4,
+      marginTop: getResponsiveSpacing(4),
       fontWeight: '600',
     },
   });
