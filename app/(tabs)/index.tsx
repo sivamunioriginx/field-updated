@@ -228,8 +228,8 @@ export default function HomeScreen() {
   // Show loading screen while checking authentication
   if (authLoading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, color: '#666' }}>Loading...</Text>
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -261,7 +261,7 @@ export default function HomeScreen() {
             ref={videoRef}
             source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/diwali (2).mp4` }}
             style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
+            resizeMode={ResizeMode.COVER}
             shouldPlay
             isLooping
             isMuted
@@ -619,10 +619,7 @@ export default function HomeScreen() {
   
   const videoHeight = getVideoHeight();
   const getSearchBarBottomPercentage = () => {
-    if (isTablet) return 0.07; // Tablets
-    if (isSmallScreen) return 0.01; // Small screens (emulator) - works at 0.01
-    if (isMediumScreen) return 0.01; // Medium screens
-    return 0.06; // Large screens (Oppo A78 5G and similar) - works at 0.05
+    return -0.02; // Moved below video edge for all devices
   };
   const searchBarBottomPosition = videoHeight * getSearchBarBottomPercentage();
 
@@ -630,6 +627,16 @@ export default function HomeScreen() {
     container: {
       flex: 1,
       backgroundColor: '#FFFFFF',
+    },
+    loadingContainer: {
+      flex: 1,
+      backgroundColor: '#FFFFFF',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      fontSize: getResponsiveFontSize(18),
+      color: '#666',
     },
     headerContainer: {
       flexDirection: 'row',
@@ -728,11 +735,11 @@ export default function HomeScreen() {
       borderWidth: 1,
       borderColor: '#E0E0E0',
       zIndex: 10,
-      elevation: 5, // Shadow for Android
+      elevation: isTablet ? 3 : 5, // Shadow for Android - responsive
       shadowColor: '#000', // Shadow for iOS
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
+      shadowOffset: { width: 0, height: getResponsiveSpacing(2) },
+      shadowOpacity: isTablet ? 0.15 : 0.25,
+      shadowRadius: getResponsiveSpacing(3.84),
     },
     searchIcon: {
       fontSize: getResponsiveFontSize(20), // Icon size
@@ -755,7 +762,7 @@ export default function HomeScreen() {
       color: '#999',
     },
       categorySection: {
-        marginTop: getResponsiveSpacing(1),
+        marginTop: getResponsiveSpacing(24),
         marginBottom: getResponsiveSpacingWithNegative(-14),
       },
     categorySectionSpacing: {
