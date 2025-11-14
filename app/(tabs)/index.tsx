@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -59,6 +60,10 @@ export default function HomeScreen() {
   const [serviceInput, setServiceInput] = useState('');
   const [currentPlaceholder, setCurrentPlaceholder] = useState("");
   
+  // State for location
+  const [locationLabel, setLocationLabel] = useState('Home');
+  const [locationAddress, setLocationAddress] = useState('Getting location...');
+  
   // State for categories with subcategories
   const [categoriesWithSubcategories, setCategoriesWithSubcategories] = useState<CategoryWithSubcategories[]>([]);
   const [categoryImageErrors, setCategoryImageErrors] = useState<Set<number>>(new Set());
@@ -68,6 +73,82 @@ export default function HomeScreen() {
   const [topDeals, setTopDeals] = useState<TopDeal[]>([]);
   const [serviceImageErrors, setServiceImageErrors] = useState<Set<number>>(new Set());
   const [dealImageErrors, setDealImageErrors] = useState<Set<number>>(new Set());
+
+  // Check location permission on mount and get location
+  useEffect(() => {
+    const checkLocationPermission = async () => {
+      try {
+        // Check if location permission is already granted
+        const { status: existingStatus, canAskAgain } = await Location.getForegroundPermissionsAsync();
+        
+        if (existingStatus !== 'granted') {
+          // Request location permission - this will show the system dialog
+          const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+          
+          if (newStatus === 'granted') {
+            console.log('✅ Location permission granted');
+            await getCurrentLocation();
+          } else {
+            console.log('❌ Location permission denied');
+            setLocationAddress('Location access denied');
+          }
+        } else {
+          console.log('✅ Location permission already granted');
+          await getCurrentLocation();
+        }
+      } catch (error) {
+        console.error('Error checking location permission:', error);
+        setLocationAddress('Unable to get location');
+      }
+    };
+
+    const getCurrentLocation = async () => {
+      try {
+        // Get current position
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        
+        console.log('📍 Current location:', location.coords);
+        
+        // Reverse geocode to get address
+        const address = await Location.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        
+        if (address && address.length > 0) {
+          const addr = address[0];
+          
+          // Set area name as location label (neighborhood/district/subregion)
+          const areaName = addr.subregion || addr.district || addr.city || 'Area';
+          setLocationLabel(areaName);
+          
+          // Format address with available components
+          const addressParts = [
+            addr.street || addr.name,
+            addr.subregion || addr.district,
+            addr.city,
+            addr.region
+          ].filter(Boolean);
+          
+          const formattedAddress = addressParts.join(', ');
+          setLocationAddress(formattedAddress || 'Location found');
+          console.log('📍 Area name:', areaName);
+          console.log('📍 Formatted address:', formattedAddress);
+        } else {
+          setLocationLabel('Location');
+          setLocationAddress(`${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`);
+        }
+      } catch (error) {
+        console.error('Error getting current location:', error);
+        setLocationLabel('Location');
+        setLocationAddress('Unable to get location');
+      }
+    };
+
+    checkLocationPermission();
+  }, []);
 
   // Fetch categories with subcategories using the new API
   useEffect(() => {
@@ -214,6 +295,11 @@ export default function HomeScreen() {
     router.push('/search-screen');
   };
 
+  const handleLocationPress = () => {
+    // Navigate to location picker screen
+    router.push('/location-picker');
+  };
+
   const handleSubcategoryPress = (subcategory: Subcategory) => {
     // Navigate to services screen with subcategory details
     router.push({
@@ -239,11 +325,15 @@ export default function HomeScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerContainer}>
-          <TouchableOpacity style={styles.locationContainer}>
+          <TouchableOpacity 
+            style={styles.locationContainer}
+            onPress={handleLocationPress}
+            activeOpacity={0.7}
+          >
             <Ionicons name="location-outline" size={styles.locationIcon.fontSize} color="#000000" />
             <View style={styles.locationTextContainer}>
-              <Text style={styles.locationLabel}>Home</Text>
-              <Text style={styles.locationAddress} numberOfLines={1} ellipsizeMode="tail">main, Asilmetta, Visakhapatnam, Andhr...</Text>
+              <Text style={styles.locationLabel}>{locationLabel}</Text>
+              <Text style={styles.locationAddress} numberOfLines={1} ellipsizeMode="tail">{locationAddress}</Text>
             </View>
             <Ionicons name="chevron-down-outline" size={styles.chevronIcon.fontSize} color="#000000" style={styles.chevronIcon} />
           </TouchableOpacity>
@@ -643,8 +733,8 @@ export default function HomeScreen() {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: getResponsiveWidth(16),
-      paddingTop: getResponsiveValue(33, 25, 45),
-      paddingBottom: getResponsiveValue(3, 0, 10),
+      paddingTop: getResponsiveValue(34, 25, 45),
+      paddingBottom: getResponsiveValue(8, 4, 12),
       backgroundColor: '#A1CEDC',
       zIndex: 100,
       elevation: 100,
@@ -682,7 +772,7 @@ export default function HomeScreen() {
       fontSize: getResponsiveFontSize(12),
       color: '#000000',
       opacity: 0.9,
-      marginTop: getResponsiveSpacingWithNegative(-3),
+      marginTop: getResponsiveSpacingWithNegative(-1),
     },
     chevronIcon: {
       fontSize: getResponsiveFontSize(16), // Icon size

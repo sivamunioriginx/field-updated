@@ -36,6 +36,7 @@ export default function RootLayout() {
               <Stack.Screen name="serviceseekerindex" options={{ headerShown: false }} />
               <Stack.Screen name="services-screen" options={{ headerShown: false }} />
               <Stack.Screen name="search-screen" options={{ headerShown: false }} />
+              <Stack.Screen name="location-picker" options={{ headerShown: false }} />
               <Stack.Screen name="+not-found" />
             </Stack>
             <StatusBar style="auto" />

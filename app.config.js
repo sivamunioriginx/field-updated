@@ -21,7 +21,10 @@ export default {
       supportsTablet: true,
       bundleIdentifier: IS_CUSTOMER_APP
         ? "com.yourcompany.field.customer"
-        : "com.yourcompany.field.worker"
+        : "com.yourcompany.field.worker",
+      config: {
+        googleMapsApiKey: "AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ"
+      }
     },
     android: {
       adaptiveIcon: {
@@ -35,8 +38,15 @@ export default {
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "MEDIA_LIBRARY"
+        "MEDIA_LIBRARY",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ],
+      config: {
+        googleMaps: {
+          apiKey: "AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ"
+        }
+      },
       versionCode: 1
     },
     web: {
