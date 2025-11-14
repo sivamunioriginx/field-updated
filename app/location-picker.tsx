@@ -198,7 +198,7 @@ export default function LocationPickerScreen() {
           onPress={handleUseCurrentLocation}
           activeOpacity={0.7}
         >
-          <Ionicons name="navigate-outline" size={styles.locationButtonIcon.fontSize} color="#666" />
+          <Ionicons name="locate" size={styles.locationButtonIcon.fontSize} color="#666" />
           <Text style={styles.currentLocationText}>Use current location</Text>
         </TouchableOpacity>
       </View>
@@ -280,15 +280,10 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       backgroundColor: '#FFFFFF',
     },
     searchContainer: {
-      paddingHorizontal: getResponsiveSpacing(16),
-      paddingTop: Platform.OS === 'ios' ? scaleHeight(50, 0.5) : scaleHeight(40, 0.5),
-      paddingBottom: getResponsiveSpacing(12),
-      backgroundColor: '#FFFFFF',
-      elevation: 2,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
+      position: 'absolute',
+      top: Platform.OS === 'ios' ? scaleHeight(50, 0.5) : scaleHeight(45, 0.5),
+      left: getResponsiveSpacing(16),
+      right: getResponsiveSpacing(16),
       zIndex: 10,
     },
     searchBar: {
@@ -296,33 +291,33 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       alignItems: 'center',
       backgroundColor: '#FFFFFF',
       borderRadius: getResponsiveSpacing(8),
-      paddingHorizontal: getResponsiveSpacing(12),
-      paddingVertical: getResponsiveSpacing(10),
+      paddingHorizontal: getResponsiveSpacing(10),
+      paddingVertical: getResponsiveSpacing(8),
       borderWidth: 1,
       borderColor: '#E0E0E0',
-      elevation: 1,
+      elevation: 3,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
     },
     backButton: {
       padding: getResponsiveSpacing(4),
-      marginRight: getResponsiveSpacing(8),
+      marginRight: getResponsiveSpacing(6),
       marginLeft: getResponsiveSpacing(-4),
     },
     backIcon: {
-      fontSize: getResponsiveFontSize(24),
+      fontSize: getResponsiveFontSize(22),
     },
     searchIconStyle: {
-      marginRight: getResponsiveSpacing(8),
+      marginRight: getResponsiveSpacing(6),
     },
     searchIcon: {
-      fontSize: getResponsiveFontSize(22),
+      fontSize: getResponsiveFontSize(20),
     },
     searchInput: {
       flex: 1,
-      fontSize: getResponsiveFontSize(14),
+      fontSize: getResponsiveFontSize(13),
       color: '#000',
       padding: 0,
     },
@@ -330,7 +325,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       padding: getResponsiveSpacing(4),
     },
     clearIcon: {
-      fontSize: getResponsiveFontSize(18),
+      fontSize: getResponsiveFontSize(16),
     },
     map: {
       flex: 1,
@@ -343,16 +338,18 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     bottomContainer: {
       position: 'absolute',
       bottom: getResponsiveSpacing(20),
-      left: getResponsiveSpacing(16),
-      right: getResponsiveSpacing(16),
+      left: 0,
+      right: 0,
       zIndex: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     currentLocationButton: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: '#FFFFFF',
-      paddingVertical: getResponsiveSpacing(16),
-      paddingHorizontal: getResponsiveSpacing(16),
+      paddingVertical: getResponsiveSpacing(12),
+      paddingHorizontal: getResponsiveSpacing(14),
       borderRadius: getResponsiveSpacing(8),
       elevation: 4,
       shadowColor: '#000',
@@ -361,11 +358,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       shadowRadius: 4,
     },
     locationButtonIcon: {
-      fontSize: getResponsiveFontSize(24),
-      marginRight: getResponsiveSpacing(12),
+      fontSize: getResponsiveFontSize(20),
+      marginRight: getResponsiveSpacing(10),
     },
     currentLocationText: {
-      fontSize: getResponsiveFontSize(16),
+      fontSize: getResponsiveFontSize(15),
       color: '#333',
       fontWeight: '500',
     },
