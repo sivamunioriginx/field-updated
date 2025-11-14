@@ -1,11 +1,12 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -63,6 +64,7 @@ export default function HomeScreen() {
   // State for location
   const [locationLabel, setLocationLabel] = useState('Home');
   const [locationAddress, setLocationAddress] = useState('Getting location...');
+  const [savedLocationData, setSavedLocationData] = useState<any>(null);
   
   // State for categories with subcategories
   const [categoriesWithSubcategories, setCategoriesWithSubcategories] = useState<CategoryWithSubcategories[]>([]);
@@ -74,44 +76,64 @@ export default function HomeScreen() {
   const [serviceImageErrors, setServiceImageErrors] = useState<Set<number>>(new Set());
   const [dealImageErrors, setDealImageErrors] = useState<Set<number>>(new Set());
 
-  // Check location permission on mount and get location
+  // Load saved location or get current location
   useEffect(() => {
-    const checkLocationPermission = async () => {
+    const loadLocation = async () => {
       try {
-        // Check if location permission is already granted
-        const { status: existingStatus, canAskAgain } = await Location.getForegroundPermissionsAsync();
+        // First, check if there's a saved default location
+        const savedLocation = await AsyncStorage.getItem('defaultLocation');
+        
+        if (savedLocation) {
+          const location = JSON.parse(savedLocation);
+          console.log('📍 Using saved location:', location);
+          setSavedLocationData(location);
+          setLocationLabel(location.saveAsType || 'Home');
+          setLocationAddress(location.address || 'Address not available');
+          return; // Use saved location, don't fetch GPS
+        }
+
+        // No saved location, check if we've already fetched GPS location
+        const hasCheckedGPS = await AsyncStorage.getItem('hasCheckedGPS');
+        
+        if (hasCheckedGPS === 'true') {
+          // Already checked GPS before, don't check again
+          setLocationLabel('Location');
+          setLocationAddress('Please select your location');
+          return;
+        }
+
+        // First time or no saved location - check permission and get GPS location once
+        const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
         
         if (existingStatus !== 'granted') {
-          // Request location permission - this will show the system dialog
           const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
           
           if (newStatus === 'granted') {
             console.log('✅ Location permission granted');
-            await getCurrentLocation();
+            await getCurrentLocationOnce();
           } else {
             console.log('❌ Location permission denied');
             setLocationAddress('Location access denied');
+            await AsyncStorage.setItem('hasCheckedGPS', 'true');
           }
         } else {
           console.log('✅ Location permission already granted');
-          await getCurrentLocation();
+          await getCurrentLocationOnce();
         }
       } catch (error) {
-        console.error('Error checking location permission:', error);
+        console.error('Error loading location:', error);
         setLocationAddress('Unable to get location');
       }
     };
 
-    const getCurrentLocation = async () => {
+    const getCurrentLocationOnce = async () => {
       try {
-        // Get current position
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
         
-        console.log('📍 Current location:', location.coords);
+        console.log('📍 Current GPS location:', location.coords);
         
-        // Reverse geocode to get address
         const address = await Location.reverseGeocodeAsync({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
@@ -119,12 +141,7 @@ export default function HomeScreen() {
         
         if (address && address.length > 0) {
           const addr = address[0];
-          
-          // Set area name as location label (neighborhood/district/subregion)
           const areaName = addr.subregion || addr.district || addr.city || 'Area';
-          setLocationLabel(areaName);
-          
-          // Format address with available components
           const addressParts = [
             addr.street || addr.name,
             addr.subregion || addr.district,
@@ -133,22 +150,39 @@ export default function HomeScreen() {
           ].filter(Boolean);
           
           const formattedAddress = addressParts.join(', ');
+          setLocationLabel(areaName);
           setLocationAddress(formattedAddress || 'Location found');
-          console.log('📍 Area name:', areaName);
-          console.log('📍 Formatted address:', formattedAddress);
-        } else {
-          setLocationLabel('Location');
-          setLocationAddress(`${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`);
+          
+          // Mark that we've checked GPS
+          await AsyncStorage.setItem('hasCheckedGPS', 'true');
         }
       } catch (error) {
         console.error('Error getting current location:', error);
         setLocationLabel('Location');
         setLocationAddress('Unable to get location');
+        await AsyncStorage.setItem('hasCheckedGPS', 'true');
       }
     };
 
-    checkLocationPermission();
+    loadLocation();
   }, []);
+
+  // Listen for when user returns from location picker
+  useFocusEffect(
+    useCallback(() => {
+      const checkForUpdatedLocation = async () => {
+        const savedLocation = await AsyncStorage.getItem('defaultLocation');
+        if (savedLocation) {
+          const location = JSON.parse(savedLocation);
+          setSavedLocationData(location);
+          setLocationLabel(location.saveAsType || 'Home');
+          setLocationAddress(location.address || 'Address not available');
+        }
+      };
+
+      checkForUpdatedLocation();
+    }, [])
+  );
 
   // Fetch categories with subcategories using the new API
   useEffect(() => {
@@ -296,8 +330,22 @@ export default function HomeScreen() {
   };
 
   const handleLocationPress = () => {
-    // Navigate to location picker screen
-    router.push('/location-picker');
+    // Navigate to location picker screen with saved location data
+    if (savedLocationData) {
+      router.push({
+        pathname: '/location-picker',
+        params: {
+          latitude: savedLocationData.latitude?.toString(),
+          longitude: savedLocationData.longitude?.toString(),
+          address: savedLocationData.address,
+          flatNo: savedLocationData.flatNo,
+          landmark: savedLocationData.landmark,
+          saveAsType: savedLocationData.saveAsType,
+        }
+      });
+    } else {
+      router.push('/location-picker');
+    }
   };
 
   const handleSubcategoryPress = (subcategory: Subcategory) => {
