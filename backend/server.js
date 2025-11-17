@@ -1627,6 +1627,7 @@ app.get('/api/top-deals', async (req, res) => {
     const [results] = await pool.execute(
       `SELECT 
         d.id,
+        d.service_id,
         s.name AS name,
         s.subcategory_id,
         s.image AS image,
@@ -1651,7 +1652,7 @@ app.get('/api/top-deals', async (req, res) => {
     if (format === 'services') {
       // Format for services-screen.tsx (show all deals)
       topDeals = results.map(deal => ({
-        id: deal.id,
+        id: deal.service_id || deal.id,
         name: deal.name,
         subcategory_id: deal.subcategory_id,
         image: deal.image ? `/uploads/services/${deal.image}` : null,
@@ -1663,6 +1664,7 @@ app.get('/api/top-deals', async (req, res) => {
       // Format for home screen (default)
       topDeals = results.slice(0, 10).map(deal => ({
         id: deal.id,
+        serviceId: deal.service_id,
         name: deal.name,
         image: deal.image,
         discount: deal.discount,

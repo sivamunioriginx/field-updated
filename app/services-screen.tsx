@@ -1,4 +1,5 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
+import type { CartService } from '@/contexts/CartContext';
 import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
@@ -25,6 +26,7 @@ interface Service {
   subcategory_id: string;
   image: string;
   price?: number;
+  deal_price?: number;
   rating?: number;
   created_at: string;
 }
@@ -201,12 +203,26 @@ export default function ServicesScreen() {
     setImageErrors(prev => new Set(prev).add(serviceId));
   };
 
-  const handleAddService = (service: Service) => {
-    addToCart(service.id);
+  const formatServiceForCart = (service: Service): CartService => {
+    const imageUrl = service.image
+      ? (service.image.startsWith('http')
+        ? service.image
+        : `${getBaseUrl().replace('/api', '')}${service.image}`)
+      : undefined;
+    return {
+      id: service.id,
+      name: service.name,
+      price: service.deal_price || service.price || 0,
+      image: imageUrl,
+    };
   };
 
-  const handleIncrementService = (serviceId: number) => {
-    incrementItem(serviceId);
+  const handleAddService = (service: Service) => {
+    addToCart(formatServiceForCart(service));
+  };
+
+  const handleIncrementService = (service: Service) => {
+    incrementItem(service.id, formatServiceForCart(service));
   };
 
   const handleDecrementService = (serviceId: number) => {
@@ -528,7 +544,7 @@ export default function ServicesScreen() {
                             style={styles.quantityButton}
                             onPress={(e) => {
                               e.stopPropagation();
-                              handleIncrementService(service.id);
+                              handleIncrementService(service);
                             }}
                           >
                             <Ionicons name="add" size={16} color="#8B5CF6" />
@@ -642,7 +658,7 @@ export default function ServicesScreen() {
                           <TouchableOpacity 
                             style={styles.modalQuantityButton}
                             onPress={() => {
-                              handleIncrementService(selectedService.id);
+                              handleIncrementService(selectedService);
                             }}
                           >
                             <Ionicons name="add" size={18} color="#8B5CF6" />
@@ -995,7 +1011,7 @@ export default function ServicesScreen() {
             <Text style={styles.cartItemCount}>{cartTotal.itemCount} item{cartTotal.itemCount > 1 ? 's' : ''}</Text>
             <Text style={styles.cartTotal}>₹{cartTotal.total}</Text>
           </View>
-          <TouchableOpacity style={styles.viewCartButton}>
+          <TouchableOpacity style={styles.viewCartButton} onPress={() => router.push('/cart')}>
             <Text style={styles.viewCartButtonText}>View cart</Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
           </TouchableOpacity>

@@ -47,6 +47,7 @@ interface TopDeal {
   discount: string;
   originalPrice: string;
   dealPrice: string;
+  serviceId?: number;
 }
 
 export default function HomeScreen() {
@@ -387,7 +388,7 @@ export default function HomeScreen() {
             </View>
             <Ionicons name="chevron-down-outline" size={styles.chevronIcon.fontSize} color="#000000" style={styles.chevronIcon} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.cartIconContainer}>
+          <TouchableOpacity style={styles.cartIconContainer} onPress={() => router.push('/cart')}>
             <Ionicons name="cart-outline" size={styles.cartIcon.fontSize} color="#000" />
             {getTotalItems() > 0 && (
               <View style={styles.cartBadge}>
@@ -629,7 +630,7 @@ export default function HomeScreen() {
                       router.push({
                         pathname: '/services-screen',
                         params: {
-                          serviceId: deal.id.toString(),
+                          serviceId: (deal.serviceId || deal.id).toString(),
                           screenTitle: deal.name
                         }
                       });

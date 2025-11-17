@@ -1,4 +1,5 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
+import type { CartService } from '@/contexts/CartContext';
 import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -36,6 +37,7 @@ interface SearchResult {
   subcategory_id: string;
   image: string | null;
   price?: number;
+  deal_price?: number;
   rating?: number;
   created_at: string;
   type: 'service' | 'subcategory';
@@ -200,12 +202,26 @@ export default function SearchScreen() {
     setExpandedFaqIndex(expandedFaqIndex === index ? null : index);
   };
 
-  const handleAddService = (service: SearchResult) => {
-    addToCart(service.id);
+  const formatResultForCart = (service: SearchResult): CartService => {
+    const imageUrl = service.image
+      ? (service.image.startsWith('http')
+        ? service.image
+        : `${getBaseUrl().replace('/api', '')}${service.image}`)
+      : undefined;
+    return {
+      id: service.id,
+      name: service.name,
+      price: service.deal_price || service.price || 0,
+      image: imageUrl,
+    };
   };
 
-  const handleIncrementService = (serviceId: number) => {
-    incrementItem(serviceId);
+  const handleAddService = (service: SearchResult) => {
+    addToCart(formatResultForCart(service));
+  };
+
+  const handleIncrementService = (service: SearchResult) => {
+    incrementItem(service.id, formatResultForCart(service));
   };
 
   const handleDecrementService = (serviceId: number) => {
@@ -352,7 +368,7 @@ export default function SearchScreen() {
                                     style={styles.searchQuantityButton}
                                     onPress={(e) => {
                                       e.stopPropagation();
-                                      handleIncrementService(result.id);
+                                      handleIncrementService(result);
                                     }}
                                   >
                                     <Ionicons name="add" size={16} color="#8B5CF6" />
@@ -556,7 +572,7 @@ export default function SearchScreen() {
                           <TouchableOpacity 
                             style={styles.modalQuantityButton}
                             onPress={() => {
-                              handleIncrementService(selectedService.id);
+                              handleIncrementService(selectedService);
                             }}
                           >
                             <Ionicons name="add" size={18} color="#8B5CF6" />
@@ -909,7 +925,7 @@ export default function SearchScreen() {
             <Text style={styles.cartItemCount}>{cartTotal.itemCount} item{cartTotal.itemCount > 1 ? 's' : ''}</Text>
             <Text style={styles.cartTotal}>₹{cartTotal.total}</Text>
           </View>
-          <TouchableOpacity style={styles.viewCartButton}>
+          <TouchableOpacity style={styles.viewCartButton} onPress={() => router.push('/cart')}>
             <Text style={styles.viewCartButtonText}>View cart</Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
           </TouchableOpacity>
