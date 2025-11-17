@@ -48,6 +48,7 @@ export default function ServicesScreen() {
   const showTopServices = params.showTopServices as string;
   const showTopDeals = params.showTopDeals as string;
   const screenTitle = params.screenTitle as string;
+  const serviceId = params.serviceId as string;
   
   const [services, setServices] = useState<Service[]>([]);
   const [allServices, setAllServices] = useState<Service[]>([]);
@@ -67,13 +68,47 @@ export default function ServicesScreen() {
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
 
-  // Fetch services by category ID, subcategory ID, search query, top services, or top deals
+  // Fetch services by category ID, subcategory ID, search query, top services, top deals, or single service ID
   const fetchServices = async () => {
     try {
       setLoading(true);
       let response;
       
-      if (searchQuery) {
+      if (serviceId) {
+        // Fetch single service by ID - try top-services first, then top-deals
+        const topServicesResponse = await fetch(`${getBaseUrl()}/top-services?format=services`);
+        const topServicesData = await topServicesResponse.json();
+        
+        if (topServicesData.success && Array.isArray(topServicesData.data)) {
+          const foundService = topServicesData.data.find((s: Service) => s.id.toString() === serviceId);
+          if (foundService) {
+            setServices([foundService]);
+            setAllServices([foundService]);
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // If not found in top-services, try top-deals
+        const topDealsResponse = await fetch(`${getBaseUrl()}/top-deals?format=services`);
+        const topDealsData = await topDealsResponse.json();
+        
+        if (topDealsData.success && Array.isArray(topDealsData.data)) {
+          const foundService = topDealsData.data.find((s: Service) => s.id.toString() === serviceId);
+          if (foundService) {
+            setServices([foundService]);
+            setAllServices([foundService]);
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // If still not found, set empty
+        setServices([]);
+        setAllServices([]);
+        setLoading(false);
+        return;
+      } else if (searchQuery) {
         // Fetch services based on search query
         response = await fetch(API_ENDPOINTS.SEARCH_SERVICES(searchQuery));
       } else if (showTopServices === 'true') {
@@ -89,7 +124,7 @@ export default function ServicesScreen() {
         // Fetch services by subcategory ID
         response = await fetch(API_ENDPOINTS.SERVICES_BY_SUBCATEGORY(subcategoryId));
       } else {
-        console.log('No categoryId, subcategoryId, showTopServices, showTopDeals or searchQuery provided');
+        console.log('No categoryId, subcategoryId, showTopServices, showTopDeals, searchQuery or serviceId provided');
         setServices([]);
         setLoading(false);
         return;
@@ -127,10 +162,10 @@ export default function ServicesScreen() {
   };
 
   useEffect(() => {
-    if (categoryId || subcategoryId || searchQuery || showTopServices === 'true' || showTopDeals === 'true') {
+    if (categoryId || subcategoryId || searchQuery || showTopServices === 'true' || showTopDeals === 'true' || serviceId) {
       fetchServices();
     }
-  }, [categoryId, subcategoryId, searchQuery, showTopServices, showTopDeals]);
+  }, [categoryId, subcategoryId, searchQuery, showTopServices, showTopDeals, serviceId]);
 
   // Initialize search input with current search query
   useEffect(() => {

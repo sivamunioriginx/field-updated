@@ -540,6 +540,16 @@ export default function HomeScreen() {
                     key={service.id} 
                     style={styles.serviceCard}
                     activeOpacity={0.8}
+                    onPress={() => {
+                      // Navigate to services screen with specific service ID
+                      router.push({
+                        pathname: '/services-screen',
+                        params: {
+                          serviceId: service.id.toString(),
+                          screenTitle: service.name
+                        }
+                      });
+                    }}
                   >
                     <View style={styles.serviceImageContainer}>
                       {service.image && !serviceImageErrors.has(service.id) ? (
@@ -614,6 +624,16 @@ export default function HomeScreen() {
                     key={deal.id} 
                     style={styles.dealCard}
                     activeOpacity={0.8}
+                    onPress={() => {
+                      // Navigate to services screen with specific deal/service ID
+                      router.push({
+                        pathname: '/services-screen',
+                        params: {
+                          serviceId: deal.id.toString(),
+                          screenTitle: deal.name
+                        }
+                      });
+                    }}
                   >
                     <View style={styles.dealImageContainer}>
                       {deal.image && !dealImageErrors.has(deal.id) ? (

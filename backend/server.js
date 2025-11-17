@@ -1566,12 +1566,13 @@ app.get('/api/top-services', async (req, res) => {
         s.name,
         s.subcategory_id,
         s.image,
-        s.price,
+        COALESCE(d.deal_price, s.price) AS price,
         s.rating,
         s.created_at,
         sc.name AS subcategory_name,
         c.title AS category_title
       FROM tbl_services s
+      LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
       LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
       LEFT JOIN tbl_category c ON sc.category_id = c.id
       WHERE s.is_top_service = 1
@@ -1702,7 +1703,19 @@ app.get('/api/services/search', async (req, res) => {
 
     // Search in tbl_services
     const [services] = await pool.execute(
-      'SELECT id, name, subcategory_id, image, price, rating, created_at FROM tbl_services WHERE name LIKE ? ORDER BY id DESC LIMIT 20',
+      `SELECT 
+        s.id, 
+        s.name, 
+        s.subcategory_id, 
+        s.image, 
+        COALESCE(d.deal_price, s.price) AS price, 
+        s.rating, 
+        s.created_at 
+      FROM tbl_services s
+      LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+      WHERE s.name LIKE ? 
+      ORDER BY s.id DESC 
+      LIMIT 20`,
       [`%${q}%`]
     );
 
@@ -1784,7 +1797,18 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
     // Get all services for these subcategories
     const placeholders = subcategoryIds.map(() => '?').join(',');
     const [services] = await pool.execute(
-      `SELECT id, name, subcategory_id, image, price, rating, created_at FROM tbl_services WHERE subcategory_id IN (${placeholders}) ORDER BY created_at DESC`,
+      `SELECT 
+        s.id, 
+        s.name, 
+        s.subcategory_id, 
+        s.image, 
+        COALESCE(d.deal_price, s.price) AS price, 
+        s.rating, 
+        s.created_at 
+      FROM tbl_services s
+      LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+      WHERE s.subcategory_id IN (${placeholders}) 
+      ORDER BY s.created_at DESC`,
       subcategoryIds
     );
 
@@ -1821,7 +1845,18 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
     }
 
     const [services] = await pool.execute(
-      'SELECT id, name, subcategory_id, image, price, rating, created_at FROM tbl_services WHERE subcategory_id = ? ORDER BY created_at DESC',
+      `SELECT 
+        s.id, 
+        s.name, 
+        s.subcategory_id, 
+        s.image, 
+        COALESCE(d.deal_price, s.price) AS price, 
+        s.rating, 
+        s.created_at 
+      FROM tbl_services s
+      LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+      WHERE s.subcategory_id = ? 
+      ORDER BY s.created_at DESC`,
       [subcategoryId]
     );
 
