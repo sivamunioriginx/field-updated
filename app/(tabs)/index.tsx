@@ -1,5 +1,6 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ResizeMode, Video } from 'expo-av';
@@ -51,6 +52,7 @@ interface TopDeal {
 export default function HomeScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const { getTotalItems } = useCart();
   const videoRef = useRef<Video>(null);
   const router = useRouter();
   
@@ -387,9 +389,11 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.cartIconContainer}>
             <Ionicons name="cart-outline" size={styles.cartIcon.fontSize} color="#000" />
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>2</Text>
-            </View>
+            {getTotalItems() > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{getTotalItems()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 

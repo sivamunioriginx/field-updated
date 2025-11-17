@@ -1,4 +1,5 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
+import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
@@ -37,6 +38,7 @@ export default function ServicesScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { cart, addToCart, incrementItem, decrementItem, getTotalItems, getTotalPrice } = useCart();
   
   const subcategoryId = params.subcategoryId as string;
   const subcategoryName = params.subcategoryName as string;
@@ -165,8 +167,23 @@ export default function ServicesScreen() {
   };
 
   const handleAddService = (service: Service) => {
-    // Handle adding service to cart or booking
+    addToCart(service.id);
   };
+
+  const handleIncrementService = (serviceId: number) => {
+    incrementItem(serviceId);
+  };
+
+  const handleDecrementService = (serviceId: number) => {
+    decrementItem(serviceId);
+  };
+
+  // Calculate cart totals
+  const cartTotal = useMemo(() => {
+    const itemCount = getTotalItems();
+    const total = getTotalPrice(services);
+    return { total, itemCount };
+  }, [cart, services, getTotalItems, getTotalPrice]);
 
   const handleViewDetails = (service: Service) => {
     console.log('View details clicked for service:', service.name);
@@ -459,19 +476,40 @@ export default function ServicesScreen() {
                         )}
                       </View>
                       
-                      {/* Add Button */}
-                      <TouchableOpacity 
-                        style={styles.addButton}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleAddService(service);
-                        }}
-                      >
-                        <Text style={styles.addButtonText}>Add</Text>
-                      </TouchableOpacity>
-                      
-                      {/* Options Text */}
-                      <Text style={styles.optionsText}>2 options</Text>
+                      {/* Add Button / Counter */}
+                      {cart[service.id] ? (
+                        <View style={styles.quantityContainer}>
+                          <TouchableOpacity 
+                            style={styles.quantityButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDecrementService(service.id);
+                            }}
+                          >
+                            <Ionicons name="remove" size={16} color="#8B5CF6" />
+                          </TouchableOpacity>
+                          <Text style={styles.quantityText}>{cart[service.id]}</Text>
+                          <TouchableOpacity 
+                            style={styles.quantityButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleIncrementService(service.id);
+                            }}
+                          >
+                            <Ionicons name="add" size={16} color="#8B5CF6" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity 
+                          style={styles.addButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleAddService(service);
+                          }}
+                        >
+                          <Text style={styles.addButtonText}>Add</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -554,16 +592,39 @@ export default function ServicesScreen() {
                         </View>
                       </View>
 
-                      {/* Add Button - Top Right */}
-                      <TouchableOpacity 
-                        style={styles.modalAddButton}
-                        onPress={() => {
-                          handleAddService(selectedService);
-                          setShowDetailsModal(false);
-                        }}
-                      >
-                        <Text style={styles.modalAddButtonText}>Add</Text>
-                      </TouchableOpacity>
+                      {/* Add Button / Counter - Top Right */}
+                      {selectedService && cart[selectedService.id] ? (
+                        <View style={styles.modalQuantityContainer}>
+                          <TouchableOpacity 
+                            style={styles.modalQuantityButton}
+                            onPress={() => {
+                              handleDecrementService(selectedService.id);
+                            }}
+                          >
+                            <Ionicons name="remove" size={18} color="#8B5CF6" />
+                          </TouchableOpacity>
+                          <Text style={styles.modalQuantityText}>{cart[selectedService.id]}</Text>
+                          <TouchableOpacity 
+                            style={styles.modalQuantityButton}
+                            onPress={() => {
+                              handleIncrementService(selectedService.id);
+                            }}
+                          >
+                            <Ionicons name="add" size={18} color="#8B5CF6" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity 
+                          style={styles.modalAddButton}
+                          onPress={() => {
+                            if (selectedService) {
+                              handleAddService(selectedService);
+                            }
+                          }}
+                        >
+                          <Text style={styles.modalAddButtonText}>Add</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
 
@@ -891,6 +952,20 @@ export default function ServicesScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Bottom Cart Bar */}
+      {cartTotal.itemCount > 0 && (
+        <View style={styles.cartBottomBar}>
+          <View style={styles.cartBottomLeft}>
+            <Text style={styles.cartItemCount}>{cartTotal.itemCount} item{cartTotal.itemCount > 1 ? 's' : ''}</Text>
+            <Text style={styles.cartTotal}>₹{cartTotal.total}</Text>
+          </View>
+          <TouchableOpacity style={styles.viewCartButton}>
+            <Text style={styles.viewCartButtonText}>View cart</Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      )}
 
     </View>
   );
@@ -1346,11 +1421,6 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: getResponsiveFontSize(12, screenWidth),
       color: '#8B5CF6',
       fontWeight: '600',
-    },
-    optionsText: {
-      fontSize: getResponsiveFontSize(11, screenWidth),
-      color: '#999',
-      textAlign: 'center',
     },
     separator: {
       height: 1,
@@ -2052,6 +2122,132 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     readMoreText: {
       color: '#8B5CF6',
+      fontWeight: '600',
+    },
+    // Quantity Controls Styles
+    quantityContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveBorderRadius(6, screenWidth),
+      marginBottom: getResponsiveMargin(4, screenWidth),
+      marginTop: -30,
+    },
+    quantityButton: {
+      padding: getResponsivePadding(
+        isSmallScreen ? 3 : 
+        isTabletScreen ? 6 : 
+        isLargeTabletScreen ? 8 : 4, 
+        screenWidth
+      ),
+    },
+    quantityText: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      color: '#8B5CF6',
+      fontWeight: '600',
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 6 : 
+        isTabletScreen ? 12 : 
+        isLargeTabletScreen ? 16 : 8, 
+        screenWidth
+      ),
+    },
+    // Modal Quantity Controls Styles
+    modalQuantityContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1.5,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveBorderRadius(6, screenWidth),
+    },
+    modalQuantityButton: {
+      padding: getResponsivePadding(
+        isSmallScreen ? 5 : 
+        isTabletScreen ? 7 : 
+        isLargeTabletScreen ? 9 : 6, 
+        screenWidth
+      ),
+    },
+    modalQuantityText: {
+      fontSize: getResponsiveFontSize(13, screenWidth),
+      color: '#8B5CF6',
+      fontWeight: '600',
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 24 : 
+        isLargeTabletScreen ? 28 : 20, 
+        screenWidth
+      ),
+    },
+    // Cart Bottom Bar Styles
+    cartBottomBar: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#FFFFFF',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 12 : 
+        isTabletScreen ? 16 : 
+        isLargeTabletScreen ? 20 : 14, 
+        screenWidth
+      ),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 10 : 
+        isTabletScreen ? 12 : 
+        isLargeTabletScreen ? 14 : 11, 
+        screenWidth
+      ),
+      borderTopWidth: 1,
+      borderTopColor: '#E0E0E0',
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3.84,
+    },
+    cartBottomLeft: {
+      flex: 1,
+    },
+    cartItemCount: {
+      fontSize: getResponsiveFontSize(11, screenWidth),
+      color: '#666',
+      fontWeight: '500',
+      marginBottom: getResponsiveSpacing(2, screenWidth),
+    },
+    cartTotal: {
+      fontSize: getResponsiveFontSize(16, screenWidth),
+      color: '#000',
+      fontWeight: '700',
+    },
+    viewCartButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#8B5CF6',
+      paddingHorizontal: getResponsivePadding(
+        isSmallScreen ? 16 : 
+        isTabletScreen ? 20 : 
+        isLargeTabletScreen ? 24 : 18, 
+        screenWidth
+      ),
+      paddingVertical: getResponsivePadding(
+        isSmallScreen ? 9 : 
+        isTabletScreen ? 11 : 
+        isLargeTabletScreen ? 13 : 10, 
+        screenWidth
+      ),
+      borderRadius: getResponsiveBorderRadius(8, screenWidth),
+      gap: getResponsiveSpacing(6, screenWidth),
+    },
+    viewCartButtonText: {
+      fontSize: getResponsiveFontSize(14, screenWidth),
+      color: '#FFFFFF',
       fontWeight: '600',
     },
   });

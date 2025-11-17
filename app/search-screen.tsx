@@ -1,8 +1,9 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
+import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -43,6 +44,7 @@ interface SearchResult {
 export default function SearchScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
+  const { cart, addToCart, incrementItem, decrementItem, getTotalItems, getTotalPrice } = useCart();
   const [searchInput, setSearchInput] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -198,6 +200,33 @@ export default function SearchScreen() {
     setExpandedFaqIndex(expandedFaqIndex === index ? null : index);
   };
 
+  const handleAddService = (service: SearchResult) => {
+    addToCart(service.id);
+  };
+
+  const handleIncrementService = (serviceId: number) => {
+    incrementItem(serviceId);
+  };
+
+  const handleDecrementService = (serviceId: number) => {
+    decrementItem(serviceId);
+  };
+
+  // Calculate cart totals
+  const cartTotal = useMemo(() => {
+    const itemCount = getTotalItems();
+    const services = searchResults
+      .filter(r => r.type === 'service')
+      .map(r => ({ 
+        id: r.id, 
+        name: r.name, 
+        price: r.price, 
+        image: r.image || undefined 
+      }));
+    const total = getTotalPrice(services as any);
+    return { total, itemCount };
+  }, [cart, searchResults, getTotalItems, getTotalPrice]);
+
   const styles = createStyles(screenWidth, screenHeight);
 
   return (
@@ -306,19 +335,40 @@ export default function SearchScreen() {
                                 )}
                               </View>
                               
-                              {/* Add Button */}
-                              <TouchableOpacity 
-                                style={styles.searchAddButton}
-                                onPress={(e) => {
-                                  e.stopPropagation();
-                                  // Handle add service
-                                }}
-                              >
-                                <Text style={styles.searchAddButtonText}>Add</Text>
-                              </TouchableOpacity>
-                              
-                              {/* Options Text */}
-                              <Text style={styles.searchOptionsText}>2 options</Text>
+                              {/* Add Button / Counter */}
+                              {cart[result.id] ? (
+                                <View style={styles.searchQuantityContainer}>
+                                  <TouchableOpacity 
+                                    style={styles.searchQuantityButton}
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleDecrementService(result.id);
+                                    }}
+                                  >
+                                    <Ionicons name="remove" size={16} color="#8B5CF6" />
+                                  </TouchableOpacity>
+                                  <Text style={styles.searchQuantityText}>{cart[result.id]}</Text>
+                                  <TouchableOpacity 
+                                    style={styles.searchQuantityButton}
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleIncrementService(result.id);
+                                    }}
+                                  >
+                                    <Ionicons name="add" size={16} color="#8B5CF6" />
+                                  </TouchableOpacity>
+                                </View>
+                              ) : (
+                                <TouchableOpacity 
+                                  style={styles.searchAddButton}
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleAddService(result);
+                                  }}
+                                >
+                                  <Text style={styles.searchAddButtonText}>Add</Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           </View>
                         </View>
@@ -491,15 +541,39 @@ export default function SearchScreen() {
                         </View>
                       </View>
 
-                      {/* Add Button - Top Right */}
-                      <TouchableOpacity 
-                        style={styles.modalAddButton}
-                        onPress={() => {
-                          setShowDetailsModal(false);
-                        }}
-                      >
-                        <Text style={styles.modalAddButtonText}>Add</Text>
-                      </TouchableOpacity>
+                      {/* Add Button / Counter - Top Right */}
+                      {selectedService && cart[selectedService.id] ? (
+                        <View style={styles.modalQuantityContainer}>
+                          <TouchableOpacity 
+                            style={styles.modalQuantityButton}
+                            onPress={() => {
+                              handleDecrementService(selectedService.id);
+                            }}
+                          >
+                            <Ionicons name="remove" size={18} color="#8B5CF6" />
+                          </TouchableOpacity>
+                          <Text style={styles.modalQuantityText}>{cart[selectedService.id]}</Text>
+                          <TouchableOpacity 
+                            style={styles.modalQuantityButton}
+                            onPress={() => {
+                              handleIncrementService(selectedService.id);
+                            }}
+                          >
+                            <Ionicons name="add" size={18} color="#8B5CF6" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity 
+                          style={styles.modalAddButton}
+                          onPress={() => {
+                            if (selectedService) {
+                              handleAddService(selectedService);
+                            }
+                          }}
+                        >
+                          <Text style={styles.modalAddButtonText}>Add</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
 
@@ -828,6 +902,20 @@ export default function SearchScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Bottom Cart Bar */}
+      {cartTotal.itemCount > 0 && (
+        <View style={styles.cartBottomBar}>
+          <View style={styles.cartBottomLeft}>
+            <Text style={styles.cartItemCount}>{cartTotal.itemCount} item{cartTotal.itemCount > 1 ? 's' : ''}</Text>
+            <Text style={styles.cartTotal}>₹{cartTotal.total}</Text>
+          </View>
+          <TouchableOpacity style={styles.viewCartButton}>
+            <Text style={styles.viewCartButtonText}>View cart</Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      )}
+
     </View>
   );
 }
@@ -1135,10 +1223,43 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       color: '#8B5CF6',
       fontWeight: '600',
     },
-    searchOptionsText: {
-      fontSize: getResponsiveFontSize(11),
-      color: '#999',
-      textAlign: 'center',
+    // Quantity Controls Styles
+    searchQuantityContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveValue(6),
+      marginBottom: getResponsiveValue(4),
+      marginTop: getResponsiveValue(-30),
+    },
+    searchQuantityButton: {
+      padding: getResponsiveValue(4),
+    },
+    searchQuantityText: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#8B5CF6',
+      fontWeight: '600',
+      paddingHorizontal: getResponsiveValue(8),
+    },
+    // Modal Quantity Controls Styles
+    modalQuantityContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1.5,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveValue(6),
+    },
+    modalQuantityButton: {
+      padding: getResponsiveValue(6),
+    },
+    modalQuantityText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#8B5CF6',
+      fontWeight: '600',
+      paddingHorizontal: getResponsiveValue(20),
     },
     searchSeparator: {
       height: 1,
@@ -1560,6 +1681,54 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
     },
     readMoreText: {
       color: '#8B5CF6',
+      fontWeight: '600',
+    },
+    // Cart Bottom Bar Styles
+    cartBottomBar: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#FFFFFF',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveValue(14),
+      paddingVertical: getResponsiveValue(11),
+      borderTopWidth: 1,
+      borderTopColor: '#E0E0E0',
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3.84,
+    },
+    cartBottomLeft: {
+      flex: 1,
+    },
+    cartItemCount: {
+      fontSize: getResponsiveFontSize(11),
+      color: '#666',
+      fontWeight: '500',
+      marginBottom: getResponsiveValue(2),
+    },
+    cartTotal: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#000',
+      fontWeight: '700',
+    },
+    viewCartButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#8B5CF6',
+      paddingHorizontal: getResponsiveValue(18),
+      paddingVertical: getResponsiveValue(10),
+      borderRadius: getResponsiveValue(8),
+      gap: getResponsiveValue(6),
+    },
+    viewCartButtonText: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#FFFFFF',
       fontWeight: '600',
     },
   });

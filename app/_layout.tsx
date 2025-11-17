@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 
 import NotificationInitializer from '@/components/NotificationInitializer';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { CartProvider } from '@/contexts/CartContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function RootLayout() {
@@ -23,25 +24,27 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <NotificationInitializer>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="login" options={{ headerShown: false }} />
-              <Stack.Screen name="register-professional" options={{ headerShown: false }} />
-              <Stack.Screen name="register-serviceseeker" options={{ headerShown: false }} />
-              <Stack.Screen name="workers-list" options={{ headerShown: false }} />
-              <Stack.Screen name="workerindex" options={{ headerShown: false }} />
-              <Stack.Screen name="serviceseekerindex" options={{ headerShown: false }} />
-              <Stack.Screen name="services-screen" options={{ headerShown: false }} />
-              <Stack.Screen name="search-screen" options={{ headerShown: false }} />
-              <Stack.Screen name="location-picker" options={{ headerShown: false }} />
-              <Stack.Screen name="+not-found" />
-            </Stack>
-            <StatusBar style="auto" />
-          </ThemeProvider>
-        </NotificationInitializer>
+        <CartProvider>
+          <NotificationInitializer>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <Stack>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="login" options={{ headerShown: false }} />
+                <Stack.Screen name="register-professional" options={{ headerShown: false }} />
+                <Stack.Screen name="register-serviceseeker" options={{ headerShown: false }} />
+                <Stack.Screen name="workers-list" options={{ headerShown: false }} />
+                <Stack.Screen name="workerindex" options={{ headerShown: false }} />
+                <Stack.Screen name="serviceseekerindex" options={{ headerShown: false }} />
+                <Stack.Screen name="services-screen" options={{ headerShown: false }} />
+                <Stack.Screen name="search-screen" options={{ headerShown: false }} />
+                <Stack.Screen name="location-picker" options={{ headerShown: false }} />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+              <StatusBar style="auto" />
+            </ThemeProvider>
+          </NotificationInitializer>
+        </CartProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
