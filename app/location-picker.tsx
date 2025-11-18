@@ -67,28 +67,76 @@ export default function LocationPickerScreen() {
 
   // Get current location on mount or use passed location
   useEffect(() => {
-    // If location params were passed, use them
-    if (params.latitude && params.longitude && params.address) {
-      setShowLocationCard(true);
-      setSearchQuery(params.address as string);
-      reverseGeocode(initialLat, initialLng);
-      
-      // Animate map to passed location
-      if (mapRef.current) {
-        const newRegion = {
-          latitude: initialLat,
-          longitude: initialLng,
-          latitudeDelta: 0.0922,
-          longitudeDelta: 0.0421,
-        };
-        setTimeout(() => {
-          mapRef.current?.animateToRegion(newRegion, 1000);
-        }, 100);
+    const loadLocation = async () => {
+      // If location params were passed, use them
+      if (params.latitude && params.longitude && params.address) {
+        setShowLocationCard(true);
+        setSearchQuery(params.address as string);
+        reverseGeocode(initialLat, initialLng);
+        
+        // Animate map to passed location
+        if (mapRef.current) {
+          const newRegion = {
+            latitude: initialLat,
+            longitude: initialLng,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
+          };
+          setTimeout(() => {
+            mapRef.current?.animateToRegion(newRegion, 1000);
+          }, 100);
+        }
+      } else {
+        // Check for primary address (defaultLocation) first
+        try {
+          const defaultLoc = await AsyncStorage.getItem('defaultLocation');
+          if (defaultLoc) {
+            const primaryAddress = JSON.parse(defaultLoc);
+            const lat = parseFloat(primaryAddress.latitude);
+            const lng = parseFloat(primaryAddress.longitude);
+            
+            if (!isNaN(lat) && !isNaN(lng)) {
+              const newRegion = {
+                latitude: lat,
+                longitude: lng,
+                latitudeDelta: 0.0922,
+                longitudeDelta: 0.0421,
+              };
+              
+              setRegion(newRegion);
+              setMarkerPosition({
+                latitude: lat,
+                longitude: lng,
+              });
+              
+              setSearchQuery(primaryAddress.address || '');
+              setSelectedAddress({
+                name: primaryAddress.label || primaryAddress.saveAsType || 'Selected Location',
+                fullAddress: primaryAddress.address || '',
+              });
+              setFlatNo(primaryAddress.flatNo || '');
+              setLandmark(primaryAddress.landmark || '');
+              setSaveAsType(primaryAddress.saveAsType || 'Home');
+              setShowLocationCard(true);
+              
+              if (mapRef.current) {
+                setTimeout(() => {
+                  mapRef.current?.animateToRegion(newRegion, 1000);
+                }, 100);
+              }
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error loading primary address:', error);
+        }
+        
+        // No primary address, get current GPS location
+        getCurrentLocation();
       }
-    } else {
-      // No params, get current GPS location
-      getCurrentLocation();
-    }
+    };
+    
+    loadLocation();
     
     // Cleanup debounce timer on unmount
     return () => {
@@ -347,12 +395,48 @@ export default function LocationPickerScreen() {
         flatNo,
         landmark,
         saveAsType,
+        id: Date.now().toString(), // Generate unique ID
       };
 
-      // Save as default location
+      // Get existing defaultLocation to move it to secondary addresses
+      const existingDefault = await AsyncStorage.getItem('defaultLocation');
+      const savedAddresses = await AsyncStorage.getItem('savedAddresses');
+      
+      let addressesArray: any[] = [];
+      
+      // Parse existing saved addresses
+      if (savedAddresses) {
+        try {
+          addressesArray = JSON.parse(savedAddresses);
+          if (!Array.isArray(addressesArray)) {
+            addressesArray = [];
+          }
+        } catch (e) {
+          addressesArray = [];
+        }
+      }
+      
+      // Move old primary address to secondary addresses
+      if (existingDefault) {
+        try {
+          const oldPrimary = JSON.parse(existingDefault);
+          // Only add if it's different from the new one
+          if (oldPrimary.latitude !== locationData.latitude || oldPrimary.longitude !== locationData.longitude) {
+            oldPrimary.id = oldPrimary.id || Date.now().toString();
+            addressesArray.push(oldPrimary);
+          }
+        } catch (e) {
+          console.error('Error parsing existing default location:', e);
+        }
+      }
+      
+      // Save new address as primary (defaultLocation)
       await AsyncStorage.setItem('defaultLocation', JSON.stringify(locationData));
       
-      console.log('✅ Location saved as default:', locationData);
+      // Save updated secondary addresses
+      await AsyncStorage.setItem('savedAddresses', JSON.stringify(addressesArray));
+      
+      console.log('✅ Location saved as primary:', locationData);
       
       // Go back to previous screen
       router.back();

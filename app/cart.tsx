@@ -3,25 +3,38 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { CartService } from '@/contexts/CartContext';
 import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 
 export default function CartScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const { getCartItems, incrementItem, decrementItem, addToCart } = useCart();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, updateUser } = useAuth();
   const [suggestedServices, setSuggestedServices] = useState<CartService[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [savedLocation, setSavedLocation] = useState<any | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [deleteMenuAddressId, setDeleteMenuAddressId] = useState<string | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [isSavingContact, setIsSavingContact] = useState(false);
 
   const cartItems = getCartItems();
 
@@ -50,6 +63,128 @@ export default function CartScreen() {
   const handleAddSuggested = (service: CartService) => {
     addToCart(service);
   };
+
+  const handleSaveContactDetails = async () => {
+    const trimmedName = contactName.trim();
+    const trimmedPhone = contactPhone.trim();
+    if (!trimmedName || !trimmedPhone || isSavingContact) {
+      return;
+    }
+
+    try {
+      setIsSavingContact(true);
+      await updateUser({
+        name: trimmedName,
+        mobile: trimmedPhone,
+      });
+      setShowContactModal(false);
+    } catch (error) {
+      console.error('Error updating contact info:', error);
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
+
+  const loadSavedLocation = useCallback(async () => {
+    try {
+      setLocationLoading(true);
+      const stored = await AsyncStorage.getItem('defaultLocation');
+      if (stored) {
+        const location = JSON.parse(stored);
+        setSavedLocation(location);
+        setSelectedAddressId(location.id || 'default');
+      } else {
+        setSavedLocation(null);
+        setSelectedAddressId(null);
+      }
+    } catch (error) {
+      console.error('Error loading saved location:', error);
+      setSavedLocation(null);
+      setSelectedAddressId(null);
+    } finally {
+      setLocationLoading(false);
+    }
+  }, []);
+
+  const loadSavedAddresses = useCallback(async () => {
+    try {
+      const defaultLoc = await AsyncStorage.getItem('defaultLocation');
+      const savedAddrs = await AsyncStorage.getItem('savedAddresses');
+      
+      const addresses: any[] = [];
+      
+      // Add default location if exists
+      if (defaultLoc) {
+        const defaultAddr = JSON.parse(defaultLoc);
+        addresses.push({ ...defaultAddr, id: 'default', isDefault: true });
+      }
+      
+      // Add other saved addresses
+      if (savedAddrs) {
+        const parsed = JSON.parse(savedAddrs);
+        if (Array.isArray(parsed)) {
+          addresses.push(...parsed);
+        }
+      }
+      
+      setSavedAddresses(addresses);
+      if (addresses.length > 0) {
+        const currentSelected = selectedAddressId || savedLocation?.id || 'default';
+        const exists = addresses.some(addr => (addr.id || 'default') === currentSelected);
+        if (!exists || !selectedAddressId) {
+          setSelectedAddressId(addresses[0].id || 'default');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading saved addresses:', error);
+      setSavedAddresses([]);
+    }
+  }, [selectedAddressId, savedLocation]);
+
+  useEffect(() => {
+    loadSavedLocation();
+  }, [loadSavedLocation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSavedLocation();
+    }, [loadSavedLocation])
+  );
+
+  const formattedLocation = useMemo(() => {
+    if (locationLoading) {
+      return 'Loading address...';
+    }
+    if (!savedLocation) {
+      return 'Select where you want the professional to visit';
+    }
+    const parts = [savedLocation.flatNo, savedLocation.landmark, savedLocation.address]
+      .filter(Boolean)
+      .join(', ');
+    return parts || 'Tap to choose address for this booking';
+  }, [locationLoading, savedLocation]);
+
+  const addressIconName = useMemo(() => {
+    const type = savedLocation?.saveAsType?.toLowerCase() || '';
+    if (type.includes('home')) {
+      return 'home-outline';
+    }
+    if (type.includes('work') || type.includes('office')) {
+      return 'briefcase-outline';
+    }
+    if (type.includes('shop') || type.includes('store')) {
+      return 'storefront-outline';
+    }
+    return 'location-outline';
+  }, [savedLocation?.saveAsType]);
+
+  const displayLocationText = useMemo(() => {
+    if (savedLocation) {
+      const label = savedLocation.saveAsType || 'Address';
+      return `${label} - ${formattedLocation}`;
+    }
+    return formattedLocation;
+  }, [formattedLocation, savedLocation]);
 
   useEffect(() => {
     const fetchSuggestions = async () => {
@@ -142,8 +277,32 @@ export default function CartScreen() {
             ))}
           </View>
 
+          {isAuthenticated && (
+            <View style={[styles.section, styles.infoSection]}>
+              <View style={styles.infoCard}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="person-outline" size={getIconSize(18)} color="#8B5CF6" />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>{user?.name || 'Guest user'}</Text>
+                  <Text style={styles.infoSubtitle}>{user?.mobile || 'Phone number unavailable'}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setContactName(user?.name || '');
+                    setContactPhone(user?.mobile || '');
+                    setShowContactModal(true);
+                  }}
+                >
+                  <Text style={styles.infoActionText}>Change</Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          )}
+
           {suggestionsLoading ? null : suggestedServices.length > 0 && (
-            <View style={styles.section}>
+            <View style={[styles.section, styles.suggestionsSection]}>
               <Text style={styles.sectionTitle}>Frequently added services</Text>
               <ScrollView
                 horizontal
@@ -222,12 +381,259 @@ export default function CartScreen() {
       )}
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>
-            {isAuthenticated ? 'Proceed to checkout' : 'Login/Sign up to proceed'}
-          </Text>
-        </TouchableOpacity>
+        {isAuthenticated ? (
+          <>
+            <TouchableOpacity
+              style={styles.footerLocationCard}
+              onPress={() => router.push('/location-picker')}
+              activeOpacity={0.85}
+            >
+              <View style={styles.footerLocationIcon}>
+                <Ionicons name={addressIconName} size={getIconSize(18)} color="#8B5CF6" />
+              </View>
+              <View style={styles.footerLocationContent}>
+                <Text style={styles.footerLocationValue} numberOfLines={1}>
+                  {displayLocationText}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  loadSavedAddresses();
+                  setShowAddressModal(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={getIconSize(18)} color="#8B5CF6" />
+              </TouchableOpacity>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.primaryButton, styles.primaryButtonFull]}>
+              <Text style={styles.primaryButtonText}>Select slot</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity style={styles.primaryButton} onPress={() => router.push('/login')}>
+            <Text style={styles.primaryButtonText}>Login/Sign up to proceed</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Saved Address Modal */}
+      <Modal
+        visible={showAddressModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowAddressModal(false);
+          setDeleteMenuAddressId(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Saved address</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAddressModal(false);
+                  setDeleteMenuAddressId(null);
+                }}
+                style={styles.modalCloseButton}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={getIconSize(24)} color="#000" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Add another address */}
+            <TouchableOpacity
+              style={styles.addAddressButton}
+              onPress={() => {
+                setShowAddressModal(false);
+                router.push('/location-picker');
+              }}
+            >
+              <Ionicons name="add" size={getIconSize(20)} color="#8B5CF6" />
+              <Text style={styles.addAddressText}>Add another address</Text>
+            </TouchableOpacity>
+
+            {/* Address List */}
+            <ScrollView style={styles.addressList} showsVerticalScrollIndicator={false}>
+              {savedAddresses.map((address) => {
+                const isSelected = selectedAddressId === (address.id || 'default');
+                const addressIcon = address.saveAsType?.toLowerCase().includes('home')
+                  ? 'home-outline'
+                  : address.saveAsType?.toLowerCase().includes('work')
+                  ? 'briefcase-outline'
+                  : address.saveAsType?.toLowerCase().includes('shop')
+                  ? 'storefront-outline'
+                  : 'location-outline';
+
+                return (
+                  <TouchableOpacity
+                    key={address.id || 'default'}
+                    style={styles.addressItem}
+                    onPress={() => {
+                      setSelectedAddressId(address.id || 'default');
+                      setDeleteMenuAddressId(null);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.addressItemLeft}>
+                      <View style={[styles.radioButton, isSelected && styles.radioButtonSelected]}>
+                        {isSelected && <View style={styles.radioButtonInner} />}
+                      </View>
+                      <View style={styles.addressItemContent}>
+                        <View style={styles.addressItemHeader}>
+                          <Text style={styles.addressItemLabel}>
+                            {address.saveAsType || 'Home'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.addressMenuButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              setDeleteMenuAddressId(
+                                deleteMenuAddressId === (address.id || 'default')
+                                  ? null
+                                  : (address.id || 'default')
+                              );
+                            }}
+                          >
+                            <Ionicons name="ellipsis-vertical" size={getIconSize(18)} color="#666" />
+                          </TouchableOpacity>
+                        </View>
+                        {deleteMenuAddressId === (address.id || 'default') && (
+                          <View style={styles.deleteMenuContainer}>
+                            <TouchableOpacity
+                              style={styles.deleteOption}
+                              onPress={async () => {
+                                const addressToDelete = address.id || 'default';
+                                if (addressToDelete === 'default') {
+                                  // Delete default location
+                                  await AsyncStorage.removeItem('defaultLocation');
+                                  setSavedLocation(null);
+                                  setSelectedAddressId(null);
+                                } else {
+                                  // Delete from saved addresses
+                                  const savedAddrs = await AsyncStorage.getItem('savedAddresses');
+                                  if (savedAddrs) {
+                                    const parsed = JSON.parse(savedAddrs);
+                                    const filtered = parsed.filter(
+                                      (addr: any) => addr.id !== addressToDelete
+                                    );
+                                    await AsyncStorage.setItem('savedAddresses', JSON.stringify(filtered));
+                                  }
+                                }
+                                setDeleteMenuAddressId(null);
+                                loadSavedAddresses();
+                                loadSavedLocation();
+                              }}
+                            >
+                              <Ionicons name="trash-outline" size={getIconSize(16)} color="#FF3B30" />
+                              <Text style={styles.deleteOptionText}>Delete</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                        <Text style={styles.addressItemAddress}>
+                          {[address.flatNo, address.landmark, address.address]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </Text>
+                        <Text style={styles.addressItemPhone}>
+                          {user?.name || 'User'}, {user?.mobile || ''}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Proceed Button */}
+            <TouchableOpacity
+              style={styles.modalProceedButton}
+              onPress={() => {
+                const selected = savedAddresses.find(
+                  (addr) => (addr.id || 'default') === selectedAddressId
+                );
+                if (selected) {
+                  setSavedLocation(selected);
+                  AsyncStorage.setItem('defaultLocation', JSON.stringify(selected));
+                }
+                setShowAddressModal(false);
+                loadSavedLocation();
+              }}
+            >
+              <Text style={styles.modalProceedButtonText}>Proceed</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {isAuthenticated && (
+        <Modal
+          visible={showContactModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowContactModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.contactModalContent}>
+              <View style={styles.contactModalHeader}>
+                <Text style={styles.contactModalTitle}>Contact for booking updates</Text>
+                <TouchableOpacity
+                  onPress={() => setShowContactModal(false)}
+                  style={styles.modalCloseButton}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close" size={getIconSize(20)} color="#000" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.contactModalSubtitle}>
+                Professional will contact at this number, and a tracking link will be shared
+              </Text>
+              <View style={styles.contactPhoneRow}>
+                <View style={styles.contactPhoneInputWrapper}>
+                  <Text style={styles.contactCountryCode}>+91</Text>
+                  <TextInput
+                    style={styles.contactPhoneInput}
+                    value={contactPhone}
+                    onChangeText={setContactPhone}
+                    placeholder="Enter phone number"
+                    placeholderTextColor="#999"
+                    keyboardType="phone-pad"
+                    maxLength={12}
+                  />
+                  <TouchableOpacity style={styles.contactBookButton}>
+                    <Ionicons name="book-outline" size={getIconSize(18)} color="#8B5CF6" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.contactInputGroup}>
+                <TextInput
+                  style={styles.contactNameInput}
+                  value={contactName}
+                  onChangeText={setContactName}
+                  placeholder="Name"
+                  placeholderTextColor="#999"
+                />
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.contactSaveButton,
+                  (isSavingContact || !contactName.trim() || !contactPhone.trim()) && styles.contactSaveButtonDisabled,
+                ]}
+                onPress={handleSaveContactDetails}
+                disabled={isSavingContact || !contactName.trim() || !contactPhone.trim()}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.contactSaveButtonText}>
+                  {isSavingContact ? 'Saving...' : 'Save details'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -421,6 +827,50 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontWeight: '600',
       fontSize: getResponsiveFontSize(14),
     },
+    infoCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: getResponsiveSpacing(14),
+      borderRadius: getResponsiveSpacing(16),
+      borderWidth: 1,
+      borderColor: '#F0E9FF',
+      backgroundColor: '#F9F6FF',
+      marginBottom: getResponsiveSpacing(16),
+    },
+    infoIcon: {
+      width: getResponsiveWidth(40, 34, 46),
+      height: getResponsiveWidth(40, 34, 46),
+      borderRadius: getResponsiveSpacing(20),
+      backgroundColor: '#EFE6FF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: getResponsiveSpacing(12),
+    },
+    infoContent: {
+      flex: 1,
+    },
+    infoTitle: {
+      fontSize: getResponsiveFontSize(15),
+      fontWeight: '700',
+      color: '#000',
+    },
+    infoSubtitle: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#555',
+      marginTop: getResponsiveSpacing(2),
+    },
+    infoSection: {
+      marginTop: getResponsiveValue(12, 8, 14),
+      marginBottom: getResponsiveValue(2, 0, 4),
+    },
+    suggestionsSection: {
+      marginTop: getResponsiveValue(10, 8, 12),
+    },
+    infoActionText: {
+      color: '#8B5CF6',
+      fontWeight: '600',
+      fontSize: getResponsiveFontSize(13),
+    },
     couponRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -488,16 +938,46 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       left: 0,
       right: 0,
       bottom: 0,
-      padding: getResponsiveSpacing(16),
+      paddingHorizontal: getResponsiveSpacing(12),
+      paddingBottom: getResponsiveSpacing(10),
       backgroundColor: '#FFF',
       borderTopWidth: 1,
       borderTopColor: '#F0F0F0',
     },
+    footerLocationCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: getResponsiveSpacing(10),
+      borderWidth: 1,
+      borderColor: '#F0F0F0',
+      borderRadius: getResponsiveSpacing(16),
+      marginBottom: getResponsiveSpacing(6),
+      backgroundColor: '#FFF',
+    },
+    footerLocationIcon: {
+      width: getResponsiveWidth(34, 30, 40),
+      height: getResponsiveWidth(34, 30, 40),
+      borderRadius: getResponsiveSpacing(17),
+      backgroundColor: '#F2ECFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: getResponsiveSpacing(10),
+    },
+    footerLocationContent: {
+      flex: 1,
+    },
+    footerLocationValue: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#555',
+    },
     primaryButton: {
       backgroundColor: '#8B5CF6',
-      borderRadius: getResponsiveSpacing(30),
-      paddingVertical: getResponsiveValue(14, 12, 16),
+      borderRadius: getResponsiveSpacing(26),
+      paddingVertical: getResponsiveValue(12, 10, 14),
       alignItems: 'center',
+    },
+    primaryButtonFull: {
+      marginTop: getResponsiveSpacing(2),
     },
     primaryButtonText: {
       color: '#FFF',
@@ -534,6 +1014,243 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       color: '#8B5CF6',
       fontWeight: '600',
       fontSize: getResponsiveFontSize(14),
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+      position: 'relative',
+    },
+    modalContent: {
+      backgroundColor: '#FFF',
+      borderTopLeftRadius: getResponsiveSpacing(24),
+      borderTopRightRadius: getResponsiveSpacing(24),
+      maxHeight: screenHeight * 0.85,
+      paddingBottom: getResponsiveValue(12, 10, 14),
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveWidth(20),
+      paddingTop: getResponsiveValue(12, 10, 14),
+      paddingBottom: getResponsiveValue(10, 8, 12),
+      borderBottomWidth: 1,
+      borderBottomColor: '#F0F0F0',
+    },
+    modalTitle: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      color: '#000',
+    },
+    modalCloseButton: {
+      width: getResponsiveWidth(32, 28, 36),
+      height: getResponsiveWidth(32, 28, 36),
+      borderRadius: getResponsiveSpacing(16),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addAddressButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveWidth(20),
+      paddingVertical: getResponsiveValue(12, 10, 14),
+      borderBottomWidth: 1,
+      borderBottomColor: '#F0F0F0',
+    },
+    addAddressText: {
+      fontSize: getResponsiveFontSize(15),
+      fontWeight: '600',
+      color: '#8B5CF6',
+      marginLeft: getResponsiveSpacing(8),
+    },
+    addressList: {
+      maxHeight: screenHeight * 0.4,
+      paddingHorizontal: getResponsiveWidth(20),
+    },
+    addressItem: {
+      paddingVertical: getResponsiveValue(12, 10, 14),
+      borderBottomWidth: 1,
+      borderBottomColor: '#F0F0F0',
+    },
+    addressItemLeft: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    radioButton: {
+      width: getResponsiveWidth(20, 18, 22),
+      height: getResponsiveWidth(20, 18, 22),
+      borderRadius: getResponsiveSpacing(10),
+      borderWidth: 2,
+      borderColor: '#8B5CF6',
+      marginRight: getResponsiveSpacing(12),
+      marginTop: getResponsiveSpacing(2),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    radioButtonSelected: {
+      borderColor: '#8B5CF6',
+    },
+    radioButtonInner: {
+      width: getResponsiveWidth(10, 8, 12),
+      height: getResponsiveWidth(10, 8, 12),
+      borderRadius: getResponsiveSpacing(5),
+      backgroundColor: '#8B5CF6',
+    },
+    addressItemContent: {
+      flex: 1,
+      position: 'relative',
+    },
+    addressItemHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: getResponsiveSpacing(2),
+    },
+    addressItemLabel: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#000',
+    },
+    addressMenuButton: {
+      padding: getResponsiveSpacing(4),
+      position: 'relative',
+    },
+    deleteMenuContainer: {
+      position: 'absolute',
+      top: getResponsiveValue(-4, -4, 1),
+      left: getResponsiveSpacing(204),
+      backgroundColor: '#FFF',
+      borderRadius: getResponsiveSpacing(8),
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 5,
+      zIndex: 10,
+      minWidth: getResponsiveWidth(100, 90, 110),
+    },
+    deleteOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(10, 8, 12),
+      paddingHorizontal: getResponsiveSpacing(12),
+    },
+    deleteOptionText: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#FF3B30',
+      marginLeft: getResponsiveSpacing(6),
+    },
+    addressItemAddress: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+      marginBottom: getResponsiveSpacing(2),
+      lineHeight: getResponsiveFontSize(20),
+    },
+    addressItemPhone: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+    },
+    modalProceedButton: {
+      backgroundColor: '#8B5CF6',
+      marginHorizontal: getResponsiveWidth(20),
+      marginTop: getResponsiveValue(10, 8, 12),
+      borderRadius: getResponsiveSpacing(30),
+      paddingVertical: getResponsiveValue(12, 10, 14),
+      alignItems: 'center',
+    },
+    modalProceedButtonText: {
+      color: '#FFF',
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+    },
+    contactModalContent: {
+      backgroundColor: '#FFF',
+      borderTopLeftRadius: getResponsiveSpacing(20),
+      borderTopRightRadius: getResponsiveSpacing(20),
+      paddingHorizontal: getResponsiveWidth(18),
+      paddingTop: getResponsiveValue(14, 12, 18),
+      paddingBottom: getResponsiveValue(16, 14, 20),
+    },
+    contactModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: getResponsiveSpacing(6),
+    },
+    contactModalTitle: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      color: '#000',
+      flex: 1,
+      marginRight: getResponsiveSpacing(8),
+    },
+    contactModalSubtitle: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#666',
+      marginTop: getResponsiveSpacing(2),
+      marginBottom: getResponsiveSpacing(10),
+    },
+    contactPhoneRow: {
+      marginBottom: getResponsiveSpacing(8),
+    },
+    contactPhoneInputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: '#E0E0E0',
+      borderRadius: getResponsiveSpacing(8),
+      backgroundColor: '#FFF',
+      paddingHorizontal: getResponsiveSpacing(10),
+      paddingVertical: getResponsiveSpacing(4),
+    },
+    contactCountryCode: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#000',
+      marginRight: getResponsiveSpacing(8),
+    },
+    contactPhoneInput: {
+      flex: 1,
+      fontSize: getResponsiveFontSize(14),
+      color: '#000',
+      paddingVertical: getResponsiveSpacing(6),
+    },
+    contactBookButton: {
+      padding: getResponsiveSpacing(6),
+      borderRadius: getResponsiveSpacing(6),
+      backgroundColor: '#F4F0FF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: getResponsiveSpacing(6),
+    },
+    contactInputGroup: {
+      marginBottom: getResponsiveSpacing(12),
+    },
+    contactNameInput: {
+      borderWidth: 1,
+      borderColor: '#E0E0E0',
+      borderRadius: getResponsiveSpacing(8),
+      paddingHorizontal: getResponsiveSpacing(10),
+      paddingVertical: getResponsiveSpacing(8),
+      fontSize: getResponsiveFontSize(14),
+      color: '#000',
+      backgroundColor: '#FFF',
+    },
+    contactSaveButton: {
+      backgroundColor: '#8B5CF6',
+      paddingVertical: getResponsiveSpacing(10),
+      borderRadius: getResponsiveSpacing(10),
+      alignItems: 'center',
+    },
+    contactSaveButtonDisabled: {
+      backgroundColor: '#C4B5FD',
+    },
+    contactSaveButtonText: {
+      color: '#FFF',
+      fontSize: getResponsiveFontSize(15),
+      fontWeight: '600',
     },
   });
 };
