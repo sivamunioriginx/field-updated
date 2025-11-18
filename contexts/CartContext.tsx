@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { useAuth } from './AuthContext';
 
 export interface CartService {
   id: number;
@@ -29,9 +31,71 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [cart, setCart] = useState<{ [key: number]: number }>({});
-  const [cartDetails, setCartDetails] = useState<{ [key: number]: Service }>({});
+  const [cartDetails, setCartDetails] = useState<{ [key: number]: CartService }>({});
+  const [isHydrated, setIsHydrated] = useState(false);
+  const { user } = useAuth();
+  const storageKey = user ? `cart_${user.id}` : 'cart_guest';
 
-  const addToCart = (service: Service) => {
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCart = async () => {
+      try {
+        setIsHydrated(false);
+        const savedCart = await AsyncStorage.getItem(storageKey);
+        if (savedCart) {
+          const parsed = JSON.parse(savedCart);
+          if (isMounted) {
+            setCart(parsed.cart || {});
+            setCartDetails(parsed.cartDetails || {});
+          }
+        } else if (isMounted) {
+          setCart({});
+          setCartDetails({});
+        }
+      } catch (error) {
+        console.error('Error loading cart from storage:', error);
+        if (isMounted) {
+          setCart({});
+          setCartDetails({});
+        }
+      } finally {
+        if (isMounted) {
+          setIsHydrated(true);
+        }
+      }
+    };
+
+    loadCart();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const saveCart = async () => {
+      try {
+        await AsyncStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            cart,
+            cartDetails,
+          })
+        );
+      } catch (error) {
+        console.error('Error saving cart to storage:', error);
+      }
+    };
+
+    saveCart();
+  }, [cart, cartDetails, storageKey, isHydrated]);
+
+  const addToCart = (service: CartService) => {
     setCart(prev => ({
       ...prev,
       [service.id]: (prev[service.id] || 0) + 1
@@ -42,7 +106,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     }));
   };
 
-  const incrementItem = (serviceId: number, serviceDetails?: Service) => {
+  const incrementItem = (serviceId: number, serviceDetails?: CartService) => {
     setCart(prev => ({
       ...prev,
       [serviceId]: (prev[serviceId] || 0) + 1
@@ -96,7 +160,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     return Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   };
 
-  const getTotalPrice = (services: Service[] = []) => {
+  const getTotalPrice = (services: CartService[] = []) => {
     let total = 0;
     Object.entries(cart).forEach(([serviceId, quantity]) => {
       const numericId = parseInt(serviceId);

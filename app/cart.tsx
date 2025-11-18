@@ -1,4 +1,5 @@
 import getBaseUrl from '@/constants/api';
+import { useAuth } from '@/contexts/AuthContext';
 import type { CartService } from '@/contexts/CartContext';
 import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ export default function CartScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const { getCartItems, incrementItem, decrementItem, addToCart } = useCart();
+  const { isAuthenticated } = useAuth();
   const [suggestedServices, setSuggestedServices] = useState<CartService[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
@@ -221,7 +223,9 @@ export default function CartScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Login/Sign up to proceed</Text>
+          <Text style={styles.primaryButtonText}>
+            {isAuthenticated ? 'Proceed to checkout' : 'Login/Sign up to proceed'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
