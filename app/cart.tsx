@@ -6,22 +6,32 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 
 export default function CartScreen() {
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const { getCartItems, incrementItem, decrementItem, addToCart } = useCart();
   const [suggestedServices, setSuggestedServices] = useState<CartService[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   const cartItems = getCartItems();
+
+  // Create responsive styles based on screen dimensions
+  const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
+
+  // Responsive icon size helper
+  const getIconSize = (baseSize: number) => {
+    const baseWidth = 375;
+    const scaledSize = (baseSize * screenWidth) / baseWidth;
+    return Math.max(baseSize * 0.8, Math.min(baseSize * 1.2, scaledSize));
+  };
 
   const { itemTotal, taxes, totalAmount } = useMemo(() => {
     const subtotal = cartItems.reduce((sum, item) => {
@@ -75,14 +85,14 @@ export default function CartScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color="#000" />
+          <Ionicons name="arrow-back" size={getIconSize(22)} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your cart</Text>
       </View>
 
       {cartItems.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="cart-outline" size={60} color="#bdbdbd" />
+          <Ionicons name="cart-outline" size={getIconSize(60)} color="#bdbdbd" />
           <Text style={styles.emptyTitle}>Your cart is empty</Text>
           <Text style={styles.emptySubtitle}>Add services to continue booking.</Text>
           <TouchableOpacity style={styles.emptyButton} onPress={() => router.back()}>
@@ -92,7 +102,7 @@ export default function CartScreen() {
       ) : (
         <ScrollView
           style={styles.content}
-          contentContainerStyle={[styles.contentContainer, { paddingBottom: 140 }]}
+          contentContainerStyle={[styles.contentContainer, { paddingBottom: screenHeight * 0.17 }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.cartList}>
@@ -103,7 +113,7 @@ export default function CartScreen() {
                     <Image source={{ uri: item.service.image }} style={styles.cartItemImage} />
                   ) : (
                     <View style={styles.cartItemPlaceholder}>
-                      <Ionicons name="image-outline" size={20} color="#8B5CF6" />
+                      <Ionicons name="image-outline" size={getIconSize(20)} color="#8B5CF6" />
                     </View>
                   )}
                   <View style={styles.cartItemDetails}>
@@ -116,14 +126,14 @@ export default function CartScreen() {
                     style={styles.quantityButton}
                     onPress={() => decrementItem(item.service.id)}
                   >
-                    <Ionicons name="remove" size={16} color="#8B5CF6" />
+                    <Ionicons name="remove" size={getIconSize(16)} color="#8B5CF6" />
                   </TouchableOpacity>
                   <Text style={styles.quantityValue}>{item.quantity}</Text>
                   <TouchableOpacity
                     style={styles.quantityButton}
                     onPress={() => incrementItem(item.service.id, item.service)}
                   >
-                    <Ionicons name="add" size={16} color="#8B5CF6" />
+                    <Ionicons name="add" size={getIconSize(16)} color="#8B5CF6" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -155,7 +165,7 @@ export default function CartScreen() {
                         <Image source={{ uri: service.image }} style={[styles.suggestionImage, { height: imageHeight }]} />
                       ) : (
                         <View style={[styles.suggestionPlaceholder, { height: imageHeight }]}>
-                          <Ionicons name="image-outline" size={20} color="#8B5CF6" />
+                          <Ionicons name="image-outline" size={getIconSize(20)} color="#8B5CF6" />
                         </View>
                       )}
                       <Text style={styles.suggestionName} numberOfLines={2}>
@@ -178,7 +188,7 @@ export default function CartScreen() {
           <View style={styles.section}>
             <View style={styles.couponRow}>
               <View style={styles.couponIcon}>
-                <Ionicons name="pricetag-outline" size={16} color="#8B5CF6" />
+                <Ionicons name="pricetag-outline" size={getIconSize(16)} color="#8B5CF6" />
               </View>
               <View>
                 <Text style={styles.couponTitle}>Coupons and offers</Text>
@@ -218,264 +228,310 @@ export default function CartScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 10,
-  },
-  backButton: {
-    marginRight: 12,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 20,
-  },
-  cartList: {
-    backgroundColor: '#FFFFFF',
-  },
-  cartItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
-  },
-  cartItemInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 12,
-  },
-  cartItemImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    marginRight: 12,
-  },
-  cartItemPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  cartItemDetails: {
-    flex: 1,
-  },
-  cartItemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 4,
-  },
-  cartItemPrice: {
-    fontSize: 14,
-    color: '#666',
-  },
-  cartItemActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#8B5CF6',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  quantityButton: {
-    padding: 4,
-  },
-  quantityValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8B5CF6',
-    marginHorizontal: 8,
-  },
-  section: {
-    marginTop: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 16,
-  },
-  suggestionsRow: {
-    gap: 16,
-  },
-  suggestionCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    borderRadius: 16,
-    padding: 12,
-  },
-  suggestionImage: {
-    width: '100%',
-    height: 90,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  suggestionPlaceholder: {
-    width: '100%',
-    height: 90,
-    borderRadius: 12,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  suggestionName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 6,
-  },
-  suggestionPrice: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  suggestionAddButton: {
-    borderWidth: 1,
-    borderColor: '#8B5CF6',
-    borderRadius: 20,
-    paddingVertical: 4,
-    alignItems: 'center',
-  },
-  suggestionAddText: {
-    color: '#8B5CF6',
-    fontWeight: '600',
-  },
-  couponRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    borderRadius: 16,
-  },
-  couponIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F2ECFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  couponTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#000',
-  },
-  couponSubtitle: {
-    fontSize: 13,
-    color: '#8E8E8E',
-    marginTop: 2,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  summaryLabel: {
-    fontSize: 15,
-    color: '#555',
-  },
-  summarySubLabel: {
-    fontSize: 12,
-    color: '#999',
-  },
-  summaryValue: {
-    fontSize: 15,
-    color: '#111',
-    fontWeight: '600',
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: '#F0F0F0',
-    marginVertical: 8,
-  },
-  summaryTotalLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-  },
-  summaryTotalValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-  },
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: 16,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-  },
-  primaryButton: {
-    backgroundColor: '#8B5CF6',
-    borderRadius: 30,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#777',
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  emptyButton: {
-    marginTop: 20,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#8B5CF6',
-  },
-  emptyButtonText: {
-    color: '#8B5CF6',
-    fontWeight: '600',
-  },
-});
+const createStyles = (screenHeight: number, screenWidth: number) => {
+  // Base dimensions for better scaling (using standard mobile dimensions)
+  const baseWidth = 375; // iPhone standard - better scaling base
+  const baseHeight = 812; // iPhone standard - better scaling base
+
+  // Moderate scale function to prevent extreme sizes
+  const scale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+
+  const scaleHeight = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenHeight) / baseHeight;
+    return size + (scaledSize - size) * factor;
+  };
+
+  // Helper function to get responsive values based on screen height with min/max constraints
+  const getResponsiveValue = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scaleHeight(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive values based on screen width with min/max constraints
+  const getResponsiveWidth = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scale(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive font sizes with moderate scaling
+  const getResponsiveFontSize = (baseSize: number) => {
+    const scaledSize = scale(baseSize, 0.5);
+    return Math.max(10, Math.min(28, scaledSize));
+  };
+
+  // Helper function to get responsive padding/margins with moderate scaling
+  const getResponsiveSpacing = (baseSpacing: number) => {
+    return Math.max(2, scale(baseSpacing, 0.5));
+  };
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#FFFFFF',
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveWidth(20),
+      paddingTop: getResponsiveValue(50, 40, 60),
+      paddingBottom: getResponsiveValue(10, 8, 12),
+    },
+    backButton: {
+      marginRight: getResponsiveSpacing(12),
+    },
+    headerTitle: {
+      fontSize: getResponsiveFontSize(20),
+      fontWeight: '700',
+      color: '#000',
+    },
+    content: {
+      flex: 1,
+    },
+    contentContainer: {
+      paddingHorizontal: getResponsiveWidth(20),
+    },
+    cartList: {
+      backgroundColor: '#FFFFFF',
+    },
+    cartItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(16, 12, 20),
+      borderBottomWidth: 1,
+      borderBottomColor: '#F1F1F1',
+    },
+    cartItemInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      marginRight: getResponsiveSpacing(12),
+    },
+    cartItemImage: {
+      width: getResponsiveWidth(56, 48, 64),
+      height: getResponsiveWidth(56, 48, 64),
+      borderRadius: getResponsiveSpacing(10),
+      marginRight: getResponsiveSpacing(12),
+    },
+    cartItemPlaceholder: {
+      width: getResponsiveWidth(56, 48, 64),
+      height: getResponsiveWidth(56, 48, 64),
+      borderRadius: getResponsiveSpacing(10),
+      backgroundColor: '#F5F5F5',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: getResponsiveSpacing(12),
+    },
+    cartItemDetails: {
+      flex: 1,
+    },
+    cartItemName: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(4),
+    },
+    cartItemPrice: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+    },
+    cartItemActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveSpacing(20),
+      paddingHorizontal: getResponsiveSpacing(8),
+      paddingVertical: getResponsiveSpacing(4),
+    },
+    quantityButton: {
+      padding: getResponsiveSpacing(4),
+    },
+    quantityValue: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#8B5CF6',
+      marginHorizontal: getResponsiveSpacing(8),
+    },
+    section: {
+      marginTop: getResponsiveValue(24, 20, 28),
+    },
+    sectionTitle: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      color: '#000',
+      marginBottom: getResponsiveValue(16, 12, 20),
+    },
+    suggestionsRow: {
+      gap: getResponsiveSpacing(16),
+    },
+    suggestionCard: {
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#F0F0F0',
+      borderRadius: getResponsiveSpacing(16),
+      padding: getResponsiveSpacing(12),
+    },
+    suggestionImage: {
+      width: '100%',
+      height: getResponsiveValue(90, 80, 100),
+      borderRadius: getResponsiveSpacing(12),
+      marginBottom: getResponsiveValue(10, 8, 12),
+    },
+    suggestionPlaceholder: {
+      width: '100%',
+      height: getResponsiveValue(90, 80, 100),
+      borderRadius: getResponsiveSpacing(12),
+      backgroundColor: '#F5F5F5',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: getResponsiveValue(10, 8, 12),
+    },
+    suggestionName: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(6),
+    },
+    suggestionPrice: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+      marginBottom: getResponsiveSpacing(8),
+    },
+    suggestionAddButton: {
+      borderWidth: 1,
+      borderColor: '#8B5CF6',
+      borderRadius: getResponsiveSpacing(20),
+      paddingVertical: getResponsiveSpacing(4),
+      alignItems: 'center',
+    },
+    suggestionAddText: {
+      color: '#8B5CF6',
+      fontWeight: '600',
+      fontSize: getResponsiveFontSize(14),
+    },
+    couponRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(12, 10, 14),
+      paddingHorizontal: getResponsiveSpacing(12),
+      borderWidth: 1,
+      borderColor: '#F0F0F0',
+      borderRadius: getResponsiveSpacing(16),
+    },
+    couponIcon: {
+      width: getResponsiveWidth(32, 28, 36),
+      height: getResponsiveWidth(32, 28, 36),
+      borderRadius: getResponsiveSpacing(16),
+      backgroundColor: '#F2ECFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: getResponsiveSpacing(12),
+    },
+    couponTitle: {
+      fontSize: getResponsiveFontSize(15),
+      fontWeight: '600',
+      color: '#000',
+    },
+    couponSubtitle: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#8E8E8E',
+      marginTop: getResponsiveSpacing(2),
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: getResponsiveValue(12, 10, 14),
+    },
+    summaryLabel: {
+      fontSize: getResponsiveFontSize(15),
+      color: '#555',
+    },
+    summarySubLabel: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#999',
+    },
+    summaryValue: {
+      fontSize: getResponsiveFontSize(15),
+      color: '#111',
+      fontWeight: '600',
+    },
+    summaryDivider: {
+      height: 1,
+      backgroundColor: '#F0F0F0',
+      marginVertical: getResponsiveSpacing(8),
+    },
+    summaryTotalLabel: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '700',
+      color: '#000',
+    },
+    summaryTotalValue: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      color: '#000',
+    },
+    footer: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      padding: getResponsiveSpacing(16),
+      backgroundColor: '#FFF',
+      borderTopWidth: 1,
+      borderTopColor: '#F0F0F0',
+    },
+    primaryButton: {
+      backgroundColor: '#8B5CF6',
+      borderRadius: getResponsiveSpacing(30),
+      paddingVertical: getResponsiveValue(14, 12, 16),
+      alignItems: 'center',
+    },
+    primaryButtonText: {
+      color: '#FFF',
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+    },
+    emptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveWidth(32),
+    },
+    emptyTitle: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      color: '#000',
+      marginTop: getResponsiveValue(12, 10, 14),
+    },
+    emptySubtitle: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#777',
+      marginTop: getResponsiveSpacing(6),
+      textAlign: 'center',
+    },
+    emptyButton: {
+      marginTop: getResponsiveValue(20, 16, 24),
+      paddingHorizontal: getResponsiveWidth(24),
+      paddingVertical: getResponsiveValue(12, 10, 14),
+      borderRadius: getResponsiveSpacing(24),
+      borderWidth: 1,
+      borderColor: '#8B5CF6',
+    },
+    emptyButtonText: {
+      color: '#8B5CF6',
+      fontWeight: '600',
+      fontSize: getResponsiveFontSize(14),
+    },
+  });
+};
 
 
