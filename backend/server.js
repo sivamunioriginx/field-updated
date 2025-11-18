@@ -2086,9 +2086,8 @@ app.get('/api/category-subcategory', async (req, res) => {
 });
 
 // OTP Configuration
-const TEXTLOCAL_API_KEY = process.env.TEXTLOCAL_API_KEY || 'Njc3MDYxNzA2MTQ3NzM0NjQ2NDk3NDU0NmI2ZTdhNTA=';
-const TEXTLOCAL_SENDER = process.env.TEXTLOCAL_SENDER || 'ORIGNX';
-const USE_MOCK_OTP = false; // Set to false to enable real SMS sending
+const MSG91_AUTHKEY = process.env.MSG91_AUTHKEY || '476418A4ojfZq9690af21aP1';
+const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || '690aea2528a9db2fff68d6d5';
 
 // In-memory OTP storage (in production, use Redis or database)
 const otpStore = new Map();
@@ -2271,7 +2270,7 @@ const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Send OTP via TextLocal
+// Send OTP via MSG91
 app.post('/api/send-otp', async (req, res) => {
   const { mobile, userType } = req.body;
   
@@ -2294,37 +2293,34 @@ app.post('/api/send-otp', async (req, res) => {
       userType
     });
 
-    if (USE_MOCK_OTP) {
-      // Mock mode - just return success (for testing)
-      console.log(`🔐 MOCK OTP SENT: ${mobile} -> ${otp}`);
-      res.json({
-        success: true,
-        message: `OTP sent successfully! (Mock Mode: ${otp})`,
-        data: { mobile, userType }
-      });
-      return;
-    }
+    // Send OTP via MSG91
+    const msg91Url = 'https://control.msg91.com/api/v5/flow/';
+    const requestData = {
+      authkey: MSG91_AUTHKEY,
+      template_id: MSG91_TEMPLATE_ID,
+      recipients: [
+        {
+          mobiles: '91' + mobile,
+          otp: otp
+        }
+      ]
+    };
 
-    // Send OTP via TextLocal (matching PHP implementation)
-    const textlocalUrl = 'https://api.textlocal.in/send/';
-    const data = `apikey=${encodeURIComponent(TEXTLOCAL_API_KEY)}&numbers=${encodeURIComponent('91' + mobile)}&sender=${encodeURIComponent(TEXTLOCAL_SENDER)}&message=${encodeURIComponent(`Please use ${otp} to login to your OriginX account and shop from our wide range of products. OTP is valid for 5 minutes - OriginX D2C Ecomm Private Limited.`)}`;
-
-    const response = await axios.get(`${textlocalUrl}?${data}`);
-    console.log('📱 TextLocal API Response:', response.data);
+    const response = await axios.post(msg91Url, requestData, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
     
-    if (response.data.status === 'success') {
+    if (response.data.type === 'success' || response.data.message === 'SMS sent successfully') {
       res.json({
         success: true,
         message: 'OTP sent successfully',
         data: { mobile, userType }
       });
     } else {
-      // Better error handling for TextLocal API
-      const errorMessage = response.data.errors && response.data.errors.length > 0 
-        ? response.data.errors[0].message 
-        : (response.data.message || 'Failed to send OTP');
-      
-      console.error('TextLocal API Error:', response.data);
+      // Better error handling for MSG91 API
+      const errorMessage = response.data.message || 'Failed to send OTP';
       throw new Error(errorMessage);
     }
 

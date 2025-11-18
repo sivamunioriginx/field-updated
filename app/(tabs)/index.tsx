@@ -695,7 +695,7 @@ export default function HomeScreen() {
             <Ionicons name="call-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Support</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
+          <TouchableOpacity style={styles.navItem} onPress={() => router.push('/login')}>
             <Ionicons name="person-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Account</Text>
           </TouchableOpacity>
