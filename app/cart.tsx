@@ -35,11 +35,135 @@ export default function CartScreen() {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [isSavingContact, setIsSavingContact] = useState(false);
+  const [showSlotModal, setShowSlotModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [isInstantBooking, setIsInstantBooking] = useState(false);
 
   const cartItems = getCartItems();
 
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
+
+  // Generate date options (next 30 days)
+  const dateOptions = useMemo(() => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      dates.push(date);
+    }
+    return dates;
+  }, []);
+
+  // Initialize selected date to tomorrow if not set
+  useEffect(() => {
+    if (!selectedDate && dateOptions.length > 0) {
+      setSelectedDate(dateOptions[1] || dateOptions[0]);
+    }
+  }, [dateOptions, selectedDate]);
+
+  // Generate time slots
+  const timeSlots = useMemo(() => {
+    const slots = [];
+    for (let hour = 7; hour <= 18; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+        slots.push({
+          value: timeString,
+          display: `${displayHour}:${minute.toString().padStart(2, '0')} ${period}`,
+        });
+      }
+    }
+    return slots;
+  }, []);
+
+  const getDefaultInstantSlot = useCallback(() => {
+    if (timeSlots.length === 0) {
+      return { date: new Date(), slotValue: null };
+    }
+
+    const now = new Date();
+    for (const slot of timeSlots) {
+      const [hour, minute] = slot.value.split(':').map(Number);
+      const slotTime = new Date(now);
+      slotTime.setHours(hour, minute, 0, 0);
+      if (slotTime > now) {
+        return { date: now, slotValue: slot.value };
+      }
+    }
+
+    const nextDay = new Date(now);
+    nextDay.setDate(nextDay.getDate() + 1);
+    return { date: nextDay, slotValue: timeSlots[0].value };
+  }, [timeSlots]);
+
+  // Filter time slots based on selected date
+  const availableTimeSlots = useMemo(() => {
+    if (!selectedDate) return timeSlots;
+    
+    const today = new Date();
+    const isToday = selectedDate.getDate() === today.getDate() &&
+                    selectedDate.getMonth() === today.getMonth() &&
+                    selectedDate.getFullYear() === today.getFullYear();
+    
+    if (!isToday) return timeSlots;
+    
+    const now = new Date();
+    
+    return timeSlots.filter(slot => {
+      const [hour, minute] = slot.value.split(':').map(Number);
+      const slotTime = new Date();
+      slotTime.setHours(hour, minute, 0, 0);
+      return slotTime > now;
+    });
+  }, [timeSlots, selectedDate]);
+
+  // Format date for display
+  const formatDate = (date: Date) => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return {
+      day: days[date.getDay()],
+      date: date.getDate().toString()
+    };
+  };
+
+  // Format date and time for booking display
+  const formatBookingDateTime = () => {
+    let dateToUse = selectedDate;
+    let timeToUse = selectedTime;
+
+    if (isInstantBooking && (!dateToUse || !timeToUse)) {
+      const { date, slotValue } = getDefaultInstantSlot();
+      if (slotValue) {
+        dateToUse = date;
+        timeToUse = slotValue;
+      } else {
+        return 'Instant Booking';
+      }
+    }
+
+    if (!dateToUse || !timeToUse) {
+      return '';
+    }
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dayName = days[dateToUse.getDay()];
+    const monthName = months[dateToUse.getMonth()];
+    const dateNum = dateToUse.getDate();
+    
+    // Format time
+    const [hour, minute] = timeToUse.split(':').map(Number);
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    const formattedTime = `${displayHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} ${period}`;
+    
+    return `${dayName}, ${monthName} ${dateNum} - ${formattedTime}`;
+  };
 
   // Responsive icon size helper
   const getIconSize = (baseSize: number) => {
@@ -385,7 +509,10 @@ export default function CartScreen() {
           <>
             <TouchableOpacity
               style={styles.footerLocationCard}
-              onPress={() => router.push('/location-picker')}
+              onPress={() => {
+                loadSavedAddresses();
+                setShowAddressModal(true);
+              }}
               activeOpacity={0.85}
             >
               <View style={styles.footerLocationIcon}>
@@ -406,8 +533,45 @@ export default function CartScreen() {
                 <Ionicons name="create-outline" size={getIconSize(18)} color="#8B5CF6" />
               </TouchableOpacity>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.primaryButton, styles.primaryButtonFull]}>
-              <Text style={styles.primaryButtonText}>Select slot</Text>
+            
+            {/* Booking Date/Time Card */}
+            {(isInstantBooking || (selectedDate && selectedTime)) && (
+              <TouchableOpacity
+                style={styles.footerBookingCard}
+                onPress={() => setShowSlotModal(true)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.footerBookingIcon}>
+                  <Ionicons name="time-outline" size={getIconSize(18)} color="#8B5CF6" />
+                </View>
+                <View style={styles.footerBookingContent}>
+                  <Text style={styles.footerBookingValue} numberOfLines={1}>
+                    {formatBookingDateTime()}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowSlotModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={getIconSize(18)} color="#8B5CF6" />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            )}
+            
+            <TouchableOpacity 
+              style={[styles.primaryButton, styles.primaryButtonFull]}
+              onPress={() => {
+                if (isInstantBooking || (selectedDate && selectedTime)) {
+                  // Navigate to payment or next step
+                  // For now, just keep the selection
+                } else {
+                  setShowSlotModal(true);
+                }
+              }}
+            >
+              <Text style={styles.primaryButtonText}>
+                {(isInstantBooking || (selectedDate && selectedTime)) ? 'Proceed to pay' : 'Select slot'}
+              </Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -634,6 +798,153 @@ export default function CartScreen() {
           </View>
         </Modal>
       )}
+
+      {/* Slot Selection Modal */}
+      <Modal
+        visible={showSlotModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSlotModal(false)}
+      >
+        <View style={styles.slotModalOverlay}>
+          {/* Close button outside modal */}
+          <TouchableOpacity
+            onPress={() => setShowSlotModal(false)}
+            style={styles.slotModalCloseOutside}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="close" size={getIconSize(24)} color="#FFF" />
+          </TouchableOpacity>
+          <View style={styles.slotModalContent}>
+            <ScrollView
+              style={styles.slotModalScroll}
+              contentContainerStyle={styles.slotModalScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Instant Booking Option */}
+              <View style={styles.instantBookingContainer}>
+                <View style={styles.instantBookingContent}>
+                  <View style={styles.instantBookingLeft}>
+                    <View style={styles.instantBookingIconContainer}>
+                      <Ionicons name="flash" size={getIconSize(20)} color="#8B5CF6" />
+                    </View>
+                    <View style={styles.instantBookingTextContainer}>
+                      <Text style={styles.instantBookingTitle}>Instant Booking</Text>
+                      <Text style={styles.instantBookingSubtitle}>Get service immediately</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.instantBookingToggle, isInstantBooking && styles.instantBookingToggleActive]}
+                    onPress={() => {
+                      const newValue = !isInstantBooking;
+                      setIsInstantBooking(newValue);
+                      if (newValue) {
+                        setSelectedDate(null);
+                        setSelectedTime(null);
+                      } else {
+                        setSelectedDate(null);
+                        setSelectedTime(null);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.instantBookingToggleThumb, isInstantBooking && styles.instantBookingToggleThumbActive]} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Main Question */}
+              <Text style={styles.slotQuestion}>When should the professional arrive?</Text>
+              {/* Date Selection */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.dateSelectionContainer}
+                style={styles.dateSelectionScroll}
+              >
+                {dateOptions.map((date, index) => {
+                  const isSelected = selectedDate && 
+                    date.getDate() === selectedDate.getDate() &&
+                    date.getMonth() === selectedDate.getMonth() &&
+                    date.getFullYear() === selectedDate.getFullYear();
+                  const dateFormatted = formatDate(date);
+                  return (
+                    <TouchableOpacity
+                      key={date.toISOString()}
+                      style={[
+                        styles.dateButton,
+                        isSelected && styles.dateButtonSelected,
+                        isInstantBooking && styles.dateButtonDisabled
+                      ]}
+                      onPress={() => !isInstantBooking && setSelectedDate(date)}
+                      activeOpacity={isInstantBooking ? 1 : 0.7}
+                      disabled={isInstantBooking}
+                    >
+                      <Text style={[
+                        styles.dateButtonDayText,
+                        isSelected && styles.dateButtonDayTextSelected,
+                        isInstantBooking && styles.dateButtonTextDisabled
+                      ]}>
+                        {dateFormatted.day}
+                      </Text>
+                      <Text style={[
+                        styles.dateButtonDateText,
+                        isSelected && styles.dateButtonDateTextSelected,
+                        isInstantBooking && styles.dateButtonTextDisabled
+                      ]}>
+                        {dateFormatted.date}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Time Selection */}
+              <Text style={styles.timeSelectionTitle}>Select start time of service</Text>
+              <View style={styles.timeSlotsGrid}>
+                {availableTimeSlots.map((slot) => {
+                  const isSelected = selectedTime === slot.value;
+                  return (
+                    <TouchableOpacity
+                      key={slot.value}
+                      style={[
+                        styles.timeSlotButton,
+                        isSelected && styles.timeSlotButtonSelected,
+                        isInstantBooking && styles.timeSlotButtonDisabled
+                      ]}
+                      onPress={() => !isInstantBooking && setSelectedTime(slot.value)}
+                      activeOpacity={isInstantBooking ? 1 : 0.7}
+                      disabled={isInstantBooking}
+                    >
+                      <Text style={[
+                        styles.timeSlotText,
+                        isSelected && styles.timeSlotTextSelected,
+                        isInstantBooking && styles.timeSlotTextDisabled
+                      ]}>
+                        {slot.display}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            {/* Proceed Button */}
+            <TouchableOpacity
+              style={styles.slotProceedButton}
+              onPress={() => {
+                if (isInstantBooking || (selectedDate && selectedTime)) {
+                  setShowSlotModal(false);
+                }
+              }}
+              activeOpacity={0.85}
+              disabled={!isInstantBooking && (!selectedDate || !selectedTime)}
+            >
+              <Text style={styles.slotProceedButtonText}>Proceed to checkout</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -970,6 +1281,32 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: getResponsiveFontSize(13),
       color: '#555',
     },
+    footerBookingCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: getResponsiveSpacing(10),
+      borderWidth: 1,
+      borderColor: '#F0F0F0',
+      borderRadius: getResponsiveSpacing(16),
+      marginBottom: getResponsiveSpacing(6),
+      backgroundColor: '#FFF',
+    },
+    footerBookingIcon: {
+      width: getResponsiveWidth(34, 30, 40),
+      height: getResponsiveWidth(34, 30, 40),
+      borderRadius: getResponsiveSpacing(17),
+      backgroundColor: '#F2ECFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: getResponsiveSpacing(10),
+    },
+    footerBookingContent: {
+      flex: 1,
+    },
+    footerBookingValue: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#555',
+    },
     primaryButton: {
       backgroundColor: '#8B5CF6',
       borderRadius: getResponsiveSpacing(26),
@@ -1250,6 +1587,217 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     contactSaveButtonText: {
       color: '#FFF',
       fontSize: getResponsiveFontSize(15),
+      fontWeight: '600',
+    },
+    slotModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    slotModalContent: {
+      backgroundColor: '#FFF',
+      borderTopLeftRadius: getResponsiveSpacing(24),
+      borderTopRightRadius: getResponsiveSpacing(24),
+      height: screenHeight * 0.8,
+      flexDirection: 'column',
+    },
+    slotModalCloseOutside: {
+      position: 'absolute',
+      top: getResponsiveValue(70, 60, 80),
+      right: getResponsiveWidth(20),
+      zIndex: 1000,
+      width: getResponsiveWidth(40, 36, 44),
+      height: getResponsiveWidth(40, 36, 44),
+      borderRadius: getResponsiveSpacing(20),
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    slotModalScroll: {
+      flex: 1,
+    },
+    slotModalScrollContent: {
+      paddingHorizontal: getResponsiveWidth(20),
+      paddingTop: getResponsiveValue(14, 12, 18),
+      paddingBottom: getResponsiveValue(14, 12, 18),
+      flexGrow: 1,
+    },
+    instantBookingContainer: {
+      marginBottom: getResponsiveValue(12, 10, 14),
+      paddingVertical: getResponsiveValue(10, 8, 12),
+      paddingHorizontal: getResponsiveSpacing(14),
+      borderRadius: getResponsiveSpacing(14),
+      backgroundColor: '#F9F6FF',
+      borderWidth: 1,
+      borderColor: '#F3F0FF',
+    },
+    instantBookingContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    instantBookingLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    instantBookingIconContainer: {
+      width: getResponsiveWidth(44, 40, 48),
+      height: getResponsiveWidth(44, 40, 48),
+      borderRadius: getResponsiveSpacing(12),
+      backgroundColor: '#EFE6FF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: getResponsiveSpacing(12),
+    },
+    instantBookingTextContainer: {
+      flex: 1,
+    },
+    instantBookingTitle: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '700',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(2),
+    },
+    instantBookingSubtitle: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#666',
+    },
+    instantBookingToggle: {
+      width: getResponsiveWidth(50, 46, 54),
+      height: getResponsiveWidth(28, 26, 30),
+      borderRadius: getResponsiveSpacing(14),
+      backgroundColor: '#E0E0E0',
+      justifyContent: 'center',
+      paddingHorizontal: getResponsiveSpacing(2),
+    },
+    instantBookingToggleActive: {
+      backgroundColor: '#8B5CF6',
+    },
+    instantBookingToggleThumb: {
+      width: getResponsiveWidth(24, 22, 26),
+      height: getResponsiveWidth(24, 22, 26),
+      borderRadius: getResponsiveSpacing(12),
+      backgroundColor: '#FFF',
+      alignSelf: 'flex-start',
+    },
+    instantBookingToggleThumbActive: {
+      alignSelf: 'flex-end',
+    },
+    slotQuestion: {
+      fontSize: getResponsiveFontSize(20),
+      fontWeight: '700',
+      color: '#000',
+      marginBottom: getResponsiveSpacing(4),
+    },
+    dateSelectionScroll: {
+      marginBottom: getResponsiveValue(14, 12, 18),
+    },
+    dateSelectionContainer: {
+      flexDirection: 'row',
+      paddingHorizontal: getResponsiveWidth(4),
+      paddingVertical: getResponsiveValue(14, 12, 18),
+    },
+    dateButton: {
+      width: (screenWidth - getResponsiveWidth(8) - (getResponsiveSpacing(6) * 4)) / 5,
+      paddingVertical: getResponsiveValue(10, 8, 12),
+      paddingHorizontal: getResponsiveSpacing(8),
+      borderRadius: getResponsiveSpacing(10),
+      borderWidth: 1,
+      borderColor: '#E0E0E0',
+      backgroundColor: '#FFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: getResponsiveSpacing(6),
+      flexDirection: 'column',
+    },
+    dateButtonSelected: {
+      backgroundColor: '#F3F0FF',
+      borderColor: '#8B5CF6',
+    },
+    dateButtonDayText: {
+      fontSize: getResponsiveFontSize(11),
+      fontWeight: '500',
+      color: '#666',
+      marginBottom: getResponsiveSpacing(2),
+    },
+    dateButtonDayTextSelected: {
+      color: '#8B5CF6',
+    },
+    dateButtonDateText: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#000',
+    },
+    dateButtonDateTextSelected: {
+      color: '#8B5CF6',
+    },
+    dateButtonDisabled: {
+      opacity: 0.5,
+      backgroundColor: '#F5F5F5',
+    },
+    dateButtonTextDisabled: {
+      opacity: 0.5,
+    },
+    timeSelectionTitle: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#000',
+      marginBottom: getResponsiveValue(10, 8, 12),
+    },
+    timeSlotsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginBottom: getResponsiveValue(12, 10, 14),
+      justifyContent: 'flex-start',
+      marginHorizontal: -getResponsiveSpacing(5),
+    },
+    timeSlotButton: {
+      width: (screenWidth - getResponsiveWidth(60) - getResponsiveSpacing(20)) / 3,
+      paddingVertical: getResponsiveValue(12, 10, 14),
+      paddingHorizontal: getResponsiveSpacing(8),
+      borderRadius: getResponsiveSpacing(10),
+      borderWidth: 1,
+      borderColor: '#E0E0E0',
+      backgroundColor: '#FFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginHorizontal: getResponsiveSpacing(5),
+      marginBottom: getResponsiveSpacing(10),
+    },
+    timeSlotButtonSelected: {
+      backgroundColor: '#F3F0FF',
+      borderColor: '#8B5CF6',
+    },
+    timeSlotText: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '500',
+      color: '#000',
+    },
+    timeSlotTextSelected: {
+      color: '#8B5CF6',
+      fontWeight: '600',
+    },
+    timeSlotButtonDisabled: {
+      opacity: 0.5,
+      backgroundColor: '#F5F5F5',
+    },
+    timeSlotTextDisabled: {
+      opacity: 0.5,
+    },
+    slotProceedButton: {
+      backgroundColor: '#8B5CF6',
+      marginHorizontal: getResponsiveWidth(20),
+      marginTop: getResponsiveValue(10, 8, 12),
+      marginBottom: getResponsiveValue(2, 0, 4),
+      borderRadius: getResponsiveSpacing(30),
+      paddingVertical: getResponsiveValue(14, 12, 16),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    slotProceedButtonText: {
+      color: '#FFF',
+      fontSize: getResponsiveFontSize(16),
       fontWeight: '600',
     },
   });
