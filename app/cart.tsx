@@ -45,11 +45,11 @@ export default function CartScreen() {
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
 
-  // Generate date options (next 30 days)
+  // Generate date options (today + next 30 days)
   const dateOptions = useMemo(() => {
     const dates = [];
     const today = new Date();
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i <= 30; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() + i);
       dates.push(date);
@@ -81,46 +81,48 @@ export default function CartScreen() {
     return slots;
   }, []);
 
-  const getDefaultInstantSlot = useCallback(() => {
-    if (timeSlots.length === 0) {
-      return { date: new Date(), slotValue: null };
-    }
+  const isSameDay = (dateA: Date, dateB: Date) => {
+    return (
+      dateA.getDate() === dateB.getDate() &&
+      dateA.getMonth() === dateB.getMonth() &&
+      dateA.getFullYear() === dateB.getFullYear()
+    );
+  };
 
-    const now = new Date();
-    for (const slot of timeSlots) {
-      const [hour, minute] = slot.value.split(':').map(Number);
-      const slotTime = new Date(now);
-      slotTime.setHours(hour, minute, 0, 0);
-      if (slotTime > now) {
-        return { date: now, slotValue: slot.value };
+  const getAvailableSlotsForDate = useCallback(
+    (date: Date | null) => {
+      if (!date) return timeSlots;
+      if (!isSameDay(date, new Date())) {
+        return timeSlots;
       }
-    }
 
+      const now = new Date();
+
+      return timeSlots.filter((slot) => {
+        const [hour, minute] = slot.value.split(':').map(Number);
+        const slotTime = new Date();
+        slotTime.setHours(hour, minute, 0, 0);
+        return slotTime > now;
+      });
+    },
+    [timeSlots]
+  );
+
+  const getDefaultInstantSlot = useCallback(() => {
+    const now = new Date();
+    const todaySlots = getAvailableSlotsForDate(now);
+    if (todaySlots.length > 0) {
+      return { date: now, slotValue: todaySlots[0].value };
+    }
     const nextDay = new Date(now);
     nextDay.setDate(nextDay.getDate() + 1);
-    return { date: nextDay, slotValue: timeSlots[0].value };
-  }, [timeSlots]);
+    return { date: nextDay, slotValue: timeSlots[0]?.value || null };
+  }, [getAvailableSlotsForDate, timeSlots]);
 
-  // Filter time slots based on selected date
-  const availableTimeSlots = useMemo(() => {
-    if (!selectedDate) return timeSlots;
-    
-    const today = new Date();
-    const isToday = selectedDate.getDate() === today.getDate() &&
-                    selectedDate.getMonth() === today.getMonth() &&
-                    selectedDate.getFullYear() === today.getFullYear();
-    
-    if (!isToday) return timeSlots;
-    
-    const now = new Date();
-    
-    return timeSlots.filter(slot => {
-      const [hour, minute] = slot.value.split(':').map(Number);
-      const slotTime = new Date();
-      slotTime.setHours(hour, minute, 0, 0);
-      return slotTime > now;
-    });
-  }, [timeSlots, selectedDate]);
+  const availableSlotSet = useMemo(() => {
+    const slots = getAvailableSlotsForDate(selectedDate || null);
+    return new Set(slots.map((slot) => slot.value));
+  }, [getAvailableSlotsForDate, selectedDate]);
 
   // Format date for display
   const formatDate = (date: Date) => {
@@ -183,6 +185,17 @@ export default function CartScreen() {
       totalAmount: subtotal + taxValue,
     };
   }, [cartItems]);
+
+  const footerPaddingBottom = useMemo(() => {
+    const basePadding = screenHeight * 0.17;
+    if (!isAuthenticated) {
+      return basePadding;
+    }
+    if (isInstantBooking || (selectedDate && selectedTime)) {
+      return basePadding + screenHeight * 0.05;
+    }
+    return basePadding;
+  }, [screenHeight, isAuthenticated, isInstantBooking, selectedDate, selectedTime]);
 
   const handleAddSuggested = (service: CartService) => {
     addToCart(service);
@@ -363,7 +376,7 @@ export default function CartScreen() {
       ) : (
         <ScrollView
           style={styles.content}
-          contentContainerStyle={[styles.contentContainer, { paddingBottom: screenHeight * 0.17 }]}
+          contentContainerStyle={[styles.contentContainer, { paddingBottom: footerPaddingBottom }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.cartList}>
@@ -563,7 +576,6 @@ export default function CartScreen() {
               onPress={() => {
                 if (isInstantBooking || (selectedDate && selectedTime)) {
                   // Navigate to payment or next step
-                  // For now, just keep the selection
                 } else {
                   setShowSlotModal(true);
                 }
@@ -902,24 +914,30 @@ export default function CartScreen() {
               {/* Time Selection */}
               <Text style={styles.timeSelectionTitle}>Select start time of service</Text>
               <View style={styles.timeSlotsGrid}>
-                {availableTimeSlots.map((slot) => {
+                {timeSlots.map((slot) => {
                   const isSelected = selectedTime === slot.value;
+                  const isToday = selectedDate ? isSameDay(selectedDate, new Date()) : false;
+                  const isPastForToday =
+                    !isInstantBooking &&
+                    isToday &&
+                    !availableSlotSet.has(slot.value);
+                  const slotDisabled = isInstantBooking || isPastForToday;
                   return (
                     <TouchableOpacity
                       key={slot.value}
                       style={[
                         styles.timeSlotButton,
                         isSelected && styles.timeSlotButtonSelected,
-                        isInstantBooking && styles.timeSlotButtonDisabled
+                        slotDisabled && styles.timeSlotButtonDisabled
                       ]}
-                      onPress={() => !isInstantBooking && setSelectedTime(slot.value)}
-                      activeOpacity={isInstantBooking ? 1 : 0.7}
-                      disabled={isInstantBooking}
+                      onPress={() => !slotDisabled && setSelectedTime(slot.value)}
+                      activeOpacity={slotDisabled ? 1 : 0.7}
+                      disabled={slotDisabled}
                     >
                       <Text style={[
                         styles.timeSlotText,
                         isSelected && styles.timeSlotTextSelected,
-                        isInstantBooking && styles.timeSlotTextDisabled
+                        slotDisabled && styles.timeSlotTextDisabled
                       ]}>
                         {slot.display}
                       </Text>
@@ -931,7 +949,10 @@ export default function CartScreen() {
 
             {/* Proceed Button */}
             <TouchableOpacity
-              style={styles.slotProceedButton}
+              style={[
+                styles.slotProceedButton,
+                !isInstantBooking && (!selectedDate || !selectedTime) && styles.slotProceedButtonDisabled
+              ]}
               onPress={() => {
                 if (isInstantBooking || (selectedDate && selectedTime)) {
                   setShowSlotModal(false);
@@ -940,7 +961,9 @@ export default function CartScreen() {
               activeOpacity={0.85}
               disabled={!isInstantBooking && (!selectedDate || !selectedTime)}
             >
-              <Text style={styles.slotProceedButtonText}>Proceed to checkout</Text>
+              <Text style={styles.slotProceedButtonText}>
+                Proceed to checkout
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1696,7 +1719,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     dateSelectionContainer: {
       flexDirection: 'row',
       paddingHorizontal: getResponsiveWidth(4),
-      paddingVertical: getResponsiveValue(14, 12, 18),
+      paddingVertical: getResponsiveValue(10, 8, 12),
     },
     dateButton: {
       width: (screenWidth - getResponsiveWidth(8) - (getResponsiveSpacing(6) * 4)) / 5,
@@ -1794,6 +1817,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingVertical: getResponsiveValue(14, 12, 16),
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    slotProceedButtonDisabled: {
+      backgroundColor: '#C4B5FD',
     },
     slotProceedButtonText: {
       color: '#FFF',
