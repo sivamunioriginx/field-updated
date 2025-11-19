@@ -9,6 +9,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  AppState,
+  AppStateStatus,
   Modal,
   RefreshControl,
   ScrollView,
@@ -17,7 +19,7 @@ import {
   TextInput,
   TouchableOpacity,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 
 interface Service {
@@ -65,6 +67,8 @@ export default function ServicesScreen() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(null);
   const videoRef = useRef<Video>(null);
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+  const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
   const scrollY = useRef(new Animated.Value(0)).current;
 
   // Create responsive styles based on screen dimensions
@@ -178,16 +182,31 @@ export default function ServicesScreen() {
 
   // Ensure video plays when component mounts
   useEffect(() => {
-    const videoUrl = `${getBaseUrl().replace('/api', '')}/uploads/service_videos/electrical.mov`;
-    
-    const timer = setTimeout(() => {
-      if (videoRef.current) {
-        videoRef.current.playAsync();
-      }
-    }, 1000); // Wait 1 second for video to load
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      appState.current = nextState;
+      setIsAppActive(nextState === 'active');
+    });
 
-    return () => clearTimeout(timer);
+    return () => subscription.remove();
   }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (isAppActive) {
+      timer = setTimeout(() => {
+        videoRef.current?.playAsync().catch(() => {
+          setVideoError(true);
+          setVideoLoading(false);
+        });
+      }, 500);
+    } else {
+      videoRef.current?.pauseAsync().catch(() => {});
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isAppActive]);
 
   const handleServicePress = (service: Service) => {
     // Navigate to service details or booking screen
@@ -356,18 +375,22 @@ export default function ServicesScreen() {
         >
         {/* Video Section */}
         <View style={styles.videoContainer}>
-        {videoLoading && !videoError && (
+        {isAppActive && videoLoading && !videoError && (
           <View style={styles.videoLoadingContainer}>
             <ActivityIndicator size="large" color="#8B5CF6" />
             <Text style={styles.videoLoadingText}>Loading video...</Text>
           </View>
         )}
         
-        {videoError ? (
+        {videoError || !isAppActive ? (
           <View style={styles.videoErrorContainer}>
             <Ionicons name="play-circle-outline" size={60} color="#8B5CF6" />
-            <Text style={styles.videoErrorText}>Video not supported</Text>
-            <Text style={styles.videoErrorSubtext}>Format not compatible with device</Text>
+            <Text style={styles.videoErrorText}>
+              {isAppActive ? 'Video not supported' : 'Video paused'}
+            </Text>
+            <Text style={styles.videoErrorSubtext}>
+              {isAppActive ? 'Format not compatible with device' : 'Resume the app to continue'}
+            </Text>
           </View>
         ) : (
           <Video

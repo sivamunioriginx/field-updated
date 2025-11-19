@@ -634,7 +634,8 @@ export default function CartScreen() {
 
             {/* Address List */}
             <ScrollView style={styles.addressList} showsVerticalScrollIndicator={false}>
-              {savedAddresses.map((address) => {
+              {savedAddresses.map((address, index) => {
+                const addressKey = `${address.id || 'default'}-${index}`;
                 const isSelected = selectedAddressId === (address.id || 'default');
                 const addressIcon = address.saveAsType?.toLowerCase().includes('home')
                   ? 'home-outline'
@@ -646,7 +647,7 @@ export default function CartScreen() {
 
                 return (
                   <TouchableOpacity
-                    key={address.id || 'default'}
+                    key={addressKey}
                     style={styles.addressItem}
                     onPress={() => {
                       setSelectedAddressId(address.id || 'default');
