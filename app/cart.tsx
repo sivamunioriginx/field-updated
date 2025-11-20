@@ -520,35 +520,37 @@ export default function CartScreen() {
       <View style={styles.footer}>
         {isAuthenticated ? (
           <>
-            <TouchableOpacity
-              style={styles.footerLocationCard}
-              onPress={() => {
-                loadSavedAddresses();
-                setShowAddressModal(true);
-              }}
-              activeOpacity={0.85}
-            >
-              <View style={styles.footerLocationIcon}>
-                <Ionicons name={addressIconName} size={getIconSize(18)} color="#8B5CF6" />
-              </View>
-              <View style={styles.footerLocationContent}>
-                <Text style={styles.footerLocationValue} numberOfLines={1}>
-                  {displayLocationText}
-                </Text>
-              </View>
+            {cartItems.length > 0 && (
               <TouchableOpacity
+                style={styles.footerLocationCard}
                 onPress={() => {
                   loadSavedAddresses();
                   setShowAddressModal(true);
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
               >
-                <Ionicons name="create-outline" size={getIconSize(18)} color="#8B5CF6" />
+                <View style={styles.footerLocationIcon}>
+                  <Ionicons name={addressIconName} size={getIconSize(18)} color="#8B5CF6" />
+                </View>
+                <View style={styles.footerLocationContent}>
+                  <Text style={styles.footerLocationValue} numberOfLines={1}>
+                    {displayLocationText}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    loadSavedAddresses();
+                    setShowAddressModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={getIconSize(18)} color="#8B5CF6" />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
+            )}
             
             {/* Booking Date/Time Card */}
-            {(isInstantBooking || (selectedDate && selectedTime)) && (
+            {cartItems.length > 0 && (isInstantBooking || (selectedDate && selectedTime)) && (
               <TouchableOpacity
                 style={styles.footerBookingCard}
                 onPress={() => setShowSlotModal(true)}
@@ -571,20 +573,22 @@ export default function CartScreen() {
               </TouchableOpacity>
             )}
             
-            <TouchableOpacity 
-              style={[styles.primaryButton, styles.primaryButtonFull]}
-              onPress={() => {
-                if (isInstantBooking || (selectedDate && selectedTime)) {
-                  // Navigate to payment or next step
-                } else {
-                  setShowSlotModal(true);
-                }
-              }}
-            >
-              <Text style={styles.primaryButtonText}>
-                {(isInstantBooking || (selectedDate && selectedTime)) ? 'Proceed to pay' : 'Select slot'}
-              </Text>
-            </TouchableOpacity>
+            {cartItems.length > 0 && (
+              <TouchableOpacity 
+                style={[styles.primaryButton, styles.primaryButtonFull]}
+                onPress={() => {
+                  if (isInstantBooking || (selectedDate && selectedTime)) {
+                    // Navigate to payment or next step
+                  } else {
+                    setShowSlotModal(true);
+                  }
+                }}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {(isInstantBooking || (selectedDate && selectedTime)) ? 'Proceed to pay' : 'Select slot'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </>
         ) : (
           <TouchableOpacity style={styles.primaryButton} onPress={() => router.push('/login')}>
