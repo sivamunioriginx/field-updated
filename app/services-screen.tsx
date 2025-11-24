@@ -233,6 +233,7 @@ export default function ServicesScreen() {
       name: service.name,
       price: service.deal_price || service.price || 0,
       image: imageUrl,
+      subcategory_id: service.subcategory_id,
     };
   };
 

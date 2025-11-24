@@ -6,15 +6,15 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  useWindowDimensions
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+    useWindowDimensions
 } from 'react-native';
 
 interface RecentSearch {
@@ -213,6 +213,7 @@ export default function SearchScreen() {
       name: service.name,
       price: service.deal_price || service.price || 0,
       image: imageUrl,
+      subcategory_id: service.subcategory_id,
     };
   };
 

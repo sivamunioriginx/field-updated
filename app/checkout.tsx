@@ -5,7 +5,7 @@ import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
@@ -21,7 +21,8 @@ import {
 export default function CartScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
-  const { getCartItems, incrementItem, decrementItem, addToCart } = useCart();
+  const params = useLocalSearchParams();
+  const { getCartItems, incrementItem, decrementItem, addToCart, cartDetails } = useCart();
   const { isAuthenticated, user, updateUser } = useAuth();
   const [suggestedServices, setSuggestedServices] = useState<CartService[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
@@ -40,7 +41,14 @@ export default function CartScreen() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isInstantBooking, setIsInstantBooking] = useState(false);
 
-  const cartItems = getCartItems();
+  // Get subcategoryId from params if provided
+  const subcategoryId = params.subcategoryId as string | undefined;
+  
+  // Filter cart items by subcategory if subcategoryId is provided
+  const allCartItems = getCartItems();
+  const cartItems = subcategoryId 
+    ? allCartItems.filter(item => item.service.subcategory_id === subcategoryId)
+    : allCartItems;
 
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
@@ -361,7 +369,7 @@ export default function CartScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={getIconSize(22)} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Your cart</Text>
+        <Text style={styles.headerTitle}>Checkout Items</Text>
       </View>
 
       <ScrollView
