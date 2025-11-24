@@ -158,8 +158,11 @@ export default function CartScreen() {
   };
 
   const handleGroupCheckout = (subcategoryId: string, isInstant = false) => {
-    // Navigate to checkout with subcategory filter
-    const params: Record<string, string> = { subcategoryId };
+    // Navigate to checkout with subcategory/instant filter
+    const params: Record<string, string> = {
+      subcategoryId,
+      filterInstant: isInstant ? 'instant' : 'regular',
+    };
     if (isInstant) {
       params.instantOnly = 'true';
     }

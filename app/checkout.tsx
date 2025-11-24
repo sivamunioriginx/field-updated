@@ -39,11 +39,11 @@ export default function CartScreen() {
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [isInstantBooking, setIsInstantBooking] = useState(false);
 
   // Get subcategoryId / instant filter from params if provided
   const subcategoryId = params.subcategoryId as string | undefined;
-  const instantOnly = params.instantOnly === 'true';
+  const instantOnlyParam = params.instantOnly === 'true';
+  const instantFilter = params.filterInstant as 'instant' | 'regular' | undefined;
   
   // Filter cart items by subcategory / instant flag if provided
   const isInstantService = (value: CartService['instant_service']) => {
@@ -57,9 +57,23 @@ export default function CartScreen() {
     if (subcategoryId && item.service.subcategory_id !== subcategoryId) {
       return false;
     }
-    if (instantOnly) {
+    if (instantOnlyParam || instantFilter === 'instant') {
       return isInstantService(item.service.instant_service);
     }
+    if (instantFilter === 'regular') {
+      return !isInstantService(item.service.instant_service);
+    }
+  useEffect(() => {
+    if (instantOnlyParam || instantFilter === 'instant') {
+      const autoDate = new Date(Date.now() + 60 * 60 * 1000);
+      const newTime = `${autoDate.getHours().toString().padStart(2, '0')}:${autoDate
+        .getMinutes()
+        .toString()
+        .padStart(2, '0')}`;
+      setSelectedDate(autoDate);
+      setSelectedTime(newTime);
+    }
+  }, [instantOnlyParam, instantFilter]);
     return true;
   });
 
@@ -129,17 +143,6 @@ export default function CartScreen() {
     [timeSlots]
   );
 
-  const getDefaultInstantSlot = useCallback(() => {
-    const now = new Date();
-    const todaySlots = getAvailableSlotsForDate(now);
-    if (todaySlots.length > 0) {
-      return { date: now, slotValue: todaySlots[0].value };
-    }
-    const nextDay = new Date(now);
-    nextDay.setDate(nextDay.getDate() + 1);
-    return { date: nextDay, slotValue: timeSlots[0]?.value || null };
-  }, [getAvailableSlotsForDate, timeSlots]);
-
   const availableSlotSet = useMemo(() => {
     const slots = getAvailableSlotsForDate(selectedDate || null);
     return new Set(slots.map((slot) => slot.value));
@@ -155,19 +158,49 @@ export default function CartScreen() {
   };
 
   // Format date and time for booking display
-  const formatBookingDateTime = () => {
-    let dateToUse = selectedDate;
-    let timeToUse = selectedTime;
+  const hasInstantFilter = instantOnlyParam || instantFilter === 'instant';
 
-    if (isInstantBooking && (!dateToUse || !timeToUse)) {
-      const { date, slotValue } = getDefaultInstantSlot();
-      if (slotValue) {
-        dateToUse = date;
-        timeToUse = slotValue;
-      } else {
-        return 'Instant Booking';
-      }
+  useEffect(() => {
+    if (!hasInstantFilter) {
+      return;
     }
+
+    const autoDate = new Date(Date.now() + 60 * 60 * 1000);
+    autoDate.setSeconds(0, 0);
+    const autoTime = `${autoDate.getHours().toString().padStart(2, '0')}:${autoDate
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}`;
+
+    const dateChanged = !selectedDate || selectedDate.getTime() !== autoDate.getTime();
+    const timeChanged = selectedTime !== autoTime;
+
+    if (dateChanged || timeChanged) {
+      setSelectedDate(autoDate);
+      setSelectedTime(autoTime);
+    }
+  }, [hasInstantFilter, selectedDate, selectedTime]);
+
+  const formatBookingDateTime = () => {
+    if (hasInstantFilter) {
+      const date = selectedDate || new Date(Date.now() + 60 * 60 * 1000);
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const dayName = days[date.getDay()];
+      const monthName = months[date.getMonth()];
+      const dateNum = date.getDate();
+      const hour = date.getHours();
+      const minute = date.getMinutes();
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+      const formattedTime = `${displayHour.toString().padStart(2, '0')}:${minute
+        .toString()
+        .padStart(2, '0')} ${period}`;
+      return `${dayName}, ${monthName} ${dateNum} - ${formattedTime}`;
+    }
+
+    const dateToUse = selectedDate;
+    const timeToUse = selectedTime;
 
     if (!dateToUse || !timeToUse) {
       return '';
@@ -179,7 +212,6 @@ export default function CartScreen() {
     const monthName = months[dateToUse.getMonth()];
     const dateNum = dateToUse.getDate();
     
-    // Format time
     const [hour, minute] = timeToUse.split(':').map(Number);
     const period = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
@@ -212,11 +244,11 @@ export default function CartScreen() {
     if (!isAuthenticated) {
       return basePadding;
     }
-    if (isInstantBooking || (selectedDate && selectedTime)) {
+    if (selectedDate && selectedTime) {
       return basePadding + screenHeight * 0.05;
     }
     return basePadding;
-  }, [screenHeight, isAuthenticated, isInstantBooking, selectedDate, selectedTime]);
+  }, [screenHeight, isAuthenticated, selectedDate, selectedTime]);
 
   const handleAddSuggested = (service: CartService) => {
     addToCart(service);
@@ -567,7 +599,7 @@ export default function CartScreen() {
             )}
             
             {/* Booking Date/Time Card */}
-            {cartItems.length > 0 && (isInstantBooking || (selectedDate && selectedTime)) && (
+            {cartItems.length > 0 && (hasInstantFilter || (selectedDate && selectedTime)) && (
               <TouchableOpacity
                 style={styles.footerBookingCard}
                 onPress={() => setShowSlotModal(true)}
@@ -594,7 +626,7 @@ export default function CartScreen() {
               <TouchableOpacity 
                 style={[styles.primaryButton, styles.primaryButtonFull]}
                 onPress={() => {
-                  if (isInstantBooking || (selectedDate && selectedTime)) {
+                  if (hasInstantFilter || (selectedDate && selectedTime)) {
                     // Navigate to payment or next step
                   } else {
                     setShowSlotModal(true);
@@ -602,7 +634,7 @@ export default function CartScreen() {
                 }}
               >
                 <Text style={styles.primaryButtonText}>
-                  {(isInstantBooking || (selectedDate && selectedTime)) ? 'Proceed to pay' : 'Select slot'}
+                  {hasInstantFilter || (selectedDate && selectedTime) ? 'Proceed to pay' : 'Select slot'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -855,38 +887,6 @@ export default function CartScreen() {
               contentContainerStyle={styles.slotModalScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              {/* Instant Booking Option */}
-              <View style={styles.instantBookingContainer}>
-                <View style={styles.instantBookingContent}>
-                  <View style={styles.instantBookingLeft}>
-                    <View style={styles.instantBookingIconContainer}>
-                      <Ionicons name="flash" size={getIconSize(20)} color="#FFFFFF" />
-                    </View>
-                    <View style={styles.instantBookingTextContainer}>
-                      <Text style={styles.instantBookingTitle}>Instant Booking</Text>
-                      <Text style={styles.instantBookingSubtitle}>Get service immediately</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.instantBookingToggle, isInstantBooking && styles.instantBookingToggleActive]}
-                    onPress={() => {
-                      const newValue = !isInstantBooking;
-                      setIsInstantBooking(newValue);
-                      if (newValue) {
-                        setSelectedDate(null);
-                        setSelectedTime(null);
-                      } else {
-                        setSelectedDate(null);
-                        setSelectedTime(null);
-                      }
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <View style={[styles.instantBookingToggleThumb, isInstantBooking && styles.instantBookingToggleThumbActive]} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
               {/* Main Question */}
               <Text style={styles.slotQuestion}>When should the professional arrive?</Text>
               {/* Date Selection */}
@@ -908,23 +908,19 @@ export default function CartScreen() {
                       style={[
                         styles.dateButton,
                         isSelected && styles.dateButtonSelected,
-                        isInstantBooking && styles.dateButtonDisabled
                       ]}
-                      onPress={() => !isInstantBooking && setSelectedDate(date)}
-                      activeOpacity={isInstantBooking ? 1 : 0.7}
-                      disabled={isInstantBooking}
+                      onPress={() => setSelectedDate(date)}
+                      activeOpacity={0.7}
                     >
                       <Text style={[
                         styles.dateButtonDayText,
                         isSelected && styles.dateButtonDayTextSelected,
-                        isInstantBooking && styles.dateButtonTextDisabled
                       ]}>
                         {dateFormatted.day}
                       </Text>
                       <Text style={[
                         styles.dateButtonDateText,
                         isSelected && styles.dateButtonDateTextSelected,
-                        isInstantBooking && styles.dateButtonTextDisabled
                       ]}>
                         {dateFormatted.date}
                       </Text>
@@ -940,10 +936,9 @@ export default function CartScreen() {
                   const isSelected = selectedTime === slot.value;
                   const isToday = selectedDate ? isSameDay(selectedDate, new Date()) : false;
                   const isPastForToday =
-                    !isInstantBooking &&
                     isToday &&
                     !availableSlotSet.has(slot.value);
-                  const slotDisabled = isInstantBooking || isPastForToday;
+                  const slotDisabled = isPastForToday;
                   return (
                     <TouchableOpacity
                       key={slot.value}
@@ -973,15 +968,15 @@ export default function CartScreen() {
             <TouchableOpacity
               style={[
                 styles.slotProceedButton,
-                !isInstantBooking && (!selectedDate || !selectedTime) && styles.slotProceedButtonDisabled
+                (!selectedDate || !selectedTime) && styles.slotProceedButtonDisabled
               ]}
               onPress={() => {
-                if (isInstantBooking || (selectedDate && selectedTime)) {
+                if (selectedDate && selectedTime) {
                   setShowSlotModal(false);
                 }
               }}
               activeOpacity={0.85}
-              disabled={!isInstantBooking && (!selectedDate || !selectedTime)}
+              disabled={!selectedDate || !selectedTime}
             >
               <Text style={styles.slotProceedButtonText}>
                 Proceed to checkout
@@ -1684,68 +1679,6 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingBottom: getResponsiveValue(14, 12, 18),
       flexGrow: 1,
     },
-    instantBookingContainer: {
-      marginBottom: getResponsiveValue(12, 10, 14),
-      paddingVertical: getResponsiveValue(10, 8, 12),
-      paddingHorizontal: getResponsiveSpacing(14),
-      borderRadius: getResponsiveSpacing(14),
-      backgroundColor: '#FFF8E7',
-      borderWidth: 2,
-      borderColor: '#FFE5B4',
-    },
-    instantBookingContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    instantBookingLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
-    instantBookingIconContainer: {
-      width: getResponsiveWidth(44, 40, 48),
-      height: getResponsiveWidth(44, 40, 48),
-      borderRadius: getResponsiveSpacing(12),
-      backgroundColor: '#FFB84D',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: getResponsiveSpacing(12),
-    },
-    instantBookingTextContainer: {
-      flex: 1,
-    },
-    instantBookingTitle: {
-      fontSize: getResponsiveFontSize(16),
-      fontWeight: '700',
-      color: '#FF6B00',
-      marginBottom: getResponsiveSpacing(2),
-    },
-    instantBookingSubtitle: {
-      fontSize: getResponsiveFontSize(13),
-      color: '#CC6600',
-    },
-    instantBookingToggle: {
-      width: getResponsiveWidth(50, 46, 54),
-      height: getResponsiveWidth(28, 26, 30),
-      borderRadius: getResponsiveSpacing(14),
-      backgroundColor: '#E0E0E0',
-      justifyContent: 'center',
-      paddingHorizontal: getResponsiveSpacing(2),
-    },
-    instantBookingToggleActive: {
-      backgroundColor: '#8B5CF6',
-    },
-    instantBookingToggleThumb: {
-      width: getResponsiveWidth(24, 22, 26),
-      height: getResponsiveWidth(24, 22, 26),
-      borderRadius: getResponsiveSpacing(12),
-      backgroundColor: '#FFF',
-      alignSelf: 'flex-start',
-    },
-    instantBookingToggleThumbActive: {
-      alignSelf: 'flex-end',
-    },
     slotQuestion: {
       fontSize: getResponsiveFontSize(20),
       fontWeight: '700',
@@ -1793,13 +1726,6 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     dateButtonDateTextSelected: {
       color: '#FFFFFF',
-    },
-    dateButtonDisabled: {
-      opacity: 0.5,
-      backgroundColor: '#F5F5F5',
-    },
-    dateButtonTextDisabled: {
-      opacity: 0.5,
     },
     timeSelectionTitle: {
       fontSize: getResponsiveFontSize(16),
