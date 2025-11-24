@@ -364,21 +364,11 @@ export default function CartScreen() {
         <Text style={styles.headerTitle}>Your cart</Text>
       </View>
 
-      {cartItems.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="cart-outline" size={getIconSize(60)} color="#bdbdbd" />
-          <Text style={styles.emptyTitle}>Your cart is empty</Text>
-          <Text style={styles.emptySubtitle}>Add services to continue booking.</Text>
-          <TouchableOpacity style={styles.emptyButton} onPress={() => router.back()}>
-            <Text style={styles.emptyButtonText}>Browse services</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={[styles.contentContainer, { paddingBottom: footerPaddingBottom }]}
-          showsVerticalScrollIndicator={false}
-        >
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: footerPaddingBottom }]}
+        showsVerticalScrollIndicator={false}
+      >
           <View style={styles.cartList}>
             {cartItems.map((item, index) => (
               <View 
@@ -522,7 +512,6 @@ export default function CartScreen() {
             </View>
           </View>
         </ScrollView>
-      )}
 
       <View style={styles.footer}>
         {isAuthenticated ? (
@@ -1392,39 +1381,6 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       color: '#FFF',
       fontSize: getResponsiveFontSize(16),
       fontWeight: '600',
-    },
-    emptyState: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: getResponsiveWidth(32),
-      backgroundColor: '#F5F7FA',
-    },
-    emptyTitle: {
-      fontSize: getResponsiveFontSize(18),
-      fontWeight: '700',
-      color: '#8B5CF6',
-      marginTop: getResponsiveValue(12, 10, 14),
-    },
-    emptySubtitle: {
-      fontSize: getResponsiveFontSize(14),
-      color: '#777',
-      marginTop: getResponsiveSpacing(6),
-      textAlign: 'center',
-    },
-    emptyButton: {
-      marginTop: getResponsiveValue(20, 16, 24),
-      paddingHorizontal: getResponsiveWidth(24),
-      paddingVertical: getResponsiveValue(12, 10, 14),
-      borderRadius: getResponsiveSpacing(24),
-      borderWidth: 2,
-      borderColor: '#8B5CF6',
-      backgroundColor: '#F8F5FF',
-    },
-    emptyButtonText: {
-      color: '#8B5CF6',
-      fontWeight: '600',
-      fontSize: getResponsiveFontSize(14),
     },
     modalOverlay: {
       flex: 1,
