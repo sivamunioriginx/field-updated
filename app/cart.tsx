@@ -359,7 +359,7 @@ export default function CartScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={getIconSize(22)} color="#000" />
+          <Ionicons name="arrow-back" size={getIconSize(22)} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your cart</Text>
       </View>
@@ -380,8 +380,14 @@ export default function CartScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.cartList}>
-            {cartItems.map(item => (
-              <View key={item.service.id} style={styles.cartItem}>
+            {cartItems.map((item, index) => (
+              <View 
+                key={item.service.id} 
+                style={[
+                  styles.cartItem,
+                  index === cartItems.length - 1 && styles.cartItemLast
+                ]}
+              >
                 <View style={styles.cartItemInfo}>
                   {item.service.image ? (
                     <Image source={{ uri: item.service.image }} style={styles.cartItemImage} />
@@ -414,31 +420,7 @@ export default function CartScreen() {
             ))}
           </View>
 
-          {isAuthenticated && (
-            <View style={[styles.section, styles.infoSection]}>
-              <View style={styles.infoCard}>
-                <View style={styles.infoIcon}>
-                  <Ionicons name="person-outline" size={getIconSize(18)} color="#8B5CF6" />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoTitle}>{user?.name || 'Guest user'}</Text>
-                  <Text style={styles.infoSubtitle}>{user?.mobile || 'Phone number unavailable'}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    setContactName(user?.name || '');
-                    setContactPhone(user?.mobile || '');
-                    setShowContactModal(true);
-                  }}
-                >
-                  <Text style={styles.infoActionText}>Change</Text>
-                </TouchableOpacity>
-              </View>
-
-            </View>
-          )}
-
-          {suggestionsLoading ? null : suggestedServices.length > 0 && (
+          {/* {suggestionsLoading ? null : suggestedServices.length > 0 && (
             <View style={[styles.section, styles.suggestionsSection]}>
               <Text style={styles.sectionTitle}>Frequently added services</Text>
               <ScrollView
@@ -481,12 +463,12 @@ export default function CartScreen() {
                 })}
               </ScrollView>
             </View>
-          )}
+          )} */}
 
-          <View style={styles.section}>
+          <View style={[styles.section, styles.couponSection]}>
             <View style={styles.couponRow}>
               <View style={styles.couponIcon}>
-                <Ionicons name="pricetag-outline" size={getIconSize(16)} color="#8B5CF6" />
+                <Ionicons name="pricetag-outline" size={getIconSize(16)} color="#FFFFFF" />
               </View>
               <View>
                 <Text style={styles.couponTitle}>Coupons and offers</Text>
@@ -494,6 +476,31 @@ export default function CartScreen() {
               </View>
             </View>
           </View>
+
+          {isAuthenticated && (
+            <View style={[styles.section, styles.infoSection]}>
+              <Text style={styles.sectionTitle}>Contact Info</Text>
+              <View style={styles.infoCard}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="person-outline" size={getIconSize(18)} color="#FFFFFF" />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>{user?.name || 'Guest user'}</Text>
+                  <Text style={styles.infoSubtitle}>{user?.mobile || 'Phone number unavailable'}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setContactName(user?.name || '');
+                    setContactPhone(user?.mobile || '');
+                    setShowContactModal(true);
+                  }}
+                >
+                  <Text style={styles.infoActionText}>Change</Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Payment summary</Text>
@@ -530,7 +537,7 @@ export default function CartScreen() {
                 activeOpacity={0.85}
               >
                 <View style={styles.footerLocationIcon}>
-                  <Ionicons name={addressIconName} size={getIconSize(18)} color="#8B5CF6" />
+                  <Ionicons name={addressIconName} size={getIconSize(18)} color="#FFFFFF" />
                 </View>
                 <View style={styles.footerLocationContent}>
                   <Text style={styles.footerLocationValue} numberOfLines={1}>
@@ -557,19 +564,19 @@ export default function CartScreen() {
                 activeOpacity={0.85}
               >
                 <View style={styles.footerBookingIcon}>
-                  <Ionicons name="time-outline" size={getIconSize(18)} color="#8B5CF6" />
+                  <Ionicons name="time-outline" size={getIconSize(18)} color="#FFFFFF" />
                 </View>
                 <View style={styles.footerBookingContent}>
                   <Text style={styles.footerBookingValue} numberOfLines={1}>
                     {formatBookingDateTime()}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => setShowSlotModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="create-outline" size={getIconSize(18)} color="#8B5CF6" />
-                </TouchableOpacity>
+                 <TouchableOpacity
+                    onPress={() => setShowSlotModal(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="create-outline" size={getIconSize(18)} color="#4CAF50" />
+                  </TouchableOpacity>
               </TouchableOpacity>
             )}
             
@@ -843,7 +850,7 @@ export default function CartScreen() {
                 <View style={styles.instantBookingContent}>
                   <View style={styles.instantBookingLeft}>
                     <View style={styles.instantBookingIconContainer}>
-                      <Ionicons name="flash" size={getIconSize(20)} color="#8B5CF6" />
+                      <Ionicons name="flash" size={getIconSize(20)} color="#FFFFFF" />
                     </View>
                     <View style={styles.instantBookingTextContainer}>
                       <Text style={styles.instantBookingTitle}>Instant Booking</Text>
@@ -1023,14 +1030,15 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   return StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: '#F5F7FA',
     },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: getResponsiveWidth(20),
-      paddingTop: getResponsiveValue(50, 40, 60),
+      paddingTop: getResponsiveValue(35, 25, 45),
       paddingBottom: getResponsiveValue(10, 8, 12),
+      backgroundColor: '#8B5CF6',
     },
     backButton: {
       marginRight: getResponsiveSpacing(12),
@@ -1038,24 +1046,41 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     headerTitle: {
       fontSize: getResponsiveFontSize(20),
       fontWeight: '700',
-      color: '#000',
+      color: '#FFFFFF',
     },
     content: {
       flex: 1,
     },
     contentContainer: {
-      paddingHorizontal: getResponsiveWidth(20),
+      paddingHorizontal: getResponsiveWidth(12),
     },
     cartList: {
-      backgroundColor: '#FFFFFF',
+      backgroundColor: '#ebe6f3ff',
+      borderRadius: getResponsiveSpacing(16),
+      paddingVertical: getResponsiveSpacing(10),
+      paddingHorizontal: getResponsiveSpacing(8),
+      marginTop: getResponsiveValue(8, 6, 10),
+      marginBottom: getResponsiveValue(14, 12, 16),
+      marginHorizontal: getResponsiveWidth(6),
+      borderWidth: 1,
+      borderColor: '#E8D5FF',
+      // shadowColor: '#8B5CF6',
+      // shadowOffset: { width: 0, height: 2 },
+      // shadowOpacity: 0.1,
+      // shadowRadius: 8,
+      // elevation: 3,
     },
     cartItem: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: getResponsiveValue(16, 12, 20),
+      paddingVertical: getResponsiveValue(12, 8, 16),
+      paddingHorizontal: getResponsiveSpacing(8),
       borderBottomWidth: 1,
-      borderBottomColor: '#F1F1F1',
+      borderBottomColor: '#D4C4F0',
+    },
+    cartItemLast: {
+      borderBottomWidth: 0,
     },
     cartItemInfo: {
       flexDirection: 'row',
@@ -1073,7 +1098,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       width: getResponsiveWidth(56, 48, 64),
       height: getResponsiveWidth(56, 48, 64),
       borderRadius: getResponsiveSpacing(10),
-      backgroundColor: '#F5F5F5',
+      backgroundColor: '#E8D5FF',
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: getResponsiveSpacing(12),
@@ -1084,12 +1109,13 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     cartItemName: {
       fontSize: getResponsiveFontSize(16),
       fontWeight: '600',
-      color: '#000',
+      color: '#333',
       marginBottom: getResponsiveSpacing(4),
     },
     cartItemPrice: {
       fontSize: getResponsiveFontSize(14),
-      color: '#666',
+      color: '#8B5CF6',
+      fontWeight: '600',
     },
     cartItemActions: {
       flexDirection: 'row',
@@ -1099,6 +1125,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       borderRadius: getResponsiveSpacing(20),
       paddingHorizontal: getResponsiveSpacing(8),
       paddingVertical: getResponsiveSpacing(4),
+      backgroundColor: '#FFFFFF',
     },
     quantityButton: {
       padding: getResponsiveSpacing(4),
@@ -1110,12 +1137,16 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       marginHorizontal: getResponsiveSpacing(8),
     },
     section: {
-      marginTop: getResponsiveValue(24, 20, 28),
+      marginTop: getResponsiveValue(0, 0, 0),
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(16),
+      padding: getResponsiveSpacing(16),
+      marginHorizontal: -getResponsiveWidth(8),
     },
     sectionTitle: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
       marginBottom: getResponsiveValue(16, 12, 20),
     },
     suggestionsRow: {
@@ -1172,15 +1203,16 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       padding: getResponsiveSpacing(14),
       borderRadius: getResponsiveSpacing(16),
       borderWidth: 1,
-      borderColor: '#F0E9FF',
-      backgroundColor: '#F9F6FF',
+      borderColor: '#D4C4F0',
+      backgroundColor: '#F0E8FF',
+      marginTop: getResponsiveValue(-6, -4, -8),
       marginBottom: getResponsiveSpacing(16),
     },
     infoIcon: {
       width: getResponsiveWidth(40, 34, 46),
       height: getResponsiveWidth(40, 34, 46),
       borderRadius: getResponsiveSpacing(20),
-      backgroundColor: '#EFE6FF',
+      backgroundColor: '#8B5CF6',
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: getResponsiveSpacing(12),
@@ -1199,11 +1231,14 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       marginTop: getResponsiveSpacing(2),
     },
     infoSection: {
-      marginTop: getResponsiveValue(12, 8, 14),
-      marginBottom: getResponsiveValue(2, 0, 4),
+      marginTop: getResponsiveValue(-18, -16, -20),
+      marginBottom: getResponsiveValue(-22, -20, -24),
+    },
+    couponSection: {
+      marginTop: getResponsiveValue(-18, -16, -20),
     },
     suggestionsSection: {
-      marginTop: getResponsiveValue(10, 8, 12),
+      marginTop: getResponsiveValue(0, 0, 0),
     },
     infoActionText: {
       color: '#8B5CF6',
@@ -1216,14 +1251,15 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingVertical: getResponsiveValue(12, 10, 14),
       paddingHorizontal: getResponsiveSpacing(12),
       borderWidth: 1,
-      borderColor: '#F0F0F0',
+      borderColor: '#FFE5B4',
       borderRadius: getResponsiveSpacing(16),
+      backgroundColor: '#FFF8E7',
     },
     couponIcon: {
       width: getResponsiveWidth(32, 28, 36),
       height: getResponsiveWidth(32, 28, 36),
       borderRadius: getResponsiveSpacing(16),
-      backgroundColor: '#F2ECFF',
+      backgroundColor: '#FFB84D',
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: getResponsiveSpacing(12),
@@ -1231,11 +1267,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     couponTitle: {
       fontSize: getResponsiveFontSize(15),
       fontWeight: '600',
-      color: '#000',
+      color: '#FF6B00',
     },
     couponSubtitle: {
       fontSize: getResponsiveFontSize(13),
-      color: '#8E8E8E',
+      color: '#CC6600',
       marginTop: getResponsiveSpacing(2),
     },
     summaryRow: {
@@ -1246,7 +1282,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     summaryLabel: {
       fontSize: getResponsiveFontSize(15),
-      color: '#555',
+      color: '#666',
     },
     summarySubLabel: {
       fontSize: getResponsiveFontSize(12),
@@ -1254,23 +1290,24 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     summaryValue: {
       fontSize: getResponsiveFontSize(15),
-      color: '#111',
+      color: '#333',
       fontWeight: '600',
     },
     summaryDivider: {
-      height: 1,
-      backgroundColor: '#F0F0F0',
+      height: 2,
+      backgroundColor: '#E8D5FF',
       marginVertical: getResponsiveSpacing(8),
+      borderRadius: getResponsiveSpacing(1),
     },
     summaryTotalLabel: {
       fontSize: getResponsiveFontSize(16),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
     },
     summaryTotalValue: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
     },
     footer: {
       position: 'absolute',
@@ -1279,25 +1316,25 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       bottom: 0,
       paddingHorizontal: getResponsiveSpacing(12),
       paddingBottom: getResponsiveSpacing(10),
-      backgroundColor: '#FFF',
-      borderTopWidth: 1,
-      borderTopColor: '#F0F0F0',
+      paddingTop: getResponsiveSpacing(2),
+      backgroundColor: '#FFFFFF',
+    
     },
     footerLocationCard: {
       flexDirection: 'row',
       alignItems: 'center',
       padding: getResponsiveSpacing(10),
-      borderWidth: 1,
-      borderColor: '#F0F0F0',
+      borderWidth: 1.5,
+      borderColor: '#D4C4F0',
       borderRadius: getResponsiveSpacing(16),
       marginBottom: getResponsiveSpacing(6),
-      backgroundColor: '#FFF',
+      backgroundColor: '#F8F5FF',
     },
     footerLocationIcon: {
       width: getResponsiveWidth(34, 30, 40),
       height: getResponsiveWidth(34, 30, 40),
       borderRadius: getResponsiveSpacing(17),
-      backgroundColor: '#F2ECFF',
+      backgroundColor: '#8B5CF6',
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: getResponsiveSpacing(10),
@@ -1307,23 +1344,24 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     footerLocationValue: {
       fontSize: getResponsiveFontSize(13),
-      color: '#555',
+      color: '#5A4A7A',
+      fontWeight: '500',
     },
     footerBookingCard: {
       flexDirection: 'row',
       alignItems: 'center',
       padding: getResponsiveSpacing(10),
-      borderWidth: 1,
-      borderColor: '#F0F0F0',
+      borderWidth: 1.5,
+      borderColor: '#B8E6B8',
       borderRadius: getResponsiveSpacing(16),
       marginBottom: getResponsiveSpacing(6),
-      backgroundColor: '#FFF',
+      backgroundColor: '#F0FFF4',
     },
     footerBookingIcon: {
       width: getResponsiveWidth(34, 30, 40),
       height: getResponsiveWidth(34, 30, 40),
       borderRadius: getResponsiveSpacing(17),
-      backgroundColor: '#F2ECFF',
+      backgroundColor: '#4CAF50',
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: getResponsiveSpacing(10),
@@ -1333,13 +1371,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     footerBookingValue: {
       fontSize: getResponsiveFontSize(13),
-      color: '#555',
+      color: '#2E7D32',
+      fontWeight: '500',
     },
     primaryButton: {
       backgroundColor: '#8B5CF6',
       borderRadius: getResponsiveSpacing(26),
       paddingVertical: getResponsiveValue(12, 10, 14),
       alignItems: 'center',
+      shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
     },
     primaryButtonFull: {
       marginTop: getResponsiveSpacing(2),
@@ -1354,11 +1398,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: getResponsiveWidth(32),
+      backgroundColor: '#F5F7FA',
     },
     emptyTitle: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
       marginTop: getResponsiveValue(12, 10, 14),
     },
     emptySubtitle: {
@@ -1372,8 +1417,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingHorizontal: getResponsiveWidth(24),
       paddingVertical: getResponsiveValue(12, 10, 14),
       borderRadius: getResponsiveSpacing(24),
-      borderWidth: 1,
+      borderWidth: 2,
       borderColor: '#8B5CF6',
+      backgroundColor: '#F8F5FF',
     },
     emptyButtonText: {
       color: '#8B5CF6',
@@ -1400,13 +1446,16 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingHorizontal: getResponsiveWidth(20),
       paddingTop: getResponsiveValue(12, 10, 14),
       paddingBottom: getResponsiveValue(10, 8, 12),
-      borderBottomWidth: 1,
-      borderBottomColor: '#F0F0F0',
+      borderBottomWidth: 2,
+      borderBottomColor: '#E8D5FF',
+      backgroundColor: '#F8F5FF',
+      borderTopLeftRadius: getResponsiveSpacing(24),
+      borderTopRightRadius: getResponsiveSpacing(24),
     },
     modalTitle: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
     },
     modalCloseButton: {
       width: getResponsiveWidth(32, 28, 36),
@@ -1421,7 +1470,8 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingHorizontal: getResponsiveWidth(20),
       paddingVertical: getResponsiveValue(12, 10, 14),
       borderBottomWidth: 1,
-      borderBottomColor: '#F0F0F0',
+      borderBottomColor: '#E8D5FF',
+      backgroundColor: '#FFFFFF',
     },
     addAddressText: {
       fontSize: getResponsiveFontSize(15),
@@ -1435,8 +1485,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     addressItem: {
       paddingVertical: getResponsiveValue(12, 10, 14),
-      borderBottomWidth: 1,
-      borderBottomColor: '#F0F0F0',
+      paddingHorizontal: getResponsiveSpacing(8),
+      marginHorizontal: getResponsiveSpacing(8),
+      marginVertical: getResponsiveSpacing(4),
+      borderRadius: getResponsiveSpacing(12),
+      borderBottomWidth: 0,
+      backgroundColor: '#F8F5FF',
     },
     addressItemLeft: {
       flexDirection: 'row',
@@ -1483,8 +1537,8 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
     deleteMenuContainer: {
       position: 'absolute',
-      top: getResponsiveValue(-4, -4, 1),
-      left: getResponsiveSpacing(204),
+      top: getResponsiveValue(-7, -7, 4),
+      left: getResponsiveSpacing(170),
       backgroundColor: '#FFF',
       borderRadius: getResponsiveSpacing(8),
       shadowColor: '#000',
@@ -1543,11 +1597,14 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: getResponsiveSpacing(6),
+      paddingBottom: getResponsiveSpacing(8),
+      borderBottomWidth: 2,
+      borderBottomColor: '#E8D5FF',
     },
     contactModalTitle: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
       flex: 1,
       marginRight: getResponsiveSpacing(8),
     },
@@ -1563,10 +1620,10 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     contactPhoneInputWrapper: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderWidth: 1,
-      borderColor: '#E0E0E0',
+      borderWidth: 1.5,
+      borderColor: '#D4C4F0',
       borderRadius: getResponsiveSpacing(8),
-      backgroundColor: '#FFF',
+      backgroundColor: '#F8F5FF',
       paddingHorizontal: getResponsiveSpacing(10),
       paddingVertical: getResponsiveSpacing(4),
     },
@@ -1594,14 +1651,14 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       marginBottom: getResponsiveSpacing(12),
     },
     contactNameInput: {
-      borderWidth: 1,
-      borderColor: '#E0E0E0',
+      borderWidth: 1.5,
+      borderColor: '#D4C4F0',
       borderRadius: getResponsiveSpacing(8),
       paddingHorizontal: getResponsiveSpacing(10),
       paddingVertical: getResponsiveSpacing(8),
       fontSize: getResponsiveFontSize(14),
       color: '#000',
-      backgroundColor: '#FFF',
+      backgroundColor: '#F8F5FF',
     },
     contactSaveButton: {
       backgroundColor: '#8B5CF6',
@@ -1655,9 +1712,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       paddingVertical: getResponsiveValue(10, 8, 12),
       paddingHorizontal: getResponsiveSpacing(14),
       borderRadius: getResponsiveSpacing(14),
-      backgroundColor: '#F9F6FF',
-      borderWidth: 1,
-      borderColor: '#F3F0FF',
+      backgroundColor: '#FFF8E7',
+      borderWidth: 2,
+      borderColor: '#FFE5B4',
     },
     instantBookingContent: {
       flexDirection: 'row',
@@ -1673,7 +1730,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       width: getResponsiveWidth(44, 40, 48),
       height: getResponsiveWidth(44, 40, 48),
       borderRadius: getResponsiveSpacing(12),
-      backgroundColor: '#EFE6FF',
+      backgroundColor: '#FFB84D',
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: getResponsiveSpacing(12),
@@ -1684,12 +1741,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     instantBookingTitle: {
       fontSize: getResponsiveFontSize(16),
       fontWeight: '700',
-      color: '#000',
+      color: '#FF6B00',
       marginBottom: getResponsiveSpacing(2),
     },
     instantBookingSubtitle: {
       fontSize: getResponsiveFontSize(13),
-      color: '#666',
+      color: '#CC6600',
     },
     instantBookingToggle: {
       width: getResponsiveWidth(50, 46, 54),
@@ -1715,7 +1772,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     slotQuestion: {
       fontSize: getResponsiveFontSize(20),
       fontWeight: '700',
-      color: '#000',
+      color: '#8B5CF6',
       marginBottom: getResponsiveSpacing(4),
     },
     dateSelectionScroll: {
@@ -1740,7 +1797,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       flexDirection: 'column',
     },
     dateButtonSelected: {
-      backgroundColor: '#F3F0FF',
+      backgroundColor: '#8B5CF6',
       borderColor: '#8B5CF6',
     },
     dateButtonDayText: {
@@ -1750,15 +1807,15 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       marginBottom: getResponsiveSpacing(2),
     },
     dateButtonDayTextSelected: {
-      color: '#8B5CF6',
+      color: '#FFFFFF',
     },
     dateButtonDateText: {
       fontSize: getResponsiveFontSize(14),
       fontWeight: '600',
-      color: '#000',
+      color: '#333',
     },
     dateButtonDateTextSelected: {
-      color: '#8B5CF6',
+      color: '#FFFFFF',
     },
     dateButtonDisabled: {
       opacity: 0.5,
@@ -1770,7 +1827,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     timeSelectionTitle: {
       fontSize: getResponsiveFontSize(16),
       fontWeight: '600',
-      color: '#000',
+      color: '#8B5CF6',
       marginBottom: getResponsiveValue(10, 8, 12),
     },
     timeSlotsGrid: {
@@ -1794,16 +1851,16 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       marginBottom: getResponsiveSpacing(10),
     },
     timeSlotButtonSelected: {
-      backgroundColor: '#F3F0FF',
+      backgroundColor: '#8B5CF6',
       borderColor: '#8B5CF6',
     },
     timeSlotText: {
       fontSize: getResponsiveFontSize(14),
       fontWeight: '500',
-      color: '#000',
+      color: '#333',
     },
     timeSlotTextSelected: {
-      color: '#8B5CF6',
+      color: '#FFFFFF',
       fontWeight: '600',
     },
     timeSlotButtonDisabled: {
