@@ -1569,6 +1569,7 @@ app.get('/api/top-services', async (req, res) => {
         COALESCE(d.deal_price, s.price) AS price,
         s.rating,
         s.created_at,
+        s.instant_service,
         sc.name AS subcategory_name,
         c.title AS category_title
       FROM tbl_services s
@@ -1590,7 +1591,8 @@ app.get('/api/top-services', async (req, res) => {
         image: service.image ? `/uploads/services/${service.image}` : null,
         price: service.price,
         rating: service.rating,
-        created_at: service.created_at
+        created_at: service.created_at,
+        instant_service: service.instant_service,
       }));
     } else {
       // Format for home screen (default) - limit to 10
@@ -1601,7 +1603,8 @@ app.get('/api/top-services', async (req, res) => {
         price: service.price.toString(),
         rating: parseFloat(service.rating),
         subcategory: service.subcategory_name,
-        category: service.category_title
+        category: service.category_title,
+        instant_service: service.instant_service,
       }));
     }
     
@@ -1638,7 +1641,8 @@ app.get('/api/top-deals', async (req, res) => {
         d.created_at,
         s.name AS service_name,
         sc.name AS subcategory_name,
-        c.title AS category_title
+        c.title AS category_title,
+        s.instant_service
       FROM tbl_deals d
       LEFT JOIN tbl_services s ON d.service_id = s.id
       LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
@@ -1658,7 +1662,8 @@ app.get('/api/top-deals', async (req, res) => {
         image: deal.image ? `/uploads/services/${deal.image}` : null,
         price: deal.deal_price,
         rating: deal.rating,
-        created_at: deal.created_at
+        created_at: deal.created_at,
+        instant_service: deal.instant_service,
       }));
     } else {
       // Format for home screen (default)
@@ -1672,7 +1677,8 @@ app.get('/api/top-deals', async (req, res) => {
         dealPrice: deal.deal_price.toString(),
         service: deal.service_name,
         subcategory: deal.subcategory_name,
-        category: deal.category_title
+        category: deal.category_title,
+        instant_service: deal.instant_service,
       }));
     }
     
@@ -1712,7 +1718,8 @@ app.get('/api/services/search', async (req, res) => {
         s.image, 
         COALESCE(d.deal_price, s.price) AS price, 
         s.rating, 
-        s.created_at 
+        s.created_at,
+        s.instant_service
       FROM tbl_services s
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
       WHERE s.name LIKE ? 
@@ -1739,6 +1746,7 @@ app.get('/api/services/search', async (req, res) => {
       price: service.price,
       rating: service.rating,
       created_at: service.created_at,
+      instant_service: service.instant_service,
       type: 'service'
     }));
 
@@ -1806,7 +1814,8 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
         s.image, 
         COALESCE(d.deal_price, s.price) AS price, 
         s.rating, 
-        s.created_at 
+        s.created_at,
+        s.instant_service
       FROM tbl_services s
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
       WHERE s.subcategory_id IN (${placeholders}) 
@@ -1854,7 +1863,8 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
         s.image, 
         COALESCE(d.deal_price, s.price) AS price, 
         s.rating, 
-        s.created_at 
+        s.created_at,
+        s.instant_service
       FROM tbl_services s
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
       WHERE s.subcategory_id = ? 
@@ -1885,7 +1895,7 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
 app.get('/api/services', async (req, res) => {
   try {
     const [services] = await pool.execute(
-      'SELECT id, name, subcategory_id, image, created_at FROM tbl_services ORDER BY created_at DESC'
+      'SELECT id, name, subcategory_id, image, created_at, instant_service FROM tbl_services ORDER BY created_at DESC'
     );
 
     // Add full image URLs

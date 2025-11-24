@@ -6,15 +6,15 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
 } from 'react-native';
 
 interface RecentSearch {
@@ -41,6 +41,7 @@ interface SearchResult {
   rating?: number;
   created_at: string;
   type: 'service' | 'subcategory';
+  instant_service?: number | string | boolean;
 }
 
 export default function SearchScreen() {
@@ -214,6 +215,7 @@ export default function SearchScreen() {
       price: service.deal_price || service.price || 0,
       image: imageUrl,
       subcategory_id: service.subcategory_id,
+      instant_service: service.instant_service ?? 0,
     };
   };
 
@@ -245,6 +247,11 @@ export default function SearchScreen() {
   }, [cart, searchResults, getTotalItems, getTotalPrice]);
 
   const styles = createStyles(screenWidth, screenHeight);
+  const isInstantService = (value?: SearchResult['instant_service']) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
+    return value === 1;
+  };
 
   return (
     <View style={styles.container}>      
@@ -296,9 +303,16 @@ export default function SearchScreen() {
                           <View style={styles.searchResultCardContent}>
                             {/* Left Section - Service Details */}
                             <View style={styles.searchResultDetails}>
-                              <Text style={styles.searchResultName} numberOfLines={2}>
-                                {result.name}
-                              </Text>
+                              <View style={styles.searchResultNameRow}>
+                                <Text style={styles.searchResultName} numberOfLines={2}>
+                                  {result.name}
+                                </Text>
+                                {isInstantService(result.instant_service) && (
+                                  <View style={styles.instantTag}>
+                                    <Text style={styles.instantTagText}>Instant</Text>
+                                  </View>
+                                )}
+                              </View>
                               
                               {/* Rating */}
                               <View style={styles.searchRatingContainer}>
@@ -538,7 +552,14 @@ export default function SearchScreen() {
                   <View style={styles.modalHeader}>
                     <View style={styles.modalHeaderTop}>
                       <View style={styles.modalHeaderLeft}>
-                        <Text style={styles.modalServiceName}>{selectedService.name}</Text>
+                        <View style={styles.modalServiceNameRow}>
+                          <Text style={styles.modalServiceName}>{selectedService.name}</Text>
+                          {isInstantService(selectedService.instant_service) && (
+                            <View style={styles.modalInstantTag}>
+                              <Text style={styles.modalInstantTagText}>Instant</Text>
+                            </View>
+                          )}
+                        </View>
                         
                         {/* Rating */}
                         <View style={styles.modalRatingContainer}>
@@ -1183,6 +1204,23 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       lineHeight: getResponsiveFontSize(20),
       marginBottom: getResponsiveValue(6),
     },
+    searchResultNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveValue(6),
+      marginBottom: getResponsiveValue(4),
+    },
+    instantTag: {
+      backgroundColor: '#FFE5B4',
+      borderRadius: getResponsiveValue(10),
+      paddingHorizontal: getResponsiveValue(8),
+      paddingVertical: getResponsiveValue(2),
+    },
+    instantTagText: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#FF6B00',
+      fontWeight: '600',
+    },
     searchRatingContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1351,6 +1389,23 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       color: '#000',
       marginBottom: getResponsiveValue(4),
       lineHeight: getResponsiveFontSize(26),
+    },
+    modalServiceNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveValue(8),
+      marginBottom: getResponsiveValue(4),
+    },
+    modalInstantTag: {
+      backgroundColor: '#FFE5B4',
+      borderRadius: getResponsiveValue(10),
+      paddingHorizontal: getResponsiveValue(10),
+      paddingVertical: getResponsiveValue(2),
+    },
+    modalInstantTagText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#FF6B00',
+      fontWeight: '600',
     },
     modalRatingContainer: {
       flexDirection: 'row',

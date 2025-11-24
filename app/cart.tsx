@@ -31,6 +31,7 @@ interface GroupedCartItem {
   }>;
   totalServices: number;
   totalPrice: number;
+  isInstant: boolean;
 }
 
 export default function CartScreen() {
@@ -59,6 +60,12 @@ export default function CartScreen() {
     fetchSubcategories();
   }, []);
 
+  const isInstantService = (value: CartService['instant_service']) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === '1' || value.toLowerCase?.() === 'true';
+    return value === 1;
+  };
+
   // Group cart items by subcategory
   const groupedCartItems = useMemo(() => {
     const subcategoryMap = new Map<string, Subcategory>();
@@ -76,19 +83,22 @@ export default function CartScreen() {
       const subcategory = subcategoryMap.get(subcategoryId);
       const subcategoryName = subcategory?.name || 'Unknown Category';
       const subcategoryImage = subcategory?.image ? `/uploads/subcategorys/${subcategory.image}` : null;
+      const isInstant = isInstantService(service.instant_service);
+      const groupKey = `${subcategoryId}-${isInstant ? 'instant' : 'regular'}`;
 
-      if (!grouped.has(subcategoryId)) {
-        grouped.set(subcategoryId, {
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, {
           subcategoryId,
           subcategoryName,
           subcategoryImage,
           services: [],
           totalServices: 0,
-          totalPrice: 0
+          totalPrice: 0,
+          isInstant,
         });
       }
 
-      const group = grouped.get(subcategoryId)!;
+      const group = grouped.get(groupKey)!;
       group.services.push({
         service,
         quantity
@@ -120,10 +130,10 @@ export default function CartScreen() {
     removeFromCart(serviceId);
   };
 
-  const handleRemoveSubcategory = (subcategoryId: string) => {
+  const handleRemoveSubcategory = (subcategoryId: string, isInstant = false) => {
     // Remove all services in this subcategory
     groupedCartItems.forEach(group => {
-      if (group.subcategoryId === subcategoryId) {
+      if (group.subcategoryId === subcategoryId && group.isInstant === isInstant) {
         group.services.forEach(({ service }) => {
           removeFromCart(service.id);
         });
@@ -147,13 +157,15 @@ export default function CartScreen() {
     }
   };
 
-  const handleGroupCheckout = (subcategoryId: string) => {
+  const handleGroupCheckout = (subcategoryId: string, isInstant = false) => {
     // Navigate to checkout with subcategory filter
+    const params: Record<string, string> = { subcategoryId };
+    if (isInstant) {
+      params.instantOnly = 'true';
+    }
     router.push({
       pathname: '/checkout',
-      params: {
-        subcategoryId: subcategoryId,
-      }
+      params,
     });
   };
 
@@ -208,7 +220,7 @@ export default function CartScreen() {
         showsVerticalScrollIndicator={false}
       >
         {groupedCartItems.map((group) => (
-          <View key={group.subcategoryId} style={styles.subcategoryCard}>
+          <View key={`${group.subcategoryId}-${group.isInstant ? 'instant' : 'regular'}`} style={styles.subcategoryCard}>
             {/* Subcategory Header with Icon and Title */}
             <View style={styles.subcategoryHeader}>
               {/* Subcategory Icon */}
@@ -228,17 +240,26 @@ export default function CartScreen() {
 
               {/* Subcategory Title and Summary */}
               <View style={styles.subcategoryTitleContainer}>
-                <View style={styles.subcategoryTitleRow}>
+              <View style={styles.subcategoryTitleRow}>
+                <View style={styles.subcategoryTitleLeft}>
                   <Text style={styles.subcategoryName}>{group.subcategoryName}</Text>
-                  <TouchableOpacity
-                    style={styles.removeSubcategoryButton}
-                    onPress={() => handleRemoveSubcategory(group.subcategoryId)}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#666" />
-                  </TouchableOpacity>
+                  {group.isInstant && (
+                    <View style={styles.instantBadge}>
+                      <Text style={styles.instantBadgeText}>Instant</Text>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.removeSubcategoryButton}
+                  onPress={() => handleRemoveSubcategory(group.subcategoryId, group.isInstant)}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#666" />
+                </TouchableOpacity>
                 </View>
                 <Text style={styles.subcategorySummary}>
-                  {group.totalServices} service{group.totalServices > 1 ? 's' : ''} • ₹{group.totalPrice.toLocaleString('en-IN')}
+                {group.isInstant
+                  ? `Instant services (${group.totalServices}) • ₹${group.totalPrice.toLocaleString('en-IN')}`
+                  : `${group.totalServices} service${group.totalServices > 1 ? 's' : ''} • ₹${group.totalPrice.toLocaleString('en-IN')}`}
                 </Text>
               </View>
             </View>
@@ -265,7 +286,7 @@ export default function CartScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.checkoutGroupButton}
-                onPress={() => handleGroupCheckout(group.subcategoryId)}
+                onPress={() => handleGroupCheckout(group.subcategoryId, group.isInstant)}
               >
                 <Text style={styles.checkoutGroupButtonText}>Checkout</Text>
               </TouchableOpacity>
@@ -403,14 +424,30 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       justifyContent: 'space-between',
       marginBottom: getResponsiveSpacing(4),
     },
+    subcategoryTitleLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
     subcategoryName: {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
       color: '#000',
-      flex: 1,
     },
     removeSubcategoryButton: {
       padding: getResponsiveSpacing(4),
+    },
+    instantBadge: {
+      backgroundColor: '#FFE5B4',
+      borderRadius: getResponsiveSpacing(10),
+      paddingHorizontal: getResponsiveSpacing(8),
+      paddingVertical: getResponsiveSpacing(2),
+      marginLeft: getResponsiveSpacing(6),
+    },
+    instantBadgeText: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#FF6B00',
+      fontWeight: '600',
     },
     subcategorySummary: {
       fontSize: getResponsiveFontSize(14),
@@ -440,7 +477,6 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       flexDirection: 'row',
       paddingHorizontal: getResponsiveSpacing(16),
       paddingBottom: getResponsiveSpacing(16),
-      gap: getResponsiveSpacing(12),
     },
     addServicesButton: {
       flex: 1,
@@ -451,6 +487,7 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       paddingVertical: getResponsiveValue(12, 10, 14),
       alignItems: 'center',
       justifyContent: 'center',
+      marginRight: getResponsiveSpacing(12),
     },
     addServicesButtonText: {
       fontSize: getResponsiveFontSize(14),

@@ -8,6 +8,7 @@ export interface CartService {
   price?: number;
   image?: string;
   subcategory_id?: string;
+  instant_service?: number | string | boolean;
 }
 
 interface CartItem {

@@ -31,6 +31,7 @@ interface Service {
   deal_price?: number;
   rating?: number;
   created_at: string;
+  instant_service?: number | string | boolean;
 }
 
 interface ServicesScreenProps {
@@ -222,6 +223,12 @@ export default function ServicesScreen() {
     setImageErrors(prev => new Set(prev).add(serviceId));
   };
 
+  const isInstantService = (value?: Service['instant_service']) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
+    return value === 1;
+  };
+
   const formatServiceForCart = (service: Service): CartService => {
     const imageUrl = service.image
       ? (service.image.startsWith('http')
@@ -234,6 +241,7 @@ export default function ServicesScreen() {
       price: service.deal_price || service.price || 0,
       image: imageUrl,
       subcategory_id: service.subcategory_id,
+      instant_service: service.instant_service ?? 0,
     };
   };
 
@@ -492,9 +500,16 @@ export default function ServicesScreen() {
                   <View style={styles.serviceContent}>
                     {/* Left Section - Service Details */}
                     <View style={styles.serviceDetails}>
-                      <Text style={styles.serviceName} numberOfLines={2}>
-                        {service.name}
-                      </Text>
+                      <View style={styles.serviceNameRow}>
+                        <Text style={styles.serviceName} numberOfLines={2}>
+                          {service.name}
+                        </Text>
+                        {isInstantService(service.instant_service) && (
+                          <View style={styles.instantTag}>
+                            <Text style={styles.instantTagText}>Instant</Text>
+                          </View>
+                        )}
+                      </View>
                       
                       {/* Rating */}
                       <View style={styles.ratingContainer}>
@@ -647,7 +662,14 @@ export default function ServicesScreen() {
                   <View style={styles.modalHeader}>
                     <View style={styles.modalHeaderTop}>
                       <View style={styles.modalHeaderLeft}>
-                        <Text style={styles.modalServiceName}>{selectedService.name}</Text>
+                        <View style={styles.modalServiceNameRow}>
+                          <Text style={styles.modalServiceName}>{selectedService.name}</Text>
+                          {isInstantService(selectedService.instant_service) && (
+                            <View style={styles.modalInstantTag}>
+                              <Text style={styles.modalInstantTagText}>Instant</Text>
+                            </View>
+                          )}
+                        </View>
                         
                         {/* Rating */}
                         <View style={styles.modalRatingContainer}>
@@ -1397,6 +1419,23 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       lineHeight: getResponsiveFontSize(20, screenWidth),
       marginBottom: getResponsiveSpacing(6, screenWidth),
     },
+    serviceNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(6, screenWidth),
+      marginBottom: getResponsiveSpacing(4, screenWidth),
+    },
+    instantTag: {
+      backgroundColor: '#FFE5B4',
+      borderRadius: getResponsiveSpacing(8, screenWidth),
+      paddingHorizontal: getResponsiveSpacing(8, screenWidth),
+      paddingVertical: getResponsiveSpacing(2, screenWidth),
+    },
+    instantTagText: {
+      fontSize: getResponsiveFontSize(12, screenWidth),
+      color: '#FF6B00',
+      fontWeight: '600',
+    },
     ratingContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1670,6 +1709,23 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       color: '#000',
       marginBottom: getResponsiveSpacing(4, screenWidth),
       lineHeight: getResponsiveFontSize(26, screenWidth),
+    },
+    modalServiceNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(8, screenWidth),
+      marginBottom: getResponsiveSpacing(4, screenWidth),
+    },
+    modalInstantTag: {
+      backgroundColor: '#FFE5B4',
+      borderRadius: getResponsiveSpacing(10, screenWidth),
+      paddingHorizontal: getResponsiveSpacing(10, screenWidth),
+      paddingVertical: getResponsiveSpacing(2, screenWidth),
+    },
+    modalInstantTagText: {
+      fontSize: getResponsiveFontSize(13, screenWidth),
+      color: '#FF6B00',
+      fontWeight: '600',
     },
     modalRatingContainer: {
       flexDirection: 'row',

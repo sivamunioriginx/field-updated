@@ -22,7 +22,7 @@ export default function CartScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { getCartItems, incrementItem, decrementItem, addToCart, cartDetails } = useCart();
+  const { getCartItems, incrementItem, decrementItem, addToCart } = useCart();
   const { isAuthenticated, user, updateUser } = useAuth();
   const [suggestedServices, setSuggestedServices] = useState<CartService[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
@@ -41,14 +41,27 @@ export default function CartScreen() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isInstantBooking, setIsInstantBooking] = useState(false);
 
-  // Get subcategoryId from params if provided
+  // Get subcategoryId / instant filter from params if provided
   const subcategoryId = params.subcategoryId as string | undefined;
+  const instantOnly = params.instantOnly === 'true';
   
-  // Filter cart items by subcategory if subcategoryId is provided
+  // Filter cart items by subcategory / instant flag if provided
+  const isInstantService = (value: CartService['instant_service']) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === '1' || value.toLowerCase?.() === 'true';
+    return value === 1;
+  };
+
   const allCartItems = getCartItems();
-  const cartItems = subcategoryId 
-    ? allCartItems.filter(item => item.service.subcategory_id === subcategoryId)
-    : allCartItems;
+  const cartItems = allCartItems.filter(item => {
+    if (subcategoryId && item.service.subcategory_id !== subcategoryId) {
+      return false;
+    }
+    if (instantOnly) {
+      return isInstantService(item.service.instant_service);
+    }
+    return true;
+  });
 
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
