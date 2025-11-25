@@ -1,4 +1,4 @@
-import getBaseUrl from '@/constants/api';
+import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CartService } from '@/contexts/CartContext';
 import { useCart } from '@/contexts/CartContext';
@@ -8,6 +8,8 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Animated,
   Modal,
   ScrollView,
   StyleSheet,
@@ -39,6 +41,15 @@ export default function CartScreen() {
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
+  const [showWaitingModal, setShowWaitingModal] = useState(false);
+  const [currentBookingId, setCurrentBookingId] = useState<string | null>(null);
+  const pollingIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // Animation values for three balls
+  const ball1Anim = React.useRef(new Animated.Value(0)).current;
+  const ball2Anim = React.useRef(new Animated.Value(0)).current;
+  const ball3Anim = React.useRef(new Animated.Value(0)).current;
 
   // Get subcategoryId / instant filter from params if provided
   const subcategoryId = params.subcategoryId as string | undefined;
@@ -274,6 +285,301 @@ export default function CartScreen() {
       setIsSavingContact(false);
     }
   };
+
+  const handleBookNow = async () => {
+    // Check if user is authenticated
+    if (!isAuthenticated || !user?.id) {
+      Alert.alert('Login Required', 'Please login to book services');
+      router.push('/login');
+      return;
+    }
+
+    // Check if date and time are selected
+    if (!selectedDate || !selectedTime) {
+      setShowSlotModal(true);
+      return;
+    }
+
+    // Check if location is selected
+    if (!savedLocation) {
+      Alert.alert('Location Required', 'Please select a work location');
+      loadSavedAddresses();
+      setShowAddressModal(true);
+      return;
+    }
+
+    // Get subcategory_id from cart items (all items should have the same subcategory_id)
+    if (cartItems.length === 0) {
+      Alert.alert('Error', 'No items in cart');
+      return;
+    }
+
+    // Get the subcategory_id from the first cart item
+    const subcategoryId = cartItems[0]?.service?.subcategory_id;
+    if (!subcategoryId) {
+      Alert.alert('Error', 'Unable to determine service category. Please try again.');
+      return;
+    }
+
+    // Validate that selected date and time is not in the past
+    const [hours, minutes] = selectedTime.split(':').map(Number);
+    const bookingDateTime = new Date(selectedDate);
+    bookingDateTime.setHours(hours, minutes, 0, 0);
+    
+    if (bookingDateTime <= new Date()) {
+      Alert.alert('Invalid Time', 'Please select a future date and time for your booking');
+      return;
+    }
+
+    setIsBooking(true);
+
+    try {
+      // Format booking time as local datetime string (YYYY-MM-DD HH:MM:SS)
+      const year = bookingDateTime.getFullYear();
+      const month = String(bookingDateTime.getMonth() + 1).padStart(2, '0');
+      const day = String(bookingDateTime.getDate()).padStart(2, '0');
+      const hour = String(bookingDateTime.getHours()).padStart(2, '0');
+      const minute = String(bookingDateTime.getMinutes()).padStart(2, '0');
+      const second = String(bookingDateTime.getSeconds()).padStart(2, '0');
+      
+      const localDateTimeString = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+
+      // Generate unique booking ID (same for all workers)
+      const bookingId = `bk${Math.floor(Date.now() / 1000)}`;
+
+      // Format work location from saved location
+      const workLocationParts = [
+        savedLocation.flatNo,
+        savedLocation.landmark,
+        savedLocation.address
+      ].filter(Boolean);
+      const workLocation = workLocationParts.join(', ') || 'Location not specified';
+
+      // Fetch all workers
+      console.log('Fetching all workers...');
+      const workersResponse = await fetch(API_ENDPOINTS.WORKERS);
+      if (!workersResponse.ok) {
+        throw new Error('Failed to fetch workers');
+      }
+      const workersData = await workersResponse.json();
+      
+      if (!workersData.success || !Array.isArray(workersData.data)) {
+        throw new Error('Invalid workers data');
+      }
+
+      // Filter workers who have this subcategory_id in their skill_id
+      // skill_id is stored as comma-separated values like "1,2,3" or "1, 2, 3"
+      const matchingWorkers = workersData.data.filter((worker: any) => {
+        if (!worker.skill_id) return false;
+        // Remove spaces and split by comma, then check if subcategory_id is in the array
+        const skillIds = worker.skill_id.replace(/\s/g, '').split(',').filter(Boolean);
+        return skillIds.includes(subcategoryId.toString());
+      });
+
+      if (matchingWorkers.length === 0) {
+        Alert.alert('No Workers Found', `No workers found for this service category. Please try again later.`);
+        setIsBooking(false);
+        return;
+      }
+
+      console.log(`Found ${matchingWorkers.length} worker(s) for subcategory_id ${subcategoryId}`);
+
+      // Create booking for each worker with the same booking_id
+      const bookingPromises = matchingWorkers.map(async (worker: any) => {
+        const bookingData = {
+          booking_id: bookingId,  // Same booking_id for all workers
+          worker_id: worker.id,   // Different worker_id for each booking
+          user_id: user.id,
+          contact_number: user.mobile || contactPhone || null,
+          work_location: workLocation,
+          booking_time: localDateTimeString,
+          status: 0,
+          description: `Booking for ${cartItems.length} service(s)`,
+          work_documents: null
+        };
+
+        const response = await fetch(API_ENDPOINTS.BOOKINGS, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(bookingData),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to book worker ${worker.name}: ${errorData.message || 'Unknown error'}`);
+        }
+
+        return await response.json();
+      });
+
+      // Wait for all bookings to be created
+      const results = await Promise.all(bookingPromises);
+      
+      console.log(`Successfully created ${results.length} booking(s) with booking_id: ${bookingId}`);
+
+      // Show waiting modal with animation
+      setIsBooking(false);
+      setCurrentBookingId(bookingId);
+      setShowWaitingModal(true);
+      
+      // Start ball animations
+      startBallAnimations();
+      
+      // Start polling for booking status
+      startBookingStatusPolling(bookingId);
+
+    } catch (error) {
+      console.error('Booking error:', error);
+      setIsBooking(false);
+      setShowWaitingModal(false);
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      Alert.alert(
+        'Booking Failed',
+        error instanceof Error ? error.message : 'Failed to create booking. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  // Start ball animations (up and down with staggered timing - faster speed)
+  const startBallAnimations = () => {
+    // Ball 1: starts immediately - faster animation (350ms instead of 600ms)
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(ball1Anim, {
+          toValue: -30, // Increased movement distance
+          duration: 350, // Faster speed
+          useNativeDriver: true,
+        }),
+        Animated.timing(ball1Anim, {
+          toValue: 0,
+          duration: 350, // Faster speed
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Ball 2: starts after 150ms delay - faster animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(150), // Reduced delay for smoother wave
+        Animated.timing(ball2Anim, {
+          toValue: -30, // Increased movement distance
+          duration: 350, // Faster speed
+          useNativeDriver: true,
+        }),
+        Animated.timing(ball2Anim, {
+          toValue: 0,
+          duration: 350, // Faster speed
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Ball 3: starts after 300ms delay - faster animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(300), // Reduced delay for smoother wave
+        Animated.timing(ball3Anim, {
+          toValue: -30, // Increased movement distance
+          duration: 350, // Faster speed
+          useNativeDriver: true,
+        }),
+        Animated.timing(ball3Anim, {
+          toValue: 0,
+          duration: 350, // Faster speed
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
+
+  // Poll booking status until status != 0
+  const startBookingStatusPolling = (bookingId: string) => {
+    if (!user?.id) return;
+
+    const pollBookingStatus = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(user.id.toString()));
+        if (!response.ok) {
+          console.error('Failed to fetch booking status');
+          return;
+        }
+        
+        const result = await response.json();
+        if (result.success && result.data) {
+          // Get all bookings with the same booking_id
+          const allBookingsWithSameId = result.data.filter((b: any) => b.booking_id === bookingId);
+          
+          if (allBookingsWithSameId.length > 0) {
+            // Check if ANY booking has status != 0
+            const confirmedBooking = allBookingsWithSameId.find((b: any) => {
+              const status = parseInt(b.status);
+              return status !== 0;
+            });
+            
+            if (confirmedBooking) {
+              console.log(`✅ Booking ${bookingId} confirmed with status: ${confirmedBooking.status}`);
+              
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+              
+              // Stop animations
+              ball1Anim.stopAnimation();
+              ball2Anim.stopAnimation();
+              ball3Anim.stopAnimation();
+              
+              // Close modal and navigate back
+              setShowWaitingModal(false);
+              setCurrentBookingId(null);
+              
+              Alert.alert(
+                'Booking Confirmed',
+                `Your booking has been confirmed!\n\nBooking ID: ${bookingId}`,
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      router.back();
+                    }
+                  }
+                ]
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling booking status:', error);
+      }
+    };
+
+    // Poll every 2 seconds
+    const interval = setInterval(pollBookingStatus, 2000);
+    pollingIntervalRef.current = interval;
+    
+    // Initial poll
+    pollBookingStatus();
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+      ball1Anim.stopAnimation();
+      ball2Anim.stopAnimation();
+      ball3Anim.stopAnimation();
+    };
+  }, []);
 
   const loadSavedLocation = useCallback(async () => {
     try {
@@ -624,17 +930,12 @@ export default function CartScreen() {
             
             {cartItems.length > 0 && (
               <TouchableOpacity 
-                style={[styles.primaryButton, styles.primaryButtonFull]}
-                onPress={() => {
-                  if (hasInstantFilter || (selectedDate && selectedTime)) {
-                    // Navigate to payment or next step
-                  } else {
-                    setShowSlotModal(true);
-                  }
-                }}
+                style={[styles.primaryButton, styles.primaryButtonFull, isBooking && styles.primaryButtonDisabled]}
+                onPress={handleBookNow}
+                disabled={isBooking}
               >
                 <Text style={styles.primaryButtonText}>
-                  {hasInstantFilter || (selectedDate && selectedTime) ? 'Proceed to pay' : 'Select slot'}
+                  {isBooking ? 'Booking...' : (hasInstantFilter || (selectedDate && selectedTime) ? 'Book Now' : 'Select slot')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -982,6 +1283,57 @@ export default function CartScreen() {
                 Proceed to checkout
               </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Waiting for Confirmation Modal */}
+      <Modal
+        visible={showWaitingModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}} // Prevent closing
+      >
+        <View style={styles.waitingModalOverlay}>
+          <View style={styles.waitingModalContent}>
+            {/* Three animated balls with different colors */}
+            <View style={styles.ballsContainer}>
+              <Animated.View
+                style={[
+                  styles.ball,
+                  styles.ball1,
+                  {
+                    transform: [{ translateY: ball1Anim }]
+                  }
+                ]}
+              />
+              <Animated.View
+                style={[
+                  styles.ball,
+                  styles.ball2,
+                  {
+                    transform: [{ translateY: ball2Anim }]
+                  }
+                ]}
+              />
+              <Animated.View
+                style={[
+                  styles.ball,
+                  styles.ball3,
+                  {
+                    transform: [{ translateY: ball3Anim }]
+                  }
+                ]}
+              />
+            </View>
+            
+            {/* Waiting text */}
+            <Text style={styles.waitingText}>Waiting for confirmation</Text>
+            
+            {/* Booking ID */}
+            {currentBookingId && (
+              <Text style={styles.bookingIdText}>Booking ID: {currentBookingId}</Text>
+            )}
           </View>
         </View>
       </Modal>
@@ -1393,6 +1745,10 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     primaryButtonFull: {
       marginTop: getResponsiveSpacing(2),
     },
+    primaryButtonDisabled: {
+      backgroundColor: '#C4B5FD',
+      opacity: 0.7,
+    },
     primaryButtonText: {
       color: '#FFF',
       fontSize: getResponsiveFontSize(16),
@@ -1790,6 +2146,76 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       color: '#FFF',
       fontSize: getResponsiveFontSize(16),
       fontWeight: '600',
+    },
+    waitingModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    waitingModalContent: {
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(24),
+      padding: getResponsiveSpacing(30),
+      alignItems: 'center',
+      minWidth: screenWidth * 0.6,
+      maxWidth: screenWidth * 0.8,
+      shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 15,
+    },
+    ballsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: getResponsiveValue(25, 20, 30),
+      gap: getResponsiveSpacing(18),
+      paddingVertical: getResponsiveValue(15, 12, 18),
+    },
+    ball: {
+      width: getResponsiveWidth(32, 28, 36),
+      height: getResponsiveWidth(32, 28, 36),
+      borderRadius: getResponsiveWidth(16, 14, 18),
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    ball1: {
+      backgroundColor: '#8B5CF6',
+      shadowColor: '#8B5CF6',
+    },
+    ball2: {
+      backgroundColor: '#4CAF50',
+      shadowColor: '#4CAF50',
+    },
+    ball3: {
+      backgroundColor: '#FF6B6B',
+      shadowColor: '#FF6B6B',
+    },
+    waitingText: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      color: '#333',
+      marginBottom: getResponsiveValue(10, 8, 12),
+      textAlign: 'center',
+      letterSpacing: 0.5,
+    },
+    bookingIdText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#8B5CF6',
+      textAlign: 'center',
+      marginTop: getResponsiveValue(6, 5, 8),
+      fontWeight: '600',
+      backgroundColor: '#F8F5FF',
+      paddingHorizontal: getResponsiveSpacing(12),
+      paddingVertical: getResponsiveSpacing(6),
+      borderRadius: getResponsiveSpacing(16),
+      borderWidth: 1,
+      borderColor: '#E8D5FF',
     },
   });
 };
