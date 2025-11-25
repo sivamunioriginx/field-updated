@@ -384,6 +384,19 @@ export default function CartScreen() {
 
       console.log(`Found ${matchingWorkers.length} worker(s) for subcategory_id ${subcategoryId}`);
 
+      // Prepare a descriptive summary of selected services for the booking
+      const uniqueServiceNames = Array.from(
+        new Set(
+          cartItems
+            .map((item) => item?.service?.name?.trim())
+            .filter((name): name is string => Boolean(name))
+        )
+      );
+      const bookingDescription =
+        uniqueServiceNames.length > 0
+          ? `Booking for ${uniqueServiceNames.join(', ')}`
+          : `Booking for ${cartItems.length} service(s)`;
+
       // Create booking for each worker with the same booking_id
       const bookingPromises = matchingWorkers.map(async (worker: any) => {
         const bookingData = {
@@ -394,7 +407,7 @@ export default function CartScreen() {
           work_location: workLocation,
           booking_time: localDateTimeString,
           status: 0,
-          description: `Booking for ${cartItems.length} service(s)`,
+          description: bookingDescription,
           work_documents: null
         };
 

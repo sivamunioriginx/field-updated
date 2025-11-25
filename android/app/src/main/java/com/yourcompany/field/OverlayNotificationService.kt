@@ -26,6 +26,7 @@ class OverlayNotificationService : Service() {
         private const val EXTRA_WORK_DESCRIPTION = "work_description"
         private const val EXTRA_BOOKING_TIME = "booking_time"
         private const val EXTRA_BOOKING_ID = "booking_id"
+        private const val EXTRA_WORKER_ID = "worker_id"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "overlay_service_channel"
         
@@ -39,7 +40,8 @@ class OverlayNotificationService : Service() {
             workAddress: String? = null,
             workDescription: String? = null,
             bookingTime: String? = null,
-            bookingId: String? = null
+            bookingId: String? = null,
+            workerId: String? = null
         ) {
             val intent = Intent(context, OverlayNotificationService::class.java).apply {
                 action = ACTION_SHOW_OVERLAY
@@ -52,6 +54,7 @@ class OverlayNotificationService : Service() {
                 putExtra(EXTRA_WORK_DESCRIPTION, workDescription)
                 putExtra(EXTRA_BOOKING_TIME, bookingTime)
                 putExtra(EXTRA_BOOKING_ID, bookingId)
+                putExtra(EXTRA_WORKER_ID, workerId)
             }
             context.startService(intent)
         }
@@ -73,6 +76,7 @@ class OverlayNotificationService : Service() {
                 val workDescription = intent.getStringExtra(EXTRA_WORK_DESCRIPTION)
                 val bookingTime = intent.getStringExtra(EXTRA_BOOKING_TIME)
                 val bookingId = intent.getStringExtra(EXTRA_BOOKING_ID)
+                val workerId = intent.getStringExtra(EXTRA_WORKER_ID)
                 
                 Log.d("OverlayService", "🚨 Showing overlay from service - Title: $title")
                 Log.d("OverlayService", "🚨 Service context: ${this}")
@@ -88,8 +92,16 @@ class OverlayNotificationService : Service() {
                         Log.d("OverlayService", "🚨 Creating overlay on main thread...")
                         overlay = FullScreenNotificationOverlay(this)
                         overlay?.show(
-                            title, body, iconRes, customerName, customerMobile, 
-                            workAddress, workDescription, bookingTime, bookingId
+                            title,
+                            body,
+                            iconRes,
+                            customerName,
+                            customerMobile,
+                            workAddress,
+                            workDescription,
+                            bookingTime,
+                            bookingId,
+                            workerId
                         )
                         Log.d("OverlayService", "🚨 Overlay creation completed")
                         

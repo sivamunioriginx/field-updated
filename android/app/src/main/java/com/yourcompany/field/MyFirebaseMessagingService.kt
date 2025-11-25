@@ -136,6 +136,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val workDescription = data["description"] ?: data["workDescription"]
             val bookingTime = data["booking_time"] ?: data["bookingTime"]
             val bookingId = data["booking_id"] ?: data["bookingId"]
+            val workerId = data["worker_id"] ?: data["workerId"]
             
             Log.d(TAG, "🚨 Processing message - Title: $title, Body: $body, FullScreen: $isFullScreen")
             Log.d(TAG, "🚨 Booking data - Customer: $customerName, Location: $workAddress")
@@ -150,8 +151,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     startContinuousVibration()
                     
                     showFullScreenNotification(
-                        title, body, customerName, customerMobile, 
-                        workAddress, workDescription, bookingTime, bookingId
+                        title = title,
+                        body = body,
+                        customerName = customerName,
+                        customerMobile = customerMobile,
+                        workAddress = workAddress,
+                        workDescription = workDescription,
+                        bookingTime = bookingTime,
+                        bookingId = bookingId,
+                        workerId = workerId
                     )
                     Log.d(TAG, "🚨 Full-screen notification overlay displayed - Title: $title, Body: $body")
                 } else {
@@ -227,7 +235,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         workAddress: String?,
         workDescription: String?,
         bookingTime: String?,
-        bookingId: String?
+        bookingId: String?,
+        workerId: String?
     ) {
         try {
             Log.d(TAG, "🚨 Attempting to show full-screen notification overlay")
@@ -243,7 +252,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 workAddress = workAddress,
                 workDescription = workDescription,
                 bookingTime = bookingTime,
-                bookingId = bookingId
+                bookingId = bookingId,
+                workerId = workerId
             )
             
             Log.d(TAG, "🚨 Full-screen notification service started")

@@ -40,7 +40,8 @@ class FullScreenNotificationOverlay(private val context: Context) {
         workAddress: String? = null,
         workDescription: String? = null,
         bookingTime: String? = null,
-        bookingId: String? = null
+        bookingId: String? = null,
+        workerId: String? = null
     ) {
         if (isShowing) {
             hide()
@@ -53,7 +54,18 @@ class FullScreenNotificationOverlay(private val context: Context) {
         // Ensure UI operations run on main thread
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
-                createOverlayView(title, body, iconRes, customerName, customerMobile, workAddress, workDescription, bookingTime, bookingId)
+                createOverlayView(
+                    title,
+                    body,
+                    iconRes,
+                    customerName,
+                    customerMobile,
+                    workAddress,
+                    workDescription,
+                    bookingTime,
+                    bookingId,
+                    workerId
+                )
                 addOverlayToWindow()
                 isShowing = true
                 android.util.Log.d("FullScreenOverlay", "🚨 Overlay shown successfully")
@@ -115,7 +127,8 @@ class FullScreenNotificationOverlay(private val context: Context) {
         workAddress: String?,
         workDescription: String?,
         bookingTime: String?,
-        bookingId: String?
+        bookingId: String?,
+        workerId: String?
     ) {
         val inflater = LayoutInflater.from(context)
         overlayView = inflater.inflate(R.layout.overlay_fullscreen_notification, null)
@@ -158,9 +171,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
             stopVibrationAndHide()
             
             // Handle accept in background thread
-            Thread {
-                handleAcceptClick(bookingId)
-            }.start()
+            Thread { handleAcceptClick(bookingId, workerId) }.start()
         }
         
         rejectButton?.setOnClickListener {
@@ -172,9 +183,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
             stopVibrationAndHide()
             
             // Handle reject in background thread
-            Thread {
-                handleRejectClick(bookingId)
-            }.start()
+            Thread { handleRejectClick(bookingId, workerId) }.start()
         }
         
         // Remove auto-dismiss - notification persists until user action
@@ -228,16 +237,18 @@ class FullScreenNotificationOverlay(private val context: Context) {
         return layoutParams
     }
     
-    private fun handleAcceptClick(bookingId: String?) {
+    private fun handleAcceptClick(bookingId: String?, workerId: String?) {
         try {
             android.util.Log.d("FullScreenOverlay", "🚨 Booking accepted - ID: $bookingId")
             
-            // Get worker ID from SharedPreferences (assuming it's stored there)
-            val sharedPrefs = context.getSharedPreferences("worker_prefs", android.content.Context.MODE_PRIVATE)
-            val workerId = sharedPrefs.getString("worker_id", "13") ?: "13"
+            val resolvedWorkerId = resolveWorkerId(workerId)
+            if (resolvedWorkerId == null) {
+                android.util.Log.e("FullScreenOverlay", "❌ Worker ID missing - cannot accept booking")
+                return
+            }
             
             // Call backend API to accept booking
-            acceptBookingOnBackend(bookingId, workerId)
+            acceptBookingOnBackend(bookingId, resolvedWorkerId)
             
         } catch (e: Exception) {
             android.util.Log.e("FullScreenOverlay", "❌ Error accepting booking: ${e.message}")
@@ -245,16 +256,18 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
     }
     
-    private fun handleRejectClick(bookingId: String?) {
+    private fun handleRejectClick(bookingId: String?, workerId: String?) {
         try {
             android.util.Log.d("FullScreenOverlay", "🚨 Booking rejected - ID: $bookingId")
             
-            // Get worker ID from SharedPreferences (assuming it's stored there)
-            val sharedPrefs = context.getSharedPreferences("worker_prefs", android.content.Context.MODE_PRIVATE)
-            val workerId = sharedPrefs.getString("worker_id", "13") ?: "13"
+            val resolvedWorkerId = resolveWorkerId(workerId)
+            if (resolvedWorkerId == null) {
+                android.util.Log.e("FullScreenOverlay", "❌ Worker ID missing - cannot reject booking")
+                return
+            }
             
             // Call backend API to reject booking
-            rejectBookingOnBackend(bookingId, workerId)
+            rejectBookingOnBackend(bookingId, resolvedWorkerId)
             
         } catch (e: Exception) {
             android.util.Log.e("FullScreenOverlay", "❌ Error rejecting booking: ${e.message}")
@@ -296,13 +309,19 @@ class FullScreenNotificationOverlay(private val context: Context) {
             return
         }
         
+        val workerIdInt = workerId.toIntOrNull()
+        if (workerIdInt == null) {
+            android.util.Log.e("FullScreenOverlay", "❌ Worker ID is invalid: $workerId")
+            return
+        }
+        
         Thread {
             try {
                 val url = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api/accept-booking-alert"
                 
                 val json = org.json.JSONObject().apply {
                     put("booking_id", bookingId)
-                    put("worker_id", workerId.toInt())
+                    put("worker_id", workerIdInt)
                     put("action", "accept")
                 }
                 
@@ -341,13 +360,19 @@ class FullScreenNotificationOverlay(private val context: Context) {
             return
         }
         
+        val workerIdInt = workerId.toIntOrNull()
+        if (workerIdInt == null) {
+            android.util.Log.e("FullScreenOverlay", "❌ Worker ID is invalid: $workerId")
+            return
+        }
+        
         Thread {
             try {
                 val url = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api/reject-booking-alert"
                 
                 val json = org.json.JSONObject().apply {
                     put("booking_id", bookingId)
-                    put("worker_id", workerId.toInt())
+                    put("worker_id", workerIdInt)
                     put("reason", "Booking Failed")
                 }
                 
@@ -375,6 +400,30 @@ class FullScreenNotificationOverlay(private val context: Context) {
                 // API call failed but overlay already hidden
             }
         }.start()
+    }
+    
+    private fun resolveWorkerId(passedWorkerId: String?): String? {
+        if (!passedWorkerId.isNullOrBlank()) {
+            return passedWorkerId
+        }
+        
+        val storedWorkerId = getStoredWorkerId()
+        if (storedWorkerId.isNullOrBlank()) {
+            android.util.Log.e("FullScreenOverlay", "❌ Worker ID unavailable in notification data and storage")
+        } else {
+            android.util.Log.d("FullScreenOverlay", "ℹ️ Using worker ID from storage: $storedWorkerId")
+        }
+        return storedWorkerId
+    }
+    
+    private fun getStoredWorkerId(): String? {
+        return try {
+            val sharedPrefs = context.getSharedPreferences("worker_prefs", android.content.Context.MODE_PRIVATE)
+            sharedPrefs.getString("worker_id", null)
+        } catch (e: Exception) {
+            android.util.Log.e("FullScreenOverlay", "❌ Error reading worker ID from storage: ${e.message}")
+            null
+        }
     }
     
     /**
