@@ -46,10 +46,14 @@ export default function CartScreen() {
   const [currentBookingId, setCurrentBookingId] = useState<string | null>(null);
   const pollingIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // Animation values for three balls
-  const ball1Anim = React.useRef(new Animated.Value(0)).current;
-  const ball2Anim = React.useRef(new Animated.Value(0)).current;
-  const ball3Anim = React.useRef(new Animated.Value(0)).current;
+  // Animation values for circular progress ring with orbiting particles
+  const ringRotateAnim = React.useRef(new Animated.Value(0)).current;
+  const particle1Anim = React.useRef(new Animated.Value(0)).current;
+  const particle2Anim = React.useRef(new Animated.Value(0)).current;
+  const particle3Anim = React.useRef(new Animated.Value(0)).current;
+  const progressAnim = React.useRef(new Animated.Value(0)).current;
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  const timerRotateAnim = React.useRef(new Animated.Value(0)).current;
 
   // Get subcategoryId / instant filter from params if provided
   const subcategoryId = params.subcategoryId as string | undefined;
@@ -437,8 +441,8 @@ export default function CartScreen() {
       setCurrentBookingId(bookingId);
       setShowWaitingModal(true);
       
-      // Start ball animations
-      startBallAnimations();
+      // Start loading animations
+      startLoadingAnimations();
       
       // Start polling for booking status
       startBookingStatusPolling(bookingId);
@@ -459,56 +463,88 @@ export default function CartScreen() {
     }
   };
 
-  // Start ball animations (up and down with staggered timing - faster speed)
-  const startBallAnimations = () => {
-    // Ball 1: starts immediately - faster animation (350ms instead of 600ms)
+  // Start circular progress ring with orbiting particles animation
+  const startLoadingAnimations = () => {
+    // Continuous ring rotation
+    ringRotateAnim.setValue(0);
+    Animated.loop(
+      Animated.timing(ringRotateAnim, {
+        toValue: 1,
+        duration: 3000,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    // Progress fill animation (0 to 100%)
+    progressAnim.setValue(0);
     Animated.loop(
       Animated.sequence([
-        Animated.timing(ball1Anim, {
-          toValue: -30, // Increased movement distance
-          duration: 350, // Faster speed
+        Animated.timing(progressAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false, // Need false for strokeDashoffset
+        }),
+        Animated.timing(progressAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+
+    // Orbiting particles (3 particles orbiting around the ring)
+    particle1Anim.setValue(0);
+    Animated.loop(
+      Animated.timing(particle1Anim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    particle2Anim.setValue(0);
+    Animated.loop(
+      Animated.timing(particle2Anim, {
+        toValue: 1,
+        duration: 2500,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    particle3Anim.setValue(0);
+    Animated.loop(
+      Animated.timing(particle3Anim, {
+        toValue: 1,
+        duration: 1800,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    // Pulsing center icon
+    pulseAnim.setValue(1);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.15,
+          duration: 1000,
           useNativeDriver: true,
         }),
-        Animated.timing(ball1Anim, {
-          toValue: 0,
-          duration: 350, // Faster speed
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // Ball 2: starts after 150ms delay - faster animation
+    // Timer rotation (clockwise - left to right)
+    timerRotateAnim.setValue(0);
     Animated.loop(
-      Animated.sequence([
-        Animated.delay(150), // Reduced delay for smoother wave
-        Animated.timing(ball2Anim, {
-          toValue: -30, // Increased movement distance
-          duration: 350, // Faster speed
-          useNativeDriver: true,
-        }),
-        Animated.timing(ball2Anim, {
-          toValue: 0,
-          duration: 350, // Faster speed
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    // Ball 3: starts after 300ms delay - faster animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.delay(300), // Reduced delay for smoother wave
-        Animated.timing(ball3Anim, {
-          toValue: -30, // Increased movement distance
-          duration: 350, // Faster speed
-          useNativeDriver: true,
-        }),
-        Animated.timing(ball3Anim, {
-          toValue: 0,
-          duration: 350, // Faster speed
-          useNativeDriver: true,
-        }),
-      ])
+      Animated.timing(timerRotateAnim, {
+        toValue: 1,
+        duration: 2000, // 2 seconds per full rotation
+        useNativeDriver: true,
+      })
     ).start();
   };
 
@@ -546,9 +582,13 @@ export default function CartScreen() {
               }
               
               // Stop animations
-              ball1Anim.stopAnimation();
-              ball2Anim.stopAnimation();
-              ball3Anim.stopAnimation();
+              ringRotateAnim.stopAnimation();
+              particle1Anim.stopAnimation();
+              particle2Anim.stopAnimation();
+              particle3Anim.stopAnimation();
+              progressAnim.stopAnimation();
+              pulseAnim.stopAnimation();
+              timerRotateAnim.stopAnimation();
               
               // Close modal and navigate back
               setShowWaitingModal(false);
@@ -588,9 +628,13 @@ export default function CartScreen() {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
-      ball1Anim.stopAnimation();
-      ball2Anim.stopAnimation();
-      ball3Anim.stopAnimation();
+      ringRotateAnim.stopAnimation();
+      particle1Anim.stopAnimation();
+      particle2Anim.stopAnimation();
+      particle3Anim.stopAnimation();
+      progressAnim.stopAnimation();
+      pulseAnim.stopAnimation();
+      timerRotateAnim.stopAnimation();
     };
   }, []);
 
@@ -1309,39 +1353,113 @@ export default function CartScreen() {
       >
         <View style={styles.waitingModalOverlay}>
           <View style={styles.waitingModalContent}>
-            {/* Three animated balls with different colors */}
-            <View style={styles.ballsContainer}>
+            {/* Circular progress ring with orbiting particles */}
+            <View style={styles.ringLoaderContainer}>
+              {/* Outer rotating ring */}
               <Animated.View
                 style={[
-                  styles.ball,
-                  styles.ball1,
+                  styles.progressRing,
                   {
-                    transform: [{ translateY: ball1Anim }]
-                  }
+                    transform: [
+                      {
+                        rotate: ringRotateAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                {/* Progress segments */}
+                <View style={[styles.ringSegment, styles.ringSegment1]} />
+                <View style={[styles.ringSegment, styles.ringSegment2]} />
+                <View style={[styles.ringSegment, styles.ringSegment3]} />
+                <View style={[styles.ringSegment, styles.ringSegment4]} />
+              </Animated.View>
+
+              {/* Orbiting particles */}
+              <Animated.View
+                style={[
+                  styles.orbitingParticle,
+                  styles.particle1,
+                  {
+                    transform: [
+                      {
+                        rotate: particle1Anim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'],
+                        }),
+                      },
+                      {
+                        translateX: 45,
+                      },
+                    ],
+                  },
                 ]}
               />
               <Animated.View
                 style={[
-                  styles.ball,
-                  styles.ball2,
+                  styles.orbitingParticle,
+                  styles.particle2,
                   {
-                    transform: [{ translateY: ball2Anim }]
-                  }
+                    transform: [
+                      {
+                        rotate: particle2Anim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['120deg', '480deg'],
+                        }),
+                      },
+                      {
+                        translateX: 45,
+                      },
+                    ],
+                  },
                 ]}
               />
               <Animated.View
                 style={[
-                  styles.ball,
-                  styles.ball3,
+                  styles.orbitingParticle,
+                  styles.particle3,
                   {
-                    transform: [{ translateY: ball3Anim }]
-                  }
+                    transform: [
+                      {
+                        rotate: particle3Anim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['240deg', '600deg'],
+                        }),
+                      },
+                      {
+                        translateX: 45,
+                      },
+                    ],
+                  },
                 ]}
               />
+
+              {/* Rotating hourglass icon in center */}
+              <Animated.View
+                style={[
+                  styles.centerIconRing,
+                  {
+                    transform: [
+                      { scale: pulseAnim },
+                      {
+                        rotate: timerRotateAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'], // Clockwise rotation (left to right)
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Ionicons name="hourglass-outline" size={40} color="#8B5CF6" />
+              </Animated.View>
             </View>
             
             {/* Waiting text */}
-            <Text style={styles.waitingText}>Waiting for confirmation</Text>
+            <Text style={styles.waitingText}>Hang On a Moment...</Text>
             
             {/* Booking ID */}
             {currentBookingId && (
@@ -2179,35 +2297,99 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       shadowRadius: 20,
       elevation: 15,
     },
-    ballsContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    ringLoaderContainer: {
+      width: getResponsiveWidth(140, 120, 160),
+      height: getResponsiveWidth(140, 120, 160),
       justifyContent: 'center',
-      marginBottom: getResponsiveValue(25, 20, 30),
-      gap: getResponsiveSpacing(18),
-      paddingVertical: getResponsiveValue(15, 12, 18),
+      alignItems: 'center',
+      marginBottom: getResponsiveValue(35, 30, 40),
+      position: 'relative',
     },
-    ball: {
-      width: getResponsiveWidth(32, 28, 36),
-      height: getResponsiveWidth(32, 28, 36),
-      borderRadius: getResponsiveWidth(16, 14, 18),
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8,
+    progressRing: {
+      width: getResponsiveWidth(120, 100, 140),
+      height: getResponsiveWidth(120, 100, 140),
+      borderRadius: getResponsiveWidth(60, 50, 70),
+      position: 'absolute',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    ball1: {
-      backgroundColor: '#8B5CF6',
+    ringSegment: {
+      position: 'absolute',
+      width: getResponsiveWidth(120, 100, 140),
+      height: getResponsiveWidth(120, 100, 140),
+      borderRadius: getResponsiveWidth(60, 50, 70),
+      borderWidth: 5,
+    },
+    ringSegment1: {
+      borderTopColor: '#8B5CF6',
+      borderRightColor: 'transparent',
+      borderBottomColor: 'transparent',
+      borderLeftColor: 'transparent',
+    },
+    ringSegment2: {
+      borderTopColor: 'transparent',
+      borderRightColor: '#4CAF50',
+      borderBottomColor: 'transparent',
+      borderLeftColor: 'transparent',
+    },
+    ringSegment3: {
+      borderTopColor: 'transparent',
+      borderRightColor: 'transparent',
+      borderBottomColor: '#FF6B6B',
+      borderLeftColor: 'transparent',
+    },
+    ringSegment4: {
+      borderTopColor: 'transparent',
+      borderRightColor: 'transparent',
+      borderBottomColor: 'transparent',
+      borderLeftColor: '#FFA726',
+    },
+    orbitingParticle: {
+      position: 'absolute',
+      width: getResponsiveWidth(14, 12, 16),
+      height: getResponsiveWidth(14, 12, 16),
+      borderRadius: getResponsiveWidth(7, 6, 8),
       shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.6,
+      shadowRadius: 4,
+      elevation: 6,
     },
-    ball2: {
+    particle1: {
+      backgroundColor: '#8B5CF6',
+      top: '50%',
+      left: '50%',
+      marginTop: getResponsiveWidth(-7, -6, -8),
+      marginLeft: getResponsiveWidth(-7, -6, -8),
+    },
+    particle2: {
       backgroundColor: '#4CAF50',
-      shadowColor: '#4CAF50',
+      top: '50%',
+      left: '50%',
+      marginTop: getResponsiveWidth(-7, -6, -8),
+      marginLeft: getResponsiveWidth(-7, -6, -8),
     },
-    ball3: {
+    particle3: {
       backgroundColor: '#FF6B6B',
-      shadowColor: '#FF6B6B',
+      top: '50%',
+      left: '50%',
+      marginTop: getResponsiveWidth(-7, -6, -8),
+      marginLeft: getResponsiveWidth(-7, -6, -8),
+    },
+    centerIconRing: {
+      width: getResponsiveWidth(70, 60, 80),
+      height: getResponsiveWidth(70, 60, 80),
+      borderRadius: getResponsiveWidth(35, 30, 40),
+      backgroundColor: '#FFFFFF',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 3,
+      borderColor: '#E8D5FF',
+      shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+      elevation: 10,
     },
     waitingText: {
       fontSize: getResponsiveFontSize(18),
