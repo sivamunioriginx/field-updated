@@ -78,17 +78,6 @@ export default function CartScreen() {
     if (instantFilter === 'regular') {
       return !isInstantService(item.service.instant_service);
     }
-  useEffect(() => {
-    if (instantOnlyParam || instantFilter === 'instant') {
-      const autoDate = new Date(Date.now() + 60 * 60 * 1000);
-      const newTime = `${autoDate.getHours().toString().padStart(2, '0')}:${autoDate
-        .getMinutes()
-        .toString()
-        .padStart(2, '0')}`;
-      setSelectedDate(autoDate);
-      setSelectedTime(newTime);
-    }
-  }, [instantOnlyParam, instantFilter]);
     return true;
   });
 
@@ -139,29 +128,42 @@ export default function CartScreen() {
     );
   };
 
+  // Format date and time for booking display
+  const hasInstantFilter = instantOnlyParam || instantFilter === 'instant';
+
   const getAvailableSlotsForDate = useCallback(
-    (date: Date | null) => {
+    (date: Date | null, minTime?: Date) => {
       if (!date) return timeSlots;
+      
+      // For future dates, show all slots
       if (!isSameDay(date, new Date())) {
         return timeSlots;
       }
 
-      const now = new Date();
+      // For today, filter based on minimum time
+      const cutoffTime = minTime || new Date();
 
       return timeSlots.filter((slot) => {
         const [hour, minute] = slot.value.split(':').map(Number);
         const slotTime = new Date();
         slotTime.setHours(hour, minute, 0, 0);
-        return slotTime > now;
+        return slotTime > cutoffTime;
       });
     },
     [timeSlots]
   );
 
   const availableSlotSet = useMemo(() => {
-    const slots = getAvailableSlotsForDate(selectedDate || null);
+    // For instant services, calculate minimum time (current + 1 hour)
+    let minTime: Date | undefined = undefined;
+    if (hasInstantFilter && selectedDate && isSameDay(selectedDate, new Date())) {
+      minTime = new Date(Date.now() + 60 * 60 * 1000);
+      minTime.setSeconds(0, 0);
+    }
+    
+    const slots = getAvailableSlotsForDate(selectedDate || null, minTime);
     return new Set(slots.map((slot) => slot.value));
-  }, [getAvailableSlotsForDate, selectedDate]);
+  }, [getAvailableSlotsForDate, selectedDate, hasInstantFilter]);
 
   // Format date for display
   const formatDate = (date: Date) => {
@@ -172,52 +174,55 @@ export default function CartScreen() {
     };
   };
 
-  // Format date and time for booking display
-  const hasInstantFilter = instantOnlyParam || instantFilter === 'instant';
+  // Track if we've initialized the date/time for instant services
+  const instantInitializedRef = React.useRef(false);
 
   useEffect(() => {
     if (!hasInstantFilter) {
+      instantInitializedRef.current = false;
       return;
     }
 
-    const autoDate = new Date(Date.now() + 60 * 60 * 1000);
-    autoDate.setSeconds(0, 0);
-    const autoTime = `${autoDate.getHours().toString().padStart(2, '0')}:${autoDate
-      .getMinutes()
-      .toString()
-      .padStart(2, '0')}`;
+    // Only auto-set once when instant filter is first detected
+    if (!instantInitializedRef.current) {
+      const autoDate = new Date(Date.now() + 60 * 60 * 1000);
+      autoDate.setSeconds(0, 0);
+      const autoTime = `${autoDate.getHours().toString().padStart(2, '0')}:${autoDate
+        .getMinutes()
+        .toString()
+        .padStart(2, '0')}`;
 
-    const dateChanged = !selectedDate || selectedDate.getTime() !== autoDate.getTime();
-    const timeChanged = selectedTime !== autoTime;
-
-    if (dateChanged || timeChanged) {
       setSelectedDate(autoDate);
       setSelectedTime(autoTime);
+      instantInitializedRef.current = true;
     }
-  }, [hasInstantFilter, selectedDate, selectedTime]);
+  }, [hasInstantFilter]);
 
   const formatBookingDateTime = () => {
-    if (hasInstantFilter) {
-      const date = selectedDate || new Date(Date.now() + 60 * 60 * 1000);
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const dayName = days[date.getDay()];
-      const monthName = months[date.getMonth()];
-      const dateNum = date.getDate();
-      const hour = date.getHours();
-      const minute = date.getMinutes();
-      const period = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      const formattedTime = `${displayHour.toString().padStart(2, '0')}:${minute
-        .toString()
-        .padStart(2, '0')} ${period}`;
-      return `${dayName}, ${monthName} ${dateNum} - ${formattedTime}`;
-    }
-
     const dateToUse = selectedDate;
     const timeToUse = selectedTime;
 
-    if (!dateToUse || !timeToUse) {
+    if (!dateToUse) {
+      if (hasInstantFilter) {
+        const date = new Date(Date.now() + 60 * 60 * 1000);
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dayName = days[date.getDay()];
+        const monthName = months[date.getMonth()];
+        const dateNum = date.getDate();
+        const hour = date.getHours();
+        const minute = date.getMinutes();
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+        const formattedTime = `${displayHour.toString().padStart(2, '0')}:${minute
+          .toString()
+          .padStart(2, '0')} ${period}`;
+        return `${dayName}, ${monthName} ${dateNum} - ${formattedTime}`;
+      }
+      return '';
+    }
+
+    if (!timeToUse) {
       return '';
     }
 
