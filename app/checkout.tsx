@@ -19,6 +19,7 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
+import RazorpayCheckout from 'react-native-razorpay';
 
 export default function CartScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -44,6 +45,7 @@ export default function CartScreen() {
   const [isBooking, setIsBooking] = useState(false);
   const [showWaitingModal, setShowWaitingModal] = useState(false);
   const [currentBookingId, setCurrentBookingId] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const pollingIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Animation values for circular progress ring with orbiting particles
@@ -595,22 +597,12 @@ export default function CartScreen() {
               pulseAnim.stopAnimation();
               timerRotateAnim.stopAnimation();
               
-              // Close modal and navigate back
+              // Close modal
               setShowWaitingModal(false);
               setCurrentBookingId(null);
               
-              Alert.alert(
-                'Booking Confirmed',
-                `Your booking has been confirmed!\n\nBooking ID: ${bookingId}`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      router.back();
-                    }
-                  }
-                ]
-              );
+              // Initiate Razorpay payment
+              initiateRazorpayPayment(bookingId);
             }
           }
         }
@@ -625,6 +617,54 @@ export default function CartScreen() {
     
     // Initial poll
     pollBookingStatus();
+  };
+
+  // Initiate Razorpay payment
+  const initiateRazorpayPayment = (bookingId: string) => {
+    const options = {
+      description: `Payment for booking ${bookingId}`,
+      image: 'https://your-company-logo-url.com/logo.png', // Replace with your logo URL
+      currency: 'INR',
+      key: 'rzp_test_w4JrW6r3ftMyxp',
+      amount: totalAmount * 100, // Razorpay accepts amount in paise (multiply by 100)
+      name: 'OriginX',
+      order_id: bookingId, // Using booking ID as order ID
+      prefill: {
+        email: user?.email || '',
+        contact: user?.mobile || '',
+        name: user?.name || '',
+      },
+      theme: { color: '#8B5CF6' },
+    };
+
+    RazorpayCheckout.open(options)
+      .then((data: any) => {
+        // Payment success - show success modal
+        setShowSuccessModal(true);
+      })
+      .catch((error: any) => {
+        // Payment failed or cancelled
+        console.log('❌ Payment failed:', error);
+        Alert.alert(
+          'Payment Failed',
+          `Payment was not completed. ${error.description || 'Please try again.'}\n\nBooking ID: ${bookingId}`,
+          [
+            {
+              text: 'Retry Payment',
+              onPress: () => {
+                initiateRazorpayPayment(bookingId);
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                router.back();
+              },
+            },
+          ]
+        );
+      });
   };
 
   // Cleanup polling on unmount
@@ -1470,6 +1510,41 @@ export default function CartScreen() {
             {currentBookingId && (
               <Text style={styles.bookingIdText}>Booking ID: {currentBookingId}</Text>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Payment Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.successModalOverlay}>
+          <View style={styles.successModalContent}>
+            {/* Success Icon */}
+            <View style={styles.successIconContainer}>
+              <Ionicons name="checkmark-circle" size={80} color="#4CAF50" />
+            </View>
+            
+            {/* Success Text */}
+            <Text style={styles.successTitle}>Payment Successful!</Text>
+            <Text style={styles.successMessage}>
+              Your payment has been completed successfully
+            </Text>
+            
+            {/* OK Button */}
+            <TouchableOpacity
+              style={styles.successButton}
+              onPress={() => {
+                setShowSuccessModal(false);
+                router.push('/(tabs)');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.successButtonText}>OK</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -2416,6 +2491,59 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       borderRadius: getResponsiveSpacing(16),
       borderWidth: 1,
       borderColor: '#E8D5FF',
+    },
+    successModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    successModalContent: {
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(24),
+      padding: getResponsiveSpacing(40),
+      alignItems: 'center',
+      minWidth: screenWidth * 0.7,
+      maxWidth: screenWidth * 0.85,
+      shadowColor: '#4CAF50',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 15,
+    },
+    successIconContainer: {
+      marginBottom: getResponsiveValue(20, 16, 24),
+    },
+    successTitle: {
+      fontSize: getResponsiveFontSize(24),
+      fontWeight: '700',
+      color: '#4CAF50',
+      marginBottom: getResponsiveValue(12, 10, 14),
+      textAlign: 'center',
+    },
+    successMessage: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: getResponsiveValue(30, 25, 35),
+      lineHeight: getResponsiveFontSize(22),
+    },
+    successButton: {
+      backgroundColor: '#4CAF50',
+      borderRadius: getResponsiveSpacing(25),
+      paddingVertical: getResponsiveValue(14, 12, 16),
+      paddingHorizontal: getResponsiveWidth(60, 50, 70),
+      shadowColor: '#4CAF50',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    successButtonText: {
+      color: '#FFFFFF',
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: '700',
+      textAlign: 'center',
     },
   });
 };
