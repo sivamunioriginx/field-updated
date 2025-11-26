@@ -623,12 +623,12 @@ export default function CartScreen() {
   const initiateRazorpayPayment = (bookingId: string) => {
     const options = {
       description: `Payment for booking ${bookingId}`,
-      image: 'https://your-company-logo-url.com/logo.png', // Replace with your logo URL
+      image: 'https://originxdev.in/originxdev/images/OriginX.png', // Replace with your logo URL
       currency: 'INR',
       key: 'rzp_test_w4JrW6r3ftMyxp',
       amount: totalAmount * 100, // Razorpay accepts amount in paise (multiply by 100)
       name: 'OriginX',
-      order_id: bookingId, // Using booking ID as order ID
+      order_id: '', // Can be generated from backend if needed
       prefill: {
         email: user?.email || '',
         contact: user?.mobile || '',
