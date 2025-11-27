@@ -716,6 +716,8 @@ app.post('/api/bookings', async (req, res) => {
       user_id, 
       contact_number,
       work_location,
+      work_location_lat,
+      work_location_lng,
       booking_time, 
       status, 
       description, 
@@ -733,8 +735,8 @@ app.post('/api/bookings', async (req, res) => {
     // No checking - directly insert the booking with input data
     const insertQuery = `
       INSERT INTO tbl_bookings (
-        booking_id, worker_id, user_id, contact_number, work_location, booking_time, status, description, work_documents, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        booking_id, worker_id, user_id, contact_number, work_location, work_location_lat, work_location_lng, booking_time, status, description, work_documents, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `;
     
     const [result] = await pool.execute(insertQuery, [
@@ -743,11 +745,22 @@ app.post('/api/bookings', async (req, res) => {
       user_id, 
       contact_number || null, // Use input contact number directly
       work_location || null,
+      work_location_lat || null,
+      work_location_lng || null,
       booking_time, 
       status || 0,
       description || null,
       work_documents || null
     ]);
+    
+    // Fetch stored location coordinates to ensure we always have the latest values
+    const [storedBookingRows] = await pool.execute(
+      'SELECT work_location_lat, work_location_lng FROM tbl_bookings WHERE id = ? LIMIT 1',
+      [result.insertId]
+    );
+    const storedBooking = storedBookingRows.length > 0 ? storedBookingRows[0] : {};
+    const normalizedWorkLat = storedBooking.work_location_lat ?? work_location_lat ?? null;
+    const normalizedWorkLng = storedBooking.work_location_lng ?? work_location_lng ?? null;
         
     // If booking status is 0 (pending), automatically send notification to worker
     if ((status || 0) === 0) {
@@ -778,6 +791,8 @@ app.post('/api/bookings', async (req, res) => {
             customer_name: customer.name || 'Customer',
             customer_mobile: contact_number || 'N/A',  // Always use contact_number from booking
             work_location: work_location || 'Location not specified',
+            work_location_lat: normalizedWorkLat,
+            work_location_lng: normalizedWorkLng,
             description: description || 'Service request',
             booking_time: booking_time ? new Date(booking_time).toISOString() : new Date().toISOString(),
             work_type: 'Service Request'
@@ -2124,12 +2139,24 @@ const sendNotification = async (token, title, body, data = {}) => {
 };
 
 // Send booking alert notification with high priority
+// Calculate distance between two coordinates using Haversine formula
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c; // Distance in kilometers
+  return distance;
+};
+
 const sendBookingAlertNotification = async (workerId, bookingData) => {
   try {
     console.log(`🚨 Sending booking alert notification to worker: ${workerId}`);
 
-    // Get worker's FCM token (check for 'worker' user type - React Native converts 'professional' to 'worker')
-    // Get the most recent token (ORDER BY id DESC) to ensure we use the latest valid token
     const [tokens] = await pool.execute(
       'SELECT fcm_token FROM tbl_push_tokens WHERE user_id = ? AND user_type = "worker" ORDER BY id DESC LIMIT 1',
       [workerId]
@@ -2149,29 +2176,73 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
       return { success: false, error: 'Empty FCM token' };
     }
 
+    // Calculate distance if work location coordinates are available
+    let distance = null;
+    let distanceText = '';
+    if (bookingData.work_location_lat && bookingData.work_location_lng) {
+      try {
+        // Get worker's current location from tbl_workerlocation
+        const [workerLocations] = await pool.execute(
+          'SELECT latitude, longitude FROM tbl_workerlocation WHERE worker_id = ? ORDER BY updated_at DESC LIMIT 1',
+          [workerId]
+        );
+
+        if (workerLocations.length > 0 && workerLocations[0].latitude && workerLocations[0].longitude) {
+          const workerLat = parseFloat(workerLocations[0].latitude);
+          const workerLng = parseFloat(workerLocations[0].longitude);
+          const workLat = parseFloat(bookingData.work_location_lat);
+          const workLng = parseFloat(bookingData.work_location_lng);
+
+          // Calculate distance in kilometers
+          distance = calculateDistance(workerLat, workerLng, workLat, workLng);
+          
+          // Format distance text
+          if (distance < 1) {
+            distanceText = `${Math.round(distance * 1000)} meters away`;
+          } else {
+            distanceText = `${distance.toFixed(1)} km away`;
+          }
+          
+          console.log(`📍 Distance calculated: ${distanceText}`);
+        } else {
+          console.log(`⚠️ Worker location not found for worker: ${workerId}`);
+        }
+      } catch (distanceError) {
+        console.error('❌ Error calculating distance:', distanceError);
+        // Continue with notification even if distance calculation fails
+      }
+    }
+
     // HYBRID APPROACH: Send both notification and data for better compatibility
     // Notification ensures system shows something when app is closed
     // Data ensures our service can handle fullscreen overlay
+    
+    // Ensure booking_time is a string
+    const bookingTimeStr = bookingData.booking_time ? 
+      (typeof bookingData.booking_time === 'string' ? bookingData.booking_time : new Date(bookingData.booking_time).toISOString()) : 
+      new Date().toISOString();
+    
     const message = {
       // Add notification payload for system-level display when app is closed
       notification: {
         title: '🚨 URGENT: New Booking Request!',
-        body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`
+        body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`
       },
       data: {
         type: 'booking_alert',
-        booking_id: bookingData.booking_id,
-        customer_name: bookingData.customer_name,
-        customer_mobile: bookingData.customer_mobile,
-        work_location: bookingData.work_location,
-        description: bookingData.description,
-        booking_time: bookingData.booking_time,
-        worker_id: workerId.toString(),
-        timestamp: Date.now().toString(),
-        work_type: bookingData.work_type || 'Service Request',
+        booking_id: String(bookingData.booking_id || ''),
+        customer_name: String(bookingData.customer_name || ''),
+        customer_mobile: String(bookingData.customer_mobile || ''),
+        work_location: String(bookingData.work_location || ''),
+        work_location_distance: String(distanceText || ''),
+        description: String(bookingData.description || ''),
+        booking_time: bookingTimeStr,
+        worker_id: String(workerId),
+        timestamp: String(Date.now()),
+        work_type: String(bookingData.work_type || 'Service Request'),
         // Add notification content to data payload so our service can create the notification
         notification_title: '🚨 URGENT: New Booking Request!',
-        notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
+        notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`,
         fullscreen: 'true', // Flag for fullscreen worker notifications (matches working implementation)
         continuous_vibration: 'true', // Flag for continuous vibration
         // Additional fields for better background handling
@@ -2184,30 +2255,13 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
         notification: {
           // Android-specific notification settings
           title: '🚨 URGENT: New Booking Request!',
-          body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
+          body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`,
           sound: 'default',
           channelId: 'booking-alerts',
           priority: 'max',
           visibility: 'public',
           tag: `booking_${bookingData.booking_id}`,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK'
-        },
-        data: {
-          // Duplicate data in Android section for compatibility
-          type: 'booking_alert',
-          booking_id: bookingData.booking_id,
-          customer_name: bookingData.customer_name,
-          customer_mobile: bookingData.customer_mobile,
-          work_location: bookingData.work_location,
-          description: bookingData.description,
-          booking_time: bookingData.booking_time,
-          worker_id: workerId.toString(),
-          timestamp: Date.now().toString(),
-          work_type: bookingData.work_type || 'Service Request',
-          notification_title: '🚨 URGENT: New Booking Request!',
-          notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
-          fullscreen: 'true',
-          continuous_vibration: 'true',
         }
       },
       // iOS configuration for background delivery
@@ -2224,16 +2278,17 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
           },
           data: {
             type: 'booking_alert',
-            booking_id: bookingData.booking_id,
-            customer_name: bookingData.customer_name,
-            customer_mobile: bookingData.customer_mobile,
-            work_location: bookingData.work_location,
-            description: bookingData.description,
-            booking_time: bookingData.booking_time,
-            worker_id: workerId.toString(),
-            timestamp: Date.now().toString(),
+            booking_id: String(bookingData.booking_id || ''),
+            customer_name: String(bookingData.customer_name || ''),
+            customer_mobile: String(bookingData.customer_mobile || ''),
+            work_location: String(bookingData.work_location || ''),
+            work_location_distance: String(distanceText || ''),
+            description: String(bookingData.description || ''),
+            booking_time: bookingTimeStr,
+            worker_id: String(workerId),
+            timestamp: String(Date.now()),
             notification_title: '🚨 URGENT: New Booking Request!',
-            notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
+            notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`,
           }
         }
       },
@@ -3351,6 +3406,12 @@ app.post('/api/send-manual-alert', async (req, res) => {
       description || 'Test booking alert'
     ]);
 
+    const [manualBookingRows] = await pool.execute(
+      'SELECT work_location_lat, work_location_lng FROM tbl_bookings WHERE id = ? LIMIT 1',
+      [insertResult.insertId]
+    );
+    const manualBookingLocation = manualBookingRows.length > 0 ? manualBookingRows[0] : {};
+
     // Also create a test user entry in serviceseeker table if not exists
     try {
       await pool.execute(`
@@ -3367,6 +3428,8 @@ app.post('/api/send-manual-alert', async (req, res) => {
       customer_name,
       customer_mobile: customer_mobile || '0000000000',
       work_location,
+      work_location_lat: manualBookingLocation.work_location_lat || null,
+      work_location_lng: manualBookingLocation.work_location_lng || null,
       description: description || 'Test booking alert',
       booking_time: booking_time || new Date().toISOString()
     });
@@ -3452,6 +3515,8 @@ const startPeriodicNotifications = async () => {
           customer_name: customer.name || 'Customer',
           customer_mobile: booking.contact_number || 'N/A',  // Always use contact_number from booking
           work_location: booking.work_location || 'Location not specified',
+          work_location_lat: booking.work_location_lat || null,
+          work_location_lng: booking.work_location_lng || null,
           description: booking.description || 'Service request',
           booking_time: booking.booking_time ? new Date(booking.booking_time).toISOString() : new Date().toISOString(),
           work_type: 'Service Request'

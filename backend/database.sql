@@ -121,6 +121,8 @@ CREATE TABLE tbl_bookings (
   user_id INT NOT NULL,
   contact_number VARCHAR(15) NOT NULL,
   work_location VARCHAR(255) NULL,
+  work_location_lat DECIMAL(10,6) NULL,
+  work_location_lng DECIMAL(10,6) NULL,
   booking_time DATETIME NOT NULL,
   status TINYINT NOT NULL DEFAULT 0,
   reject_reason TEXT NULL,

@@ -416,6 +416,8 @@ export default function CartScreen() {
           user_id: user.id,
           contact_number: user.mobile || contactPhone || null,
           work_location: workLocation,
+          work_location_lat: savedLocation?.latitude || null,
+          work_location_lng: savedLocation?.longitude || null,
           booking_time: localDateTimeString,
           status: 0,
           description: bookingDescription,

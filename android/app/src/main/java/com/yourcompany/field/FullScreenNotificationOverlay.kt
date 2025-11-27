@@ -38,6 +38,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         customerName: String? = null,
         customerMobile: String? = null,
         workAddress: String? = null,
+        workLocationDistance: String? = null,
         workDescription: String? = null,
         bookingTime: String? = null,
         bookingId: String? = null,
@@ -61,6 +62,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
                     customerName,
                     customerMobile,
                     workAddress,
+                    workLocationDistance,
                     workDescription,
                     bookingTime,
                     bookingId,
@@ -125,6 +127,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         customerName: String?,
         customerMobile: String?,
         workAddress: String?,
+        workLocationDistance: String?,
         workDescription: String?,
         bookingTime: String?,
         bookingId: String?,
@@ -144,6 +147,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         val customerNameText = overlayView?.findViewById<TextView>(R.id.booking_customer_name)
         val customerMobileText = overlayView?.findViewById<TextView>(R.id.booking_customer_mobile)
         val workAddressText = overlayView?.findViewById<TextView>(R.id.booking_work_address)
+        val workDistanceText = overlayView?.findViewById<TextView>(R.id.booking_work_distance)
         val workDescriptionText = overlayView?.findViewById<TextView>(R.id.booking_work_description)
         val bookingTimeText = overlayView?.findViewById<TextView>(R.id.booking_time)
         val bookingIdText = overlayView?.findViewById<TextView>(R.id.booking_id)
@@ -157,6 +161,15 @@ class FullScreenNotificationOverlay(private val context: Context) {
         customerNameText?.text = "Customer: ${customerName ?: "N/A"}"
         customerMobileText?.text = "Mobile: ${customerMobile ?: "N/A"}"
         workAddressText?.text = "Location: ${workAddress ?: "N/A"}"
+        
+        // Set distance with visibility control
+        if (!workLocationDistance.isNullOrEmpty()) {
+            workDistanceText?.text = "Distance From Your Current Location: $workLocationDistance"
+            workDistanceText?.visibility = android.view.View.VISIBLE
+        } else {
+            workDistanceText?.visibility = android.view.View.GONE
+        }
+        
         workDescriptionText?.text = "Description: ${workDescription ?: "N/A"}"
         bookingTimeText?.text = "Time: ${formatBookingTime(bookingTime)}"
         bookingIdText?.text = "Booking ID: ${bookingId ?: "N/A"}"

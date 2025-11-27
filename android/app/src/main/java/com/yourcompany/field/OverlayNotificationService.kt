@@ -23,6 +23,7 @@ class OverlayNotificationService : Service() {
         private const val EXTRA_CUSTOMER_NAME = "customer_name"
         private const val EXTRA_CUSTOMER_MOBILE = "customer_mobile"
         private const val EXTRA_WORK_ADDRESS = "work_address"
+        private const val EXTRA_WORK_LOCATION_DISTANCE = "work_location_distance"
         private const val EXTRA_WORK_DESCRIPTION = "work_description"
         private const val EXTRA_BOOKING_TIME = "booking_time"
         private const val EXTRA_BOOKING_ID = "booking_id"
@@ -38,6 +39,7 @@ class OverlayNotificationService : Service() {
             customerName: String? = null,
             customerMobile: String? = null,
             workAddress: String? = null,
+            workLocationDistance: String? = null,
             workDescription: String? = null,
             bookingTime: String? = null,
             bookingId: String? = null,
@@ -51,6 +53,7 @@ class OverlayNotificationService : Service() {
                 putExtra(EXTRA_CUSTOMER_NAME, customerName)
                 putExtra(EXTRA_CUSTOMER_MOBILE, customerMobile)
                 putExtra(EXTRA_WORK_ADDRESS, workAddress)
+                putExtra(EXTRA_WORK_LOCATION_DISTANCE, workLocationDistance)
                 putExtra(EXTRA_WORK_DESCRIPTION, workDescription)
                 putExtra(EXTRA_BOOKING_TIME, bookingTime)
                 putExtra(EXTRA_BOOKING_ID, bookingId)
@@ -73,6 +76,7 @@ class OverlayNotificationService : Service() {
                 val customerName = intent.getStringExtra(EXTRA_CUSTOMER_NAME)
                 val customerMobile = intent.getStringExtra(EXTRA_CUSTOMER_MOBILE)
                 val workAddress = intent.getStringExtra(EXTRA_WORK_ADDRESS)
+                val workLocationDistance = intent.getStringExtra(EXTRA_WORK_LOCATION_DISTANCE)
                 val workDescription = intent.getStringExtra(EXTRA_WORK_DESCRIPTION)
                 val bookingTime = intent.getStringExtra(EXTRA_BOOKING_TIME)
                 val bookingId = intent.getStringExtra(EXTRA_BOOKING_ID)
@@ -98,6 +102,7 @@ class OverlayNotificationService : Service() {
                             customerName,
                             customerMobile,
                             workAddress,
+                            workLocationDistance,
                             workDescription,
                             bookingTime,
                             bookingId,

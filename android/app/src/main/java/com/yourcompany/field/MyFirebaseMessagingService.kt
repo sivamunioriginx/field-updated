@@ -133,13 +133,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val customerName = data["customer_name"] ?: data["customerName"]
             val customerMobile = data["customer_mobile"] ?: data["customerMobile"]
             val workAddress = data["work_location"] ?: data["workAddress"]
+            val workLocationDistance = data["work_location_distance"] ?: ""
             val workDescription = data["description"] ?: data["workDescription"]
             val bookingTime = data["booking_time"] ?: data["bookingTime"]
             val bookingId = data["booking_id"] ?: data["bookingId"]
             val workerId = data["worker_id"] ?: data["workerId"]
             
             Log.d(TAG, "🚨 Processing message - Title: $title, Body: $body, FullScreen: $isFullScreen")
-            Log.d(TAG, "🚨 Booking data - Customer: $customerName, Location: $workAddress")
+            Log.d(TAG, "🚨 Booking data - Customer: $customerName, Location: $workAddress, Distance: $workLocationDistance")
             
             // Check if full-screen notification should be shown
             if (isFullScreen) {
@@ -156,6 +157,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                         customerName = customerName,
                         customerMobile = customerMobile,
                         workAddress = workAddress,
+                        workLocationDistance = workLocationDistance,
                         workDescription = workDescription,
                         bookingTime = bookingTime,
                         bookingId = bookingId,
@@ -233,6 +235,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         customerName: String?,
         customerMobile: String?,
         workAddress: String?,
+        workLocationDistance: String?,
         workDescription: String?,
         bookingTime: String?,
         bookingId: String?,
@@ -250,6 +253,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 customerName = customerName,
                 customerMobile = customerMobile,
                 workAddress = workAddress,
+                workLocationDistance = workLocationDistance,
                 workDescription = workDescription,
                 bookingTime = bookingTime,
                 bookingId = bookingId,
