@@ -149,7 +149,7 @@
                 android:id="@+id/booking_time"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Time: N/A"
+                android:text="Booking For: N/A"
                 android:textSize="15sp"
                 android:textColor="#1A202C"
                 android:layout_marginBottom="8dp" />

@@ -715,6 +715,7 @@ app.post('/api/bookings', async (req, res) => {
       worker_id, 
       user_id, 
       contact_number,
+      contact_name,
       work_location,
       work_location_lat,
       work_location_lng,
@@ -732,11 +733,16 @@ app.post('/api/bookings', async (req, res) => {
       });
     }
     
+    const normalizedContactName =
+      typeof contact_name === 'string' && contact_name.trim()
+        ? contact_name.trim()
+        : 'Customer';
+
     // No checking - directly insert the booking with input data
     const insertQuery = `
       INSERT INTO tbl_bookings (
-        booking_id, worker_id, user_id, contact_number, work_location, work_location_lat, work_location_lng, booking_time, status, description, work_documents, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        booking_id, worker_id, user_id, contact_number, contact_name, work_location, work_location_lat, work_location_lng, booking_time, status, description, work_documents, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `;
     
     const [result] = await pool.execute(insertQuery, [
@@ -744,6 +750,7 @@ app.post('/api/bookings', async (req, res) => {
       worker_id, 
       user_id, 
       contact_number || null, // Use input contact number directly
+      normalizedContactName,
       work_location || null,
       work_location_lat || null,
       work_location_lng || null,
@@ -788,7 +795,7 @@ app.post('/api/bookings', async (req, res) => {
           // Prepare booking data for notification
           const bookingData = {
             booking_id: booking_id,
-            customer_name: customer.name || 'Customer',
+            customer_name: normalizedContactName || customer.name || 'Customer',
             customer_mobile: contact_number || 'N/A',  // Always use contact_number from booking
             work_location: work_location || 'Location not specified',
             work_location_lat: normalizedWorkLat,
@@ -824,6 +831,7 @@ app.post('/api/bookings', async (req, res) => {
         worker_id,
         user_id,
         contact_number: contact_number || null,
+        contact_name: normalizedContactName,
         work_location: work_location || null,
         booking_time,
         status: status || 0,

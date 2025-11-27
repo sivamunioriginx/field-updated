@@ -120,6 +120,7 @@ CREATE TABLE tbl_bookings (
   worker_id INT NOT NULL,
   user_id INT NOT NULL,
   contact_number VARCHAR(15) NOT NULL,
+  contact_name VARCHAR(50) NOT NULL,
   work_location VARCHAR(255) NULL,
   work_location_lat DECIMAL(10,6) NULL,
   work_location_lng DECIMAL(10,6) NULL,

@@ -408,13 +408,19 @@ export default function CartScreen() {
           ? `Booking for ${uniqueServiceNames.join(', ')}`
           : `Booking for ${cartItems.length} service(s)`;
 
+      const trimmedContactName = contactName.trim();
+      const trimmedContactPhone = contactPhone.trim();
+      const bookingContactName = trimmedContactName || user?.name || 'Guest user';
+      const bookingContactNumber = trimmedContactPhone || user?.mobile || null;
+
       // Create booking for each worker with the same booking_id
       const bookingPromises = matchingWorkers.map(async (worker: any) => {
         const bookingData = {
           booking_id: bookingId,  // Same booking_id for all workers
           worker_id: worker.id,   // Different worker_id for each booking
           user_id: user.id,
-          contact_number: user.mobile || contactPhone || null,
+          contact_number: bookingContactNumber,
+          contact_name: bookingContactName,
           work_location: workLocation,
           work_location_lat: savedLocation?.latitude || null,
           work_location_lng: savedLocation?.longitude || null,

@@ -193,7 +193,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
         
         workDescriptionText?.text = "Description: ${workDescription ?: "N/A"}"
-        bookingTimeText?.text = "Time: ${formatBookingTime(bookingTime)}"
+        bookingTimeText?.text = "Booking For: ${formatBookingTime(bookingTime)}"
         bookingIdText?.text = "Booking ID: ${bookingId ?: "N/A"}"
         
         // Set click listeners with immediate hide and click protection
@@ -465,32 +465,33 @@ class FullScreenNotificationOverlay(private val context: Context) {
     }
     
     /**
-     * Format booking time to readable format like "2025-09-27 12:30:00 am"
+     * Format booking time to readable format like "2025-09-27 12:30:00 PM"
      */
     private fun formatBookingTime(bookingTime: String?): String {
         if (bookingTime.isNullOrEmpty()) {
             return "N/A"
         }
-        
-        try {
-            // Parse the ISO string or any date format
-            val inputFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.getDefault())
-            val outputFormat = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", java.util.Locale.getDefault())
-            
-            val date = inputFormat.parse(bookingTime)
-            return date?.let { outputFormat.format(it) } ?: bookingTime
-        } catch (e: Exception) {
-            // If parsing fails, try alternative formats
+
+        val outputFormat = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", java.util.Locale.getDefault())
+        val possibleFormats = listOf(
+            "yyyy-MM-dd HH:mm:ss",                // Backend format (e.g., 2025-11-28 15:00:00)
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",      // ISO with millis
+            "yyyy-MM-dd'T'HH:mm:ss'Z'"           // ISO without millis
+        )
+
+        for (pattern in possibleFormats) {
             try {
-                val inputFormat2 = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.getDefault())
-                val outputFormat = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", java.util.Locale.getDefault())
-                
-                val date = inputFormat2.parse(bookingTime)
-                return date?.let { outputFormat.format(it) } ?: bookingTime
-            } catch (e2: Exception) {
-                // If all parsing fails, return the original string
-                return bookingTime
+                val inputFormat = java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault())
+                val date = inputFormat.parse(bookingTime)
+                if (date != null) {
+                    return outputFormat.format(date)
+                }
+            } catch (_: Exception) {
+                // Try next pattern
             }
         }
+
+        // Fallback to original string if nothing matched
+        return bookingTime
     }
 }
