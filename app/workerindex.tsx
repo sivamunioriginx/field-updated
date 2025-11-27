@@ -128,40 +128,20 @@ export default function Index() {
 
   const requestLocationPermission = async () => {
     try {
-      // Check if location services are enabled
-      const isLocationEnabled = await Location.hasServicesEnabledAsync();
+      // Enable network provider to trigger system dialog if GPS is off
+      await Location.enableNetworkProviderAsync();
       
-      if (!isLocationEnabled) {
-        Alert.alert(
-          'Location Services Disabled',
-          'Please enable location services in your device settings to continue.',
-          [
-            { text: 'Open Settings', onPress: () => Location.enableNetworkProviderAsync() }
-          ]
-        );
-        return false;
-      }
-
-      // Request location permission
+      // Request location permission - system handles GPS disabled dialog
       const { status } = await Location.requestForegroundPermissionsAsync();
       
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Permission Required',
-          'This app needs location access to show your location to customers and find nearby jobs. Please grant location permission to continue.',
-          [
-            { text: 'Grant Permission', onPress: () => requestLocationPermission() }
-          ]
-        );
-        return false;
+      if (status === 'granted') {
+        await getCurrentLocationAndStore();
+        return true;
       }
-
-      // If permission granted, get current location and store it
-      await getCurrentLocationAndStore();
-      return true;
+      
+      return false;
     } catch (error) {
       console.error('Location permission error:', error);
-      Alert.alert('Error', 'Failed to request location permission. Please try again.');
       return false;
     }
   };
@@ -1488,14 +1468,6 @@ export default function Index() {
           {showDisplayOverAppsPrompt && (
             <View style={styles.permissionOverlay}>
               <View style={styles.permissionContainer}>
-                <View style={styles.permissionHeader}>
-                  <TouchableOpacity 
-                    style={styles.closeButton} 
-                    onPress={closeDisplayOverAppsPrompt}
-                  >
-                    <Ionicons name="close" size={moderateScale(24)} color="#666" />
-                  </TouchableOpacity>
-                </View>
                 
                 <View style={styles.permissionContent}>
                   <View style={styles.iconContainer}>
