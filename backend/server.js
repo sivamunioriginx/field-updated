@@ -2213,6 +2213,37 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
       }
     }
 
+    // Calculate distance from original (profile) location if available
+    let originalDistanceText = '';
+    try {
+      const [originalLocations] = await pool.execute(
+        'SELECT latitude, longitude FROM tbl_workers WHERE id = ? LIMIT 1',
+        [workerId]
+      );
+
+      if (
+        originalLocations.length > 0 &&
+        originalLocations[0].latitude &&
+        originalLocations[0].longitude &&
+        bookingData.work_location_lat &&
+        bookingData.work_location_lng
+      ) {
+        const originLat = parseFloat(originalLocations[0].latitude);
+        const originLng = parseFloat(originalLocations[0].longitude);
+        const workLat = parseFloat(bookingData.work_location_lat);
+        const workLng = parseFloat(bookingData.work_location_lng);
+
+        const originDistance = calculateDistance(originLat, originLng, workLat, workLng);
+        originalDistanceText =
+          originDistance < 1
+            ? `${Math.round(originDistance * 1000)} meters away`
+            : `${originDistance.toFixed(1)} km away`;
+        console.log(`📍 Original distance calculated: ${originalDistanceText}`);
+      }
+    } catch (originError) {
+      console.error('❌ Error calculating original distance:', originError);
+    }
+
     // HYBRID APPROACH: Send both notification and data for better compatibility
     // Notification ensures system shows something when app is closed
     // Data ensures our service can handle fullscreen overlay
@@ -2226,7 +2257,7 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
       // Add notification payload for system-level display when app is closed
       notification: {
         title: '🚨 URGENT: New Booking Request!',
-        body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`
+        body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`
       },
       data: {
         type: 'booking_alert',
@@ -2235,6 +2266,7 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
         customer_mobile: String(bookingData.customer_mobile || ''),
         work_location: String(bookingData.work_location || ''),
         work_location_distance: String(distanceText || ''),
+        work_location_distance_original: String(originalDistanceText || ''),
         description: String(bookingData.description || ''),
         booking_time: bookingTimeStr,
         worker_id: String(workerId),
@@ -2242,7 +2274,7 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
         work_type: String(bookingData.work_type || 'Service Request'),
         // Add notification content to data payload so our service can create the notification
         notification_title: '🚨 URGENT: New Booking Request!',
-        notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`,
+        notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
         fullscreen: 'true', // Flag for fullscreen worker notifications (matches working implementation)
         continuous_vibration: 'true', // Flag for continuous vibration
         // Additional fields for better background handling
@@ -2255,7 +2287,7 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
         notification: {
           // Android-specific notification settings
           title: '🚨 URGENT: New Booking Request!',
-          body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`,
+          body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
           sound: 'default',
           channelId: 'booking-alerts',
           priority: 'max',
@@ -2283,12 +2315,14 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
             customer_mobile: String(bookingData.customer_mobile || ''),
             work_location: String(bookingData.work_location || ''),
             work_location_distance: String(distanceText || ''),
+          work_location_distance_original: String(originalDistanceText || ''),
+            work_location_distance_original: String(originalDistanceText || ''),
             description: String(bookingData.description || ''),
             booking_time: bookingTimeStr,
             worker_id: String(workerId),
             timestamp: String(Date.now()),
             notification_title: '🚨 URGENT: New Booking Request!',
-            notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}${distanceText ? ` (${distanceText})` : ''}`,
+            notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
           }
         }
       },

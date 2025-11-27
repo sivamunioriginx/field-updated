@@ -69,8 +69,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Customer: N/A"
-                android:textSize="14sp"
-                android:textColor="#333333"
+                android:textSize="15sp"
+                android:textColor="#1A202C"
+                android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -78,8 +79,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Mobile: N/A"
-                android:textSize="14sp"
-                android:textColor="#333333"
+                android:textSize="15sp"
+                android:textColor="#1A202C"
+                android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -87,26 +89,60 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Location: N/A"
-                android:textSize="14sp"
-                android:textColor="#333333"
+                android:textSize="15sp"
+                android:textColor="#1A202C"
+                android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
 
-            <TextView
-                android:id="@+id/booking_work_distance"
+            <LinearLayout
+                android:id="@+id/booking_distance_container"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Distance From Your Current Location: N/A"
-                android:textSize="14sp"
-                android:textColor="#000000"
-                android:layout_marginBottom="8dp" />
+                android:orientation="vertical"
+                android:background="#FFF4E5"
+                android:padding="12dp"
+                android:layout_marginBottom="8dp"
+                android:layout_marginTop="4dp"
+                android:backgroundTintMode="src_in"
+                android:clipToPadding="false"
+                android:elevation="2dp">
+
+                <TextView
+                    android:id="@+id/booking_distance_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Distance Summary"
+                    android:textStyle="bold"
+                    android:textColor="#C05621"
+                    android:textSize="14sp"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:id="@+id/booking_work_distance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Distance From Your Current Location: N/A"
+                    android:textSize="15sp"
+                    android:textColor="#2D3748"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/booking_work_original_distance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Distance From Your Original Location: N/A"
+                    android:textSize="15sp"
+                    android:textColor="#2D3748" />
+
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/booking_work_description"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Description: N/A"
-                android:textSize="14sp"
-                android:textColor="#333333"
+                android:textSize="15sp"
+                android:textColor="#1A202C"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -114,8 +150,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Time: N/A"
-                android:textSize="14sp"
-                android:textColor="#333333"
+                android:textSize="15sp"
+                android:textColor="#1A202C"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -123,8 +159,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Booking ID: N/A"
-                android:textSize="12sp"
-                android:textColor="#666666"
+                android:textSize="13sp"
+                android:textColor="#4A5568"
                 android:textStyle="italic" />
 
         </LinearLayout>

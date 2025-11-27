@@ -25,6 +25,7 @@ class OverlayNotificationService : Service() {
         private const val EXTRA_WORK_ADDRESS = "work_address"
         private const val EXTRA_WORK_LOCATION_DISTANCE = "work_location_distance"
         private const val EXTRA_WORK_DESCRIPTION = "work_description"
+        private const val EXTRA_WORK_ORIGINAL_DISTANCE = "work_original_distance"
         private const val EXTRA_BOOKING_TIME = "booking_time"
         private const val EXTRA_BOOKING_ID = "booking_id"
         private const val EXTRA_WORKER_ID = "worker_id"
@@ -40,6 +41,7 @@ class OverlayNotificationService : Service() {
             customerMobile: String? = null,
             workAddress: String? = null,
             workLocationDistance: String? = null,
+            workOriginalDistance: String? = null,
             workDescription: String? = null,
             bookingTime: String? = null,
             bookingId: String? = null,
@@ -54,6 +56,7 @@ class OverlayNotificationService : Service() {
                 putExtra(EXTRA_CUSTOMER_MOBILE, customerMobile)
                 putExtra(EXTRA_WORK_ADDRESS, workAddress)
                 putExtra(EXTRA_WORK_LOCATION_DISTANCE, workLocationDistance)
+                putExtra(EXTRA_WORK_ORIGINAL_DISTANCE, workOriginalDistance)
                 putExtra(EXTRA_WORK_DESCRIPTION, workDescription)
                 putExtra(EXTRA_BOOKING_TIME, bookingTime)
                 putExtra(EXTRA_BOOKING_ID, bookingId)
@@ -77,6 +80,7 @@ class OverlayNotificationService : Service() {
                 val customerMobile = intent.getStringExtra(EXTRA_CUSTOMER_MOBILE)
                 val workAddress = intent.getStringExtra(EXTRA_WORK_ADDRESS)
                 val workLocationDistance = intent.getStringExtra(EXTRA_WORK_LOCATION_DISTANCE)
+                val workOriginalDistance = intent.getStringExtra(EXTRA_WORK_ORIGINAL_DISTANCE)
                 val workDescription = intent.getStringExtra(EXTRA_WORK_DESCRIPTION)
                 val bookingTime = intent.getStringExtra(EXTRA_BOOKING_TIME)
                 val bookingId = intent.getStringExtra(EXTRA_BOOKING_ID)
@@ -103,6 +107,7 @@ class OverlayNotificationService : Service() {
                             customerMobile,
                             workAddress,
                             workLocationDistance,
+                            workOriginalDistance,
                             workDescription,
                             bookingTime,
                             bookingId,

@@ -16,6 +16,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.google.gson.Gson
 import org.json.JSONObject
+import java.util.Collections
 import java.util.Random
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
@@ -25,6 +26,30 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         private const val CHANNEL_ID = "booking-alerts"
         private var isVibrating = false
         private var vibrator: Vibrator? = null
+        private val handledBookingIds = Collections.synchronizedSet(mutableSetOf<String>())
+        private var activeOverlayBookingId: String? = null
+
+        fun markBookingHandled(bookingId: String?) {
+            bookingId?.let { handledBookingIds.add(it) }
+        }
+
+        fun isBookingHandled(bookingId: String?): Boolean {
+            return bookingId != null && handledBookingIds.contains(bookingId)
+        }
+
+        fun setActiveOverlayBooking(bookingId: String?) {
+            bookingId?.let { activeOverlayBookingId = it }
+        }
+
+        fun clearActiveOverlayBooking(bookingId: String?) {
+            if (bookingId != null && activeOverlayBookingId == bookingId) {
+                activeOverlayBookingId = null
+            }
+        }
+
+        fun isOverlayBookingActive(bookingId: String?): Boolean {
+            return bookingId != null && activeOverlayBookingId == bookingId
+        }
     }
 
     // Override to prevent default notification display and handle it ourselves
@@ -138,6 +163,17 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val bookingTime = data["booking_time"] ?: data["bookingTime"]
             val bookingId = data["booking_id"] ?: data["bookingId"]
             val workerId = data["worker_id"] ?: data["workerId"]
+            val workOriginalDistance = data["work_location_distance_original"] ?: ""
+            
+            if (isBookingHandled(bookingId)) {
+                Log.d(TAG, "🚨 Booking $bookingId already handled locally, skipping overlay.")
+                return
+            }
+
+            if (isOverlayBookingActive(bookingId)) {
+                Log.d(TAG, "🚨 Booking $bookingId already displayed, ignoring duplicate notification.")
+                return
+            }
             
             Log.d(TAG, "🚨 Processing message - Title: $title, Body: $body, FullScreen: $isFullScreen")
             Log.d(TAG, "🚨 Booking data - Customer: $customerName, Location: $workAddress, Distance: $workLocationDistance")
@@ -151,19 +187,26 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     // Start continuous vibration
                     startContinuousVibration()
                     
-                    showFullScreenNotification(
-                        title = title,
-                        body = body,
-                        customerName = customerName,
-                        customerMobile = customerMobile,
-                        workAddress = workAddress,
-                        workLocationDistance = workLocationDistance,
-                        workDescription = workDescription,
-                        bookingTime = bookingTime,
-                        bookingId = bookingId,
-                        workerId = workerId
-                    )
-                    Log.d(TAG, "🚨 Full-screen notification overlay displayed - Title: $title, Body: $body")
+                    try {
+                        setActiveOverlayBooking(bookingId)
+                        showFullScreenNotification(
+                            title = title,
+                            body = body,
+                            customerName = customerName,
+                            customerMobile = customerMobile,
+                            workAddress = workAddress,
+                            workLocationDistance = workLocationDistance,
+                            workOriginalDistance = workOriginalDistance,
+                            workDescription = workDescription,
+                            bookingTime = bookingTime,
+                            bookingId = bookingId,
+                            workerId = workerId
+                        )
+                        Log.d(TAG, "🚨 Full-screen notification overlay displayed - Title: $title, Body: $body")
+                    } catch (overlayError: Exception) {
+                        clearActiveOverlayBooking(bookingId)
+                        throw overlayError
+                    }
                 } else {
                     Log.d(TAG, "🚨 Overlay permission not granted, showing regular notification")
                     // Permission not granted, show regular notification with message
@@ -236,6 +279,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         customerMobile: String?,
         workAddress: String?,
         workLocationDistance: String?,
+        workOriginalDistance: String?,
         workDescription: String?,
         bookingTime: String?,
         bookingId: String?,
@@ -254,6 +298,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 customerMobile = customerMobile,
                 workAddress = workAddress,
                 workLocationDistance = workLocationDistance,
+                workOriginalDistance = workOriginalDistance,
                 workDescription = workDescription,
                 bookingTime = bookingTime,
                 bookingId = bookingId,

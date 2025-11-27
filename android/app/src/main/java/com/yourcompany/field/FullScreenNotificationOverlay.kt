@@ -10,6 +10,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import com.yourcompany.field.BuildConfig
 import com.yourcompany.field.MainActivity
 import com.yourcompany.field.R
 import okhttp3.MediaType.Companion.toMediaType
@@ -19,9 +20,16 @@ class FullScreenNotificationOverlay(private val context: Context) {
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private var isShowing = false
+    private var currentBookingId: String? = null
     
     companion object {
         private const val OVERLAY_TAG = "FullScreenNotificationOverlay"
+        private const val DEV_API_BASE_URL = "http://192.168.31.84:3001/api"
+        private const val PROD_API_BASE_URL = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api"
+
+        private fun getApiBaseUrl(): String {
+            return if (BuildConfig.DEBUG) DEV_API_BASE_URL else PROD_API_BASE_URL
+        }
     }
     
     init {
@@ -39,6 +47,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         customerMobile: String? = null,
         workAddress: String? = null,
         workLocationDistance: String? = null,
+        workOriginalDistance: String? = null,
         workDescription: String? = null,
         bookingTime: String? = null,
         bookingId: String? = null,
@@ -63,6 +72,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
                     customerMobile,
                     workAddress,
                     workLocationDistance,
+                    workOriginalDistance,
                     workDescription,
                     bookingTime,
                     bookingId,
@@ -111,6 +121,8 @@ class FullScreenNotificationOverlay(private val context: Context) {
         } finally {
             overlayView = null
             isShowing = false
+            MyFirebaseMessagingService.clearActiveOverlayBooking(currentBookingId)
+            currentBookingId = null
             android.util.Log.d("FullScreenOverlay", "🚨 Overlay hidden successfully")
         }
     }
@@ -128,11 +140,13 @@ class FullScreenNotificationOverlay(private val context: Context) {
         customerMobile: String?,
         workAddress: String?,
         workLocationDistance: String?,
+        workOriginalDistance: String?,
         workDescription: String?,
         bookingTime: String?,
         bookingId: String?,
         workerId: String?
     ) {
+        currentBookingId = bookingId
         val inflater = LayoutInflater.from(context)
         overlayView = inflater.inflate(R.layout.overlay_fullscreen_notification, null)
         
@@ -149,6 +163,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         val workAddressText = overlayView?.findViewById<TextView>(R.id.booking_work_address)
         val workDistanceText = overlayView?.findViewById<TextView>(R.id.booking_work_distance)
         val workDescriptionText = overlayView?.findViewById<TextView>(R.id.booking_work_description)
+        val workOriginalDistanceText = overlayView?.findViewById<TextView>(R.id.booking_work_original_distance)
         val bookingTimeText = overlayView?.findViewById<TextView>(R.id.booking_time)
         val bookingIdText = overlayView?.findViewById<TextView>(R.id.booking_id)
         
@@ -169,6 +184,13 @@ class FullScreenNotificationOverlay(private val context: Context) {
         } else {
             workDistanceText?.visibility = android.view.View.GONE
         }
+
+        if (!workOriginalDistance.isNullOrEmpty()) {
+            workOriginalDistanceText?.text = "Distance From Your Original Location: $workOriginalDistance"
+            workOriginalDistanceText?.visibility = android.view.View.VISIBLE
+        } else {
+            workOriginalDistanceText?.visibility = android.view.View.GONE
+        }
         
         workDescriptionText?.text = "Description: ${workDescription ?: "N/A"}"
         bookingTimeText?.text = "Time: ${formatBookingTime(bookingTime)}"
@@ -179,6 +201,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
             // Disable buttons immediately to prevent multiple clicks
             acceptButton.isEnabled = false
             rejectButton?.isEnabled = false
+            MyFirebaseMessagingService.markBookingHandled(bookingId)
             
             // Hide overlay immediately for better UX
             stopVibrationAndHide()
@@ -191,6 +214,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
             // Disable buttons immediately to prevent multiple clicks
             acceptButton?.isEnabled = false
             rejectButton.isEnabled = false
+            MyFirebaseMessagingService.markBookingHandled(bookingId)
             
             // Hide overlay immediately for better UX
             stopVibrationAndHide()
@@ -294,6 +318,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
     private fun stopVibrationAndHide() {
         // Hide overlay immediately for better UX
         hide()
+        MyFirebaseMessagingService.clearActiveOverlayBooking(currentBookingId)
         
         // Cleanup operations in background thread to avoid blocking UI
         Thread {
@@ -330,7 +355,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         
         Thread {
             try {
-                val url = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api/accept-booking-alert"
+                val url = "${getApiBaseUrl()}/accept-booking-alert"
                 
                 val json = org.json.JSONObject().apply {
                     put("booking_id", bookingId)
@@ -381,7 +406,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
         
         Thread {
             try {
-                val url = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api/reject-booking-alert"
+                val url = "${getApiBaseUrl()}/reject-booking-alert"
                 
                 val json = org.json.JSONObject().apply {
                     put("booking_id", bookingId)
