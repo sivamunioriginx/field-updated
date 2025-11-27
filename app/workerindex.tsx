@@ -1,7 +1,6 @@
 import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
@@ -88,9 +87,7 @@ export default function Index() {
   const slideAnim = useRef(new Animated.Value(moderateScale(300))).current;
   const isAnimating = useRef(false);
   const [shouldLogout, setShouldLogout] = useState(false);
-  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [showDisplayOverAppsPrompt, setShowDisplayOverAppsPrompt] = useState(false);
-  const [permissionStep, setPermissionStep] = useState(1);
 
 
 
@@ -111,6 +108,24 @@ export default function Index() {
   }, [menuClosedByOutside, menuOpen, slideAnim, moderateScale]);
 
   // Location permission function
+  // Request location permission - native dialog only
+  const handleLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        console.log('✅ Location permission granted');
+        // Get current location and store it
+        await getCurrentLocationAndStore();
+      } else {
+        console.log('❌ Location permission denied');
+      }
+      return status === 'granted';
+    } catch (error) {
+      console.error('Error requesting location permission:', error);
+      return false;
+    }
+  };
+
   const requestLocationPermission = async () => {
     try {
       // Check if location services are enabled
@@ -241,6 +256,17 @@ export default function Index() {
     }
   };
 
+  // Function to check if location permissions are already granted
+  const checkLocationPermissions = async (): Promise<boolean> => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      return status === 'granted';
+    } catch (error) {
+      console.error('Error checking location permissions:', error);
+      return false;
+    }
+  };
+
   // Function to check if notification permissions are already granted
   const checkNotificationPermissions = async (): Promise<boolean> => {
     try {
@@ -256,16 +282,8 @@ export default function Index() {
   const checkDisplayOverAppsPermission = async (): Promise<boolean> => {
     try {
       if (Platform.OS === 'android') {
-        // Check if we've already prompted the user for overlay permission
-        const hasBeenPrompted = await AsyncStorage.getItem('overlay_permission_prompted');
-        
-        if (hasBeenPrompted === 'true') {
-          // User has already been prompted, assume they granted it
-          // In a real implementation, you could store the actual permission status
-          return true;
-        }
-        
-        // User hasn't been prompted yet, so we should show the prompt
+        // Always return false for Android to show the prompt
+        // This ensures users can enable the permission if they disabled it
         return false;
       }
       // For iOS, this permission doesn't exist, so return true
@@ -397,21 +415,37 @@ export default function Index() {
       // Check permissions before showing prompts
       const checkAndShowPrompts = async () => {
         try {
+          const hasLocationPermission = await checkLocationPermissions();
           const hasNotificationPermission = await checkNotificationPermissions();
           const hasDisplayOverAppsPermission = await checkDisplayOverAppsPermission();
           
           console.log('Permission status:', {
+            location: hasLocationPermission,
             notification: hasNotificationPermission,
             displayOverApps: hasDisplayOverAppsPermission
           });
           
-          // Only show notification prompt if permission is not granted
-          if (!hasNotificationPermission) {
-            setTimeout(() => {
-              setShowNotificationPrompt(true);
+          // Step 1: Request location permission first
+          if (!hasLocationPermission) {
+            setTimeout(async () => {
+              const locationGranted = await handleLocationPermission();
+              
+              // Step 2: After location, request notification permission
+              if (locationGranted && !hasNotificationPermission) {
+                setTimeout(() => {
+                  handleNotificationPermission();
+                }, 500);
+              }
             }, 2000);
-          } else if (!hasDisplayOverAppsPermission && Platform.OS === 'android') {
-            // Only show display over apps prompt if notification permission is granted but display over apps is not
+          } 
+          // If location already granted, request notification permission
+          else if (!hasNotificationPermission) {
+            setTimeout(() => {
+              handleNotificationPermission();
+            }, 2000);
+          } 
+          // If both location and notification are granted, show display over apps prompt
+          else if (!hasDisplayOverAppsPermission && Platform.OS === 'android') {
             setTimeout(() => {
               setShowDisplayOverAppsPrompt(true);
             }, 2000);
@@ -619,7 +653,6 @@ export default function Index() {
       const { status } = await Notifications.requestPermissionsAsync();
       if (status === 'granted') {
         console.log('✅ Notification permission granted');
-        setShowNotificationPrompt(false);
         
         // Check if display over apps permission is also needed
         const hasDisplayOverAppsPermission = await checkDisplayOverAppsPermission();
@@ -631,11 +664,9 @@ export default function Index() {
         }
       } else {
         console.log('❌ Notification permission denied');
-        setShowNotificationPrompt(false);
       }
     } catch (error) {
       console.error('Error requesting notification permission:', error);
-      setShowNotificationPrompt(false);
     }
   };
 
@@ -643,9 +674,6 @@ export default function Index() {
   const handleDisplayOverAppsPermission = async () => {
     try {
       if (Platform.OS === 'android') {
-        // Mark that we've prompted the user for overlay permission
-        await AsyncStorage.setItem('overlay_permission_prompted', 'true');
-        
         // Open Android settings for display over other apps
         Linking.openSettings();
       }
@@ -656,13 +684,9 @@ export default function Index() {
     }
   };
 
-  // Function to close display over apps prompt (also mark as prompted)
+  // Function to close display over apps prompt
   const closeDisplayOverAppsPrompt = async () => {
     try {
-      if (Platform.OS === 'android') {
-        // Mark that we've prompted the user for overlay permission
-        await AsyncStorage.setItem('overlay_permission_prompted', 'true');
-      }
       setShowDisplayOverAppsPrompt(false);
     } catch (error) {
       console.error('Error closing display over apps prompt:', error);
@@ -1460,78 +1484,11 @@ export default function Index() {
             </View>
           )}
 
-          {/* Notification Permission Prompt */}
-          {showNotificationPrompt && (
-            <View style={styles.permissionOverlay}>
-              <View style={styles.permissionContainer}>
-                <View style={styles.permissionHeader}>
-                  <View style={styles.stepIndicator}>
-                    <Text style={styles.stepText}>1 of 2</Text>
-                  </View>
-                  <TouchableOpacity 
-                    style={styles.closeButton} 
-                    onPress={() => setShowNotificationPrompt(false)}
-                  >
-                    <Ionicons name="close" size={moderateScale(24)} color="#666" />
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.permissionContent}>
-                  <View style={styles.iconContainer}>
-                    <Ionicons name="notifications" size={moderateScale(48)} color="#FFD700" />
-                  </View>
-                  
-                  <Text style={styles.permissionTitle}>Enable Notifications</Text>
-                  
-                  <Text style={styles.permissionDescription}>
-                    To receive urgent booking alerts even when your phone is locked or the app is closed, please enable notification permissions.
-                  </Text>
-                  
-                  <View style={styles.benefitsList}>
-                    <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
-                      <Text style={styles.benefitText}>Get instant booking alerts</Text>
-                    </View>
-                    <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
-                      <Text style={styles.benefitText}>Receive notifications when app is closed</Text>
-                    </View>
-                    <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
-                      <Text style={styles.benefitText}>See alerts when phone is locked</Text>
-                    </View>
-                    <View style={styles.benefitItem}>
-                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#4CAF50" />
-                      <Text style={styles.benefitText}>Never miss urgent requests</Text>
-                    </View>
-                  </View>
-                </View>
-                
-                <View style={styles.permissionActions}>
-                  <TouchableOpacity 
-                    style={styles.allowButton} 
-                    onPress={handleNotificationPermission}
-                  >
-                    <Ionicons name="checkmark" size={moderateScale(20)} color="#ffffff" />
-                    <Text style={styles.allowButtonText}>Allow</Text>
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: '50%' }]} />
-                </View>
-              </View>
-            </View>
-          )}
-
           {/* Display Over Apps Permission Prompt */}
           {showDisplayOverAppsPrompt && (
             <View style={styles.permissionOverlay}>
               <View style={styles.permissionContainer}>
                 <View style={styles.permissionHeader}>
-                  <View style={styles.stepIndicator}>
-                    <Text style={styles.stepText}>2 of 2</Text>
-                  </View>
                   <TouchableOpacity 
                     style={styles.closeButton} 
                     onPress={closeDisplayOverAppsPrompt}
