@@ -39,6 +39,14 @@ export default function CartScreen() {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [isSavingContact, setIsSavingContact] = useState(false);
+
+  // Initialize contact info from logged-in user (only if not already set)
+  useEffect(() => {
+    if (isAuthenticated && user && !contactName && !contactPhone) {
+      setContactName(user.name || '');
+      setContactPhone(user.mobile || '');
+    }
+  }, [isAuthenticated, user]);
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -285,13 +293,12 @@ export default function CartScreen() {
 
     try {
       setIsSavingContact(true);
-      await updateUser({
-        name: trimmedName,
-        mobile: trimmedPhone,
-      });
+      // Only update locally for this booking, don't update user profile
+      setContactName(trimmedName);
+      setContactPhone(trimmedPhone);
       setShowContactModal(false);
     } catch (error) {
-      console.error('Error updating contact info:', error);
+      console.error('Error saving contact info:', error);
     } finally {
       setIsSavingContact(false);
     }
@@ -944,13 +951,13 @@ export default function CartScreen() {
                   <Ionicons name="person-outline" size={getIconSize(18)} color="#FFFFFF" />
                 </View>
                 <View style={styles.infoContent}>
-                  <Text style={styles.infoTitle}>{user?.name || 'Guest user'}</Text>
-                  <Text style={styles.infoSubtitle}>{user?.mobile || 'Phone number unavailable'}</Text>
+                  <Text style={styles.infoTitle}>{contactName || user?.name || 'Guest user'}</Text>
+                  <Text style={styles.infoSubtitle}>{contactPhone || user?.mobile || 'Phone number unavailable'}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => {
-                    setContactName(user?.name || '');
-                    setContactPhone(user?.mobile || '');
+                    setContactName(contactName || user?.name || '');
+                    setContactPhone(contactPhone || user?.mobile || '');
                     setShowContactModal(true);
                   }}
                 >
