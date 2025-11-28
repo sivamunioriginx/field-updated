@@ -474,24 +474,39 @@ class FullScreenNotificationOverlay(private val context: Context) {
 
         val outputFormat = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", java.util.Locale.getDefault())
         val possibleFormats = listOf(
-            "yyyy-MM-dd HH:mm:ss",                // Backend format (e.g., 2025-11-28 15:00:00)
+            "yyyy-MM-dd HH:mm:ss",                // Backend format (e.g., 2025-11-28 13:30:00)
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",      // ISO with millis
-            "yyyy-MM-dd'T'HH:mm:ss'Z'"           // ISO without millis
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",          // ISO without millis
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",         // ISO with millis, no Z
+            "yyyy-MM-dd'T'HH:mm:ss"               // ISO without millis, no Z
         )
 
         for (pattern in possibleFormats) {
             try {
                 val inputFormat = java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault())
+                // Set timezone to UTC for ISO formats, or use system default for non-ISO formats
+                if (pattern.contains("'Z'")) {
+                    inputFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                } else {
+                    // For non-ISO formats like "yyyy-MM-dd HH:mm:ss", use system timezone
+                    // This ensures 13:30:00 stays as 13:30:00 (1:30 PM) without timezone conversion
+                    inputFormat.timeZone = java.util.TimeZone.getDefault()
+                }
+                
                 val date = inputFormat.parse(bookingTime)
                 if (date != null) {
+                    // Use system timezone for output to ensure correct local time display
+                    outputFormat.timeZone = java.util.TimeZone.getDefault()
                     return outputFormat.format(date)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.d("FullScreenOverlay", "⚠️ Failed to parse time with pattern $pattern: ${e.message}")
                 // Try next pattern
             }
         }
 
         // Fallback to original string if nothing matched
+        android.util.Log.w("FullScreenOverlay", "⚠️ Could not parse booking time: $bookingTime")
         return bookingTime
     }
 }
