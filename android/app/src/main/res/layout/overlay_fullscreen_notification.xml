@@ -60,7 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:background="#F0F4F8"
+            android:background="@drawable/booking_details_background"
             android:padding="16dp"
             android:layout_marginBottom="20dp"
             android:elevation="4dp">
@@ -102,6 +102,7 @@
                 android:text="Description: N/A"
                 android:textSize="15sp"
                 android:textColor="#1A202C"
+                android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -111,6 +112,7 @@
                 android:text="Booking For: N/A"
                 android:textSize="15sp"
                 android:textColor="#1A202C"
+                android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
 
             <TextView
@@ -118,10 +120,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Booking ID: N/A"
-                android:textSize="13sp"
-                android:textColor="#4A5568"
-                android:textStyle="italic"
-                android:layout_marginBottom="8dp" />
+                android:textSize="15sp"
+                android:textColor="#1A202C"
+                android:textStyle="bold"
+                android:layout_marginBottom="2dp" />
 
             <LinearLayout
                 android:id="@+id/booking_distance_container"
@@ -129,7 +131,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="12dp"
-                android:layout_marginTop="4dp">
+                android:layout_marginTop="0dp">
 
                 <TextView
                     android:id="@+id/booking_distance_title"

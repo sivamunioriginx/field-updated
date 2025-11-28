@@ -8,7 +8,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Notifications from 'expo-notifications';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
+import { Alert, Animated, AppState, Keyboard, KeyboardAvoidingView, Linking, NativeModules, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Worker {
@@ -262,8 +262,13 @@ export default function Index() {
   const checkDisplayOverAppsPermission = async (): Promise<boolean> => {
     try {
       if (Platform.OS === 'android') {
-        // Always return false for Android to show the prompt
-        // This ensures users can enable the permission if they disabled it
+        // Use native module to check the actual permission status
+        const { OverlayPermissionModule } = NativeModules;
+        if (OverlayPermissionModule) {
+          const hasPermission = await OverlayPermissionModule.hasOverlayPermission();
+          return hasPermission;
+        }
+        // Fallback: if native module not available, return false to show prompt
         return false;
       }
       // For iOS, this permission doesn't exist, so return true
@@ -424,11 +429,14 @@ export default function Index() {
               handleNotificationPermission();
             }, 2000);
           } 
-          // If both location and notification are granted, show display over apps prompt
+          // If both location and notification are granted, show display over apps prompt ONLY if permission is not granted
           else if (!hasDisplayOverAppsPermission && Platform.OS === 'android') {
             setTimeout(() => {
               setShowDisplayOverAppsPrompt(true);
             }, 2000);
+          } else if (hasDisplayOverAppsPermission) {
+            // Hide popup if permission is already granted
+            setShowDisplayOverAppsPrompt(false);
           }
         } catch (error) {
           console.error('Error checking permissions:', error);
@@ -437,6 +445,31 @@ export default function Index() {
       
       checkAndShowPrompts();
     }
+  }, [worker, loading]);
+
+  // Re-check overlay permission when app comes to foreground (after user returns from settings)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active') {
+        // App has come to the foreground, re-check overlay permission
+        try {
+          const hasDisplayOverAppsPermission = await checkDisplayOverAppsPermission();
+          if (hasDisplayOverAppsPermission) {
+            // Permission is granted, hide the popup
+            setShowDisplayOverAppsPrompt(false);
+          } else if (Platform.OS === 'android' && worker && !loading) {
+            // Permission is not granted, show popup only if we have worker data
+            // Don't auto-show, let the user trigger it if needed
+          }
+        } catch (error) {
+          console.error('Error re-checking overlay permission:', error);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, [worker, loading]);
 
   const findWorkerDynamically = async () => {
