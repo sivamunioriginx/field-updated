@@ -77,6 +77,7 @@ const createUploadsDir = async () => {
     await fs.mkdir('uploads/documents', { recursive: true });
     await fs.mkdir('uploads/subcategorys', { recursive: true });
     await fs.mkdir('uploads/workdocuments', { recursive: true }); // Add workdocuments directory
+    await fs.mkdir('uploads/quotedocs', { recursive: true }); // Add quotedocs directory
     await fs.mkdir('uploads/services', { recursive: true }); // Add services directory
     await fs.mkdir('uploads/deals', { recursive: true }); // Add deals directory
     // List existing profile images
@@ -120,6 +121,8 @@ const storage = multer.diskStorage({
       cb(null, 'uploads/documents/');
     } else if (file.fieldname === 'workDocuments') {
       cb(null, 'uploads/workdocuments/'); // Add workdocuments destination
+    } else if (file.fieldname === 'quoteDocuments') {
+      cb(null, 'uploads/quotedocs/'); // Add quotedocs destination
     } else {
       cb(null, 'uploads/');
     }
@@ -188,6 +191,106 @@ app.post('/api/upload-work-documents', upload.array('workDocuments', 10), async 
       message: 'Error uploading work documents',
       error: error.message
     });
+  }
+});
+
+// Upload quote documents endpoint
+app.post('/api/upload-quote-documents', upload.array('quoteDocuments', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No files uploaded'
+      });
+    }
+
+    const uploadedFiles = req.files.map(file => ({
+      filename: file.filename,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      path: `/uploads/quotedocs/${file.filename}`
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Quote documents uploaded successfully',
+      files: uploadedFiles
+    });
+  } catch (error) {
+    console.error('Error uploading quote documents:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading quote documents',
+      error: error.message
+    });
+  }
+});
+
+// Request Quote endpoint
+app.post('/api/request-quote', async (req, res) => {
+  const {
+    customer_id,
+    work_description,
+    location,
+    documents,
+  } = req.body || {};
+
+  if (!customer_id || !work_description || !location) {
+    return res.status(400).json({
+      success: false,
+      message: 'customer_id, work_description, and location are required',
+    });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+      const [customers] = await connection.execute(
+        'SELECT mobile, email FROM tbl_serviceseeker WHERE id = ? LIMIT 1',
+        [parseInt(customer_id, 10)]
+      );
+
+      if (!customers || customers.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Customer not found',
+        });
+      }
+
+      const { mobile, email } = customers[0];
+
+    const [result] = await connection.execute(
+      `INSERT INTO tbl_requestquote 
+        (customer_id, mobile, email, work_description, location, documents)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        parseInt(customer_id, 10),
+        mobile,
+        email || null,
+        work_description,
+        location,
+        documents || null,
+      ],
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Quote request saved successfully',
+      data: { id: result.insertId },
+    });
+  } catch (error) {
+    console.error('Error saving quote request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save quote request',
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 });
 

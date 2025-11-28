@@ -69,6 +69,7 @@ export const API_ENDPOINTS = {
   
   // Add endpoint for uploading work documents
   UPLOAD_WORK_DOCUMENTS: `${getBaseUrl()}/upload-work-documents`,
+  UPLOAD_QUOTE_DOCUMENTS: `${getBaseUrl()}/upload-quote-documents`,
   
   // Add endpoints for worker location tracking
   WORKER_LOCATION: `${getBaseUrl()}/worker-location`,
@@ -78,6 +79,7 @@ export const API_ENDPOINTS = {
   SERVICES: `${getBaseUrl()}/services`,
   SERVICES_BY_SUBCATEGORY: (subcategoryId: string) => `${getBaseUrl()}/services/${subcategoryId}`,
   SEARCH_SERVICES: (query: string) => `${getBaseUrl()}/services/search?q=${encodeURIComponent(query)}`,
+  REQUEST_QUOTE: `${getBaseUrl()}/request-quote`,
 };
 
 export const API_BASE_URL = getBaseUrl();

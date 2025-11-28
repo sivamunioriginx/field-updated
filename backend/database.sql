@@ -147,3 +147,15 @@ CREATE TABLE IF NOT EXISTS `tbl_workerlocation` (
   KEY `idx_created_at` (`created_at`),
   KEY `idx_updated_at` (`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create tbl_requestquote table
+CREATE TABLE tbl_requestquote (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id int(11) NOT NULL,
+    mobile VARCHAR(15) NOT NULL,
+    email VARCHAR(30),
+    work_description TEXT,
+    location VARCHAR(255),
+    documents TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

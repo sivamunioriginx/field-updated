@@ -683,9 +683,9 @@ export default function HomeScreen() {
             <Ionicons name="home" size={styles.navIconSize} color="#00BFFF" />
             <Text style={styles.navLabelActive}>Home</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <Ionicons name="navigate-outline" size={styles.navIconSize} color="#999" />
-            <Text style={styles.navLabel}>Explore</Text>
+          <TouchableOpacity style={styles.navItem} onPress={() => router.push('/quote')}>
+            <Ionicons name="document-text-outline" size={styles.navIconSize} color="#999" />
+            <Text style={styles.navLabel}>Quote</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.navItem}>
             <Ionicons name="list-outline" size={styles.navIconSize} color="#999" />

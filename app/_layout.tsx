@@ -41,6 +41,7 @@ export default function RootLayout() {
                 <Stack.Screen name="location-picker" options={{ headerShown: false }} />
                 <Stack.Screen name="checkout" options={{ headerShown: false }} />
                 <Stack.Screen name="cart" options={{ headerShown: false }} />
+                <Stack.Screen name="quote" options={{ headerShown: false }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
               <StatusBar style="auto" />
