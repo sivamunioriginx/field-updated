@@ -74,16 +74,65 @@ export default function RegisterProfessionalScreen() {
   const isEditMode = mode === 'edit';
   
   // Calculate responsive values based on screen size
-  const isSmallScreen = width < 375;
-  const isMediumScreen = width >= 375 && width < 768;
-  const isLargeScreen = width >= 768;
+  const isSmallScreen = width < 360;
+  const isMediumScreen = width >= 360 && width < 414;
+  const isLargeScreen = width >= 414 && width < 768;
+  const isTablet = width >= 768;
   
-  // Scale factor for responsive sizing
-  const scale = width / 375; // Base width of 375px (iPhone X)
-  const moderateScale = (size: number, factor = 0.5) => size + (scale - 1) * size * factor;
+  // Base dimensions for better scaling (using standard mobile dimensions)
+  const baseWidth = 375; // iPhone standard - better scaling base
+  const baseHeight = 812; // iPhone standard - better scaling base
+  
+  // Moderate scale function to prevent extreme sizes
+  const moderateScale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * width) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+  
+  const scale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * width) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+
+  const scaleHeight = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * height) / baseHeight;
+    return size + (scaledSize - size) * factor;
+  };
+
+  // Helper function to get responsive values based on screen height with min/max constraints
+  const getResponsiveValue = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scaleHeight(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive values based on screen width with min/max constraints
+  const getResponsiveWidth = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scale(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive font sizes with moderate scaling
+  const getResponsiveFontSize = (baseSize: number) => {
+    const scaledSize = scale(baseSize, 0.5);
+    return Math.max(10, Math.min(28, scaledSize));
+  };
+
+  // Helper function to get responsive padding/margins with moderate scaling
+  const getResponsiveSpacing = (baseSpacing: number) => {
+    return Math.max(2, scale(baseSpacing, 0.5));
+  };
+
+  // Helper function to get responsive spacing that supports negative values
+  const getResponsiveSpacingWithNegative = (baseSpacing: number) => {
+    return scale(baseSpacing, 0.5);
+  };
   
   // Create responsive styles
-  const styles = createStyles(width, height, scale, moderateScale, isLargeScreen);
+  const styles = createStyles(width, height, scale, moderateScale, scaleHeight, getResponsiveValue, getResponsiveWidth, getResponsiveFontSize, getResponsiveSpacing, getResponsiveSpacingWithNegative, isSmallScreen, isMediumScreen, isLargeScreen, isTablet);
   
   // Form state
   const [name, setName] = useState('');
@@ -392,7 +441,7 @@ export default function RegisterProfessionalScreen() {
         if (result.success) {
           setSkillsData(result.data.map((cat: any) => ({
             id: cat.id,
-            name: cat.name,
+            name: cat.title,
           })));
         }
       } catch (error) {
@@ -1303,10 +1352,6 @@ export default function RegisterProfessionalScreen() {
           {profilePhoto ? (
             <>
               <Image source={{ uri: profilePhoto }} style={styles.profilePhoto} />
-              {/* Debug info - remove this after fixing */}
-              <Text style={{ position: 'absolute', bottom: -20, fontSize: 10, color: 'red' }}>
-                Debug: {profilePhoto ? 'Has photo' : 'No photo'}
-              </Text>
             </>
           ) : (
             <View style={styles.profilePhotoPlaceholder}>
@@ -1486,7 +1531,7 @@ export default function RegisterProfessionalScreen() {
             visible={showLocationModal}
             suggestions={locationSuggestions}
             onSelect={selectLocationSuggestion}
-            style={{ position: 'absolute', top: moderateScale(55), left: 0, right: 0, zIndex: 10 }}
+            style={{ position: 'absolute', top: getResponsiveValue(55, 50, 60), left: 0, right: 0, zIndex: 10 }}
           />
         </View>
         {locationError ? (
@@ -1527,7 +1572,7 @@ export default function RegisterProfessionalScreen() {
         <View style={styles.inputWrapper}>
           <Ionicons name="home-outline" size={moderateScale(30)} color="#666" style={styles.inputIcon} />
           <TextInput
-            style={[styles.input, { height: moderateScale(80), textAlignVertical: 'top' }]}
+            style={[styles.input, { height: getResponsiveValue(80, 70, 100), textAlignVertical: 'top' }]}
             placeholder="Enter your complete address"
             placeholderTextColor="#999"
             value={address}
@@ -1922,7 +1967,22 @@ export default function RegisterProfessionalScreen() {
   );
 }
 
-const createStyles = (width: number, height: number, scale: number, moderateScale: (size: number, factor?: number) => number, isLargeScreen: boolean) => StyleSheet.create({
+const createStyles = (
+  width: number, 
+  height: number, 
+  scale: (size: number, factor?: number) => number, 
+  moderateScale: (size: number, factor?: number) => number,
+  scaleHeight: (size: number, factor?: number) => number,
+  getResponsiveValue: (baseValue: number, minValue?: number, maxValue?: number) => number,
+  getResponsiveWidth: (baseValue: number, minValue?: number, maxValue?: number) => number,
+  getResponsiveFontSize: (baseSize: number) => number,
+  getResponsiveSpacing: (baseSpacing: number) => number,
+  getResponsiveSpacingWithNegative: (baseSpacing: number) => number,
+  isSmallScreen: boolean,
+  isMediumScreen: boolean,
+  isLargeScreen: boolean,
+  isTablet: boolean
+) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -1934,79 +1994,79 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: moderateScale(10),
-    paddingTop: moderateScale(50, 0.3),
-    paddingBottom: moderateScale(10),
+    paddingHorizontal: getResponsiveSpacing(10),
+    paddingTop: getResponsiveValue(50, 25, 45),
+    paddingBottom: getResponsiveSpacing(10),
     backgroundColor: '#A1CEDC',
-    marginTop: moderateScale(-45, 0.3),
+    marginTop: getResponsiveSpacingWithNegative(-45),
   },
   menuButton: {
-    padding: moderateScale(5),
+    padding: getResponsiveSpacing(5),
   },
   mainlogo: {
-    height: moderateScale(50),
-    width: moderateScale(180),
-    marginRight: isLargeScreen ? moderateScale(250) : moderateScale(200),
+    height: getResponsiveValue(50, 40, 60),
+    width: getResponsiveWidth(180, 150, 220),
+    marginRight: isTablet ? getResponsiveWidth(250) : getResponsiveWidth(200),
   },
   menuicon: {
-    marginRight: moderateScale(10),
+    marginRight: getResponsiveSpacing(10),
   },
   progressContainer: {
-    paddingHorizontal: moderateScale(20),
-    paddingVertical: moderateScale(15),
+    paddingHorizontal: getResponsiveSpacing(20),
+    paddingVertical: getResponsiveSpacing(15),
     backgroundColor: '#f8f9fa',
   },
   progressBar: {
-    height: moderateScale(4),
+    height: getResponsiveSpacing(4),
     backgroundColor: '#e0e0e0',
-    borderRadius: moderateScale(2),
-    marginBottom: moderateScale(8),
+    borderRadius: getResponsiveSpacing(2),
+    marginBottom: getResponsiveSpacing(8),
   },
   progressFill: {
     height: '100%',
     backgroundColor: '#A1CEDC',
-    borderRadius: moderateScale(2),
+    borderRadius: getResponsiveSpacing(2),
   },
   progressText: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     color: '#666',
     textAlign: 'center',
   },
   logoContainer: {
     alignItems: 'center',
-    paddingVertical: moderateScale(10),
-    marginTop: moderateScale(-23),
-    marginBottom: moderateScale(7),
+    paddingVertical: getResponsiveSpacing(10),
+    marginTop: getResponsiveSpacingWithNegative(-23),
+    marginBottom: getResponsiveSpacing(7),
   },
   logoSubtitle: {
-    fontSize: moderateScale(20),
+    fontSize: getResponsiveFontSize(20),
     color: '#2c3e50',
     fontStyle: 'italic',
     fontWeight: 'bold',
   },
   formContainer1: {
-    paddingHorizontal: moderateScale(20),
-    paddingVertical: moderateScale(30),
+    paddingHorizontal: getResponsiveSpacing(20),
+    paddingVertical: getResponsiveSpacing(30),
     backgroundColor: '#f8f9fa',
-    marginTop: moderateScale(-5),
+    marginTop: getResponsiveSpacingWithNegative(-5),
   },
   formContainer2: {
-    paddingHorizontal: moderateScale(20),
-    paddingVertical: moderateScale(30),
+    paddingHorizontal: getResponsiveSpacing(20),
+    paddingVertical: getResponsiveSpacing(30),
     backgroundColor: '#f8f9fa',
-    marginTop: moderateScale(-24),
+    marginTop: getResponsiveSpacingWithNegative(-24),
   },
   profilePhotoContainer: {
     alignItems: 'center',
-    marginBottom: moderateScale(5),
-    marginTop: moderateScale(-30),
+    marginBottom: getResponsiveSpacing(5),
+    marginTop: getResponsiveSpacingWithNegative(-30),
   },
   profilePhotoButton: {
-    width: moderateScale(100),
-    height: moderateScale(100),
-    borderRadius: moderateScale(60),
+    width: getResponsiveValue(100, 80, 120),
+    height: getResponsiveValue(100, 80, 120),
+    borderRadius: getResponsiveValue(60, 50, 70),
     overflow: 'hidden',
-    borderWidth: moderateScale(3),
+    borderWidth: getResponsiveSpacing(3),
     borderColor: '#A1CEDC',
     backgroundColor: '#fff',
     justifyContent: 'center',
@@ -2017,7 +2077,7 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
       height: 4,
     },
     shadowOpacity: 0.2,
-    shadowRadius: moderateScale(8),
+    shadowRadius: getResponsiveSpacing(8),
     elevation: 8,
   },
   profilePhoto: {
@@ -2029,27 +2089,27 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     justifyContent: 'center',
   },
   profilePhotoText: {
-    fontSize: moderateScale(12),
+    fontSize: getResponsiveFontSize(12),
     color: '#A1CEDC',
-    marginTop: moderateScale(5),
+    marginTop: getResponsiveSpacing(5),
     fontWeight: '600',
   },
   inputContainer: {
-    marginBottom: moderateScale(15),
+    marginBottom: getResponsiveSpacing(15),
   },
   inputLabel: {
-    fontSize: moderateScale(16),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: moderateScale(8),
+    marginBottom: getResponsiveSpacing(8),
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: moderateScale(15),
-    paddingHorizontal: moderateScale(15),
-    borderWidth: moderateScale(2),
+    borderRadius: getResponsiveSpacing(15),
+    paddingHorizontal: getResponsiveSpacing(15),
+    borderWidth: getResponsiveSpacing(2),
     borderColor: '#A1CEDC',
     shadowColor: '#000',
     shadowOffset: {
@@ -2057,82 +2117,82 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
       height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: moderateScale(4),
+    shadowRadius: getResponsiveSpacing(4),
     elevation: 3,
   },
   inputIcon: {
-    marginRight: moderateScale(10),
+    marginRight: getResponsiveSpacing(10),
   },
   input: {
     flex: 1,
-    height: moderateScale(50),
-    fontSize: moderateScale(16),
+    height: getResponsiveValue(50, 45, 55),
+    fontSize: getResponsiveFontSize(16),
     color: '#2c3e50',
   },
   nextButton: {
     backgroundColor: '#A1CEDC',
-    borderRadius: moderateScale(15),
-    paddingVertical: moderateScale(18),
+    borderRadius: getResponsiveSpacing(15),
+    paddingVertical: getResponsiveSpacing(18),
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: moderateScale(20),
+    marginTop: getResponsiveSpacing(20),
     shadowColor: '#A1CEDC',
     shadowOffset: {
       width: 0,
       height: 6,
     },
     shadowOpacity: 0.3,
-    shadowRadius: moderateScale(10),
+    shadowRadius: getResponsiveSpacing(10),
     elevation: 8,
   },
   nextButtonText: {
     color: '#fff',
-    fontSize: moderateScale(18),
+    fontSize: getResponsiveFontSize(18),
     fontWeight: 'bold',
-    marginRight: moderateScale(8),
+    marginRight: getResponsiveSpacing(8),
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: moderateScale(10),
-    paddingVertical: moderateScale(10),
-    paddingHorizontal: moderateScale(15),
-    marginBottom: moderateScale(20),
+    borderRadius: getResponsiveSpacing(10),
+    paddingVertical: getResponsiveSpacing(10),
+    paddingHorizontal: getResponsiveSpacing(15),
+    marginBottom: getResponsiveSpacing(20),
     borderWidth: 1,
     borderColor: '#A1CEDC',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: moderateScale(4),
+    shadowRadius: getResponsiveSpacing(4),
     elevation: 3,
   },
   backButtonText: {
     color: '#A1CEDC',
-    fontSize: moderateScale(16),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '600',
-    marginLeft: moderateScale(8),
+    marginLeft: getResponsiveSpacing(8),
   },
   headerBackButton: {
     flexDirection: 'row',
     alignItems: 'center',
     position: 'absolute',
-    left: moderateScale(20),
+    left: getResponsiveSpacing(20),
     top: 0,
     zIndex: 10,
-    marginTop: moderateScale(15),
+    marginTop: getResponsiveSpacing(15),
   },
   headerBackButtonText: {
     color: '#A1CEDC',
-    fontSize: moderateScale(16),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '600',
-    marginLeft: moderateScale(8),
+    marginLeft: getResponsiveSpacing(8),
   },
   skillsDropdown: {
     backgroundColor: '#fff',
-    borderRadius: moderateScale(15),
-    borderWidth: moderateScale(2),
+    borderRadius: getResponsiveSpacing(15),
+    borderWidth: getResponsiveSpacing(2),
     borderColor: '#A1CEDC',
     shadowColor: '#000',
     shadowOffset: {
@@ -2140,155 +2200,155 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
       height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: moderateScale(4),
+    shadowRadius: getResponsiveSpacing(4),
     elevation: 3,
   },
   skillsDropdownHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: moderateScale(15),
-    paddingVertical: moderateScale(15),
+    paddingHorizontal: getResponsiveSpacing(15),
+    paddingVertical: getResponsiveSpacing(15),
   },
   skillsDropdownText: {
     flex: 1,
-    fontSize: moderateScale(16),
+    fontSize: getResponsiveFontSize(16),
     color: '#2c3e50',
-    marginLeft: moderateScale(10),
+    marginLeft: getResponsiveSpacing(10),
   },
   selectedSkillsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: moderateScale(10),
-    gap: moderateScale(8),
+    marginTop: getResponsiveSpacing(10),
+    gap: getResponsiveSpacing(8),
   },
   selectedSkillTag: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#e8f5e8',
-    borderRadius: moderateScale(20),
-    paddingHorizontal: moderateScale(12),
-    paddingVertical: moderateScale(6),
+    borderRadius: getResponsiveSpacing(20),
+    paddingHorizontal: getResponsiveSpacing(12),
+    paddingVertical: getResponsiveSpacing(6),
     borderWidth: 1,
     borderColor: '#27ae60',
   },
   selectedSkillText: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     color: '#27ae60',
     fontWeight: '600',
-    marginRight: moderateScale(5),
+    marginRight: getResponsiveSpacing(5),
   },
   skillsDropdownContent: {
     backgroundColor: '#fff',
-    borderRadius: moderateScale(15),
-    marginTop: moderateScale(5),
-    maxHeight: moderateScale(200),
+    borderRadius: getResponsiveSpacing(15),
+    marginTop: getResponsiveSpacing(5),
+    maxHeight: getResponsiveValue(200, 150, 250),
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 4,
     },
     shadowOpacity: 0.15,
-    shadowRadius: moderateScale(8),
+    shadowRadius: getResponsiveSpacing(8),
     elevation: 8,
   },
   skillsList: {
-    maxHeight: moderateScale(180),
+    maxHeight: getResponsiveValue(180, 130, 230),
   },
   skillItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: moderateScale(15),
-    paddingVertical: moderateScale(12),
+    paddingHorizontal: getResponsiveSpacing(15),
+    paddingVertical: getResponsiveSpacing(12),
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   skillText: {
-    fontSize: moderateScale(16),
+    fontSize: getResponsiveFontSize(16),
     color: '#2c3e50',
   },
   uploadOptionsContainer: {
-    marginTop: moderateScale(10),
-    marginBottom: moderateScale(10),
+    marginTop: getResponsiveSpacing(10),
+    marginBottom: getResponsiveSpacing(10),
   },
   uploadOptionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#e0f2f7',
-    borderRadius: moderateScale(10),
-    paddingVertical: moderateScale(10),
-    paddingHorizontal: moderateScale(15),
+    borderRadius: getResponsiveSpacing(10),
+    paddingVertical: getResponsiveSpacing(10),
+    paddingHorizontal: getResponsiveSpacing(15),
     borderWidth: 1,
     borderColor: '#a7dbd8',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: moderateScale(4),
+    shadowRadius: getResponsiveSpacing(4),
     elevation: 3,
   },
   uploadOptionText: {
-    marginLeft: moderateScale(10),
-    fontSize: moderateScale(14),
+    marginLeft: getResponsiveSpacing(10),
+    fontSize: getResponsiveFontSize(14),
     color: '#2c3e50',
     fontWeight: '600',
   },
   uploadedDocumentsContainer: {
-    marginTop: moderateScale(10),
-    paddingHorizontal: moderateScale(10),
+    marginTop: getResponsiveSpacing(10),
+    paddingHorizontal: getResponsiveSpacing(10),
   },
   uploadedDocumentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#f0f0f0',
-    borderRadius: moderateScale(10),
-    paddingVertical: moderateScale(8),
-    paddingHorizontal: moderateScale(12),
-    marginBottom: moderateScale(8),
+    borderRadius: getResponsiveSpacing(10),
+    paddingVertical: getResponsiveSpacing(8),
+    paddingHorizontal: getResponsiveSpacing(12),
+    marginBottom: getResponsiveSpacing(8),
   },
   uploadedDocumentName: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     color: '#2c3e50',
     flex: 1,
   },
   noDocumentsText: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     color: '#7f8c8d',
     fontStyle: 'italic',
     textAlign: 'center',
-    marginTop: moderateScale(10),
+    marginTop: getResponsiveSpacing(10),
   },
   existingDocumentName: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     color: '#2c3e50',
     flex: 1,
-    marginLeft: moderateScale(8),
+    marginLeft: getResponsiveSpacing(8),
   },
   existingDocumentLabel: {
-    fontSize: moderateScale(10),
+    fontSize: getResponsiveFontSize(10),
     color: '#27ae60',
     backgroundColor: '#e8f5e8',
-    paddingHorizontal: moderateScale(6),
-    paddingVertical: moderateScale(2),
-    borderRadius: moderateScale(8),
-    marginRight: moderateScale(8),
+    paddingHorizontal: getResponsiveSpacing(6),
+    paddingVertical: getResponsiveSpacing(2),
+    borderRadius: getResponsiveSpacing(8),
+    marginRight: getResponsiveSpacing(8),
     fontWeight: '500',
   },
   submitButton: {
     backgroundColor: '#3498db',
-    borderRadius: moderateScale(15),
-    paddingVertical: moderateScale(18),
+    borderRadius: getResponsiveSpacing(15),
+    paddingVertical: getResponsiveSpacing(18),
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: moderateScale(20),
+    marginTop: getResponsiveSpacing(20),
     shadowColor: '#3498db',
     shadowOffset: {
       width: 0,
       height: 6,
     },
     shadowOpacity: 0.3,
-    shadowRadius: moderateScale(10),
+    shadowRadius: getResponsiveSpacing(10),
     elevation: 8,
   },
   submitButtonDisabled: {
@@ -2299,51 +2359,51 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     alignItems: 'center',
   },
   spinningIcon: {
-    marginRight: moderateScale(8),
+    marginRight: getResponsiveSpacing(8),
   },
   submitButtonText: {
     color: '#fff',
-    fontSize: moderateScale(18),
+    fontSize: getResponsiveFontSize(18),
     fontWeight: 'bold',
-    marginLeft: moderateScale(8),
+    marginLeft: getResponsiveSpacing(8),
   },
   suggestionDropdown: {
     backgroundColor: '#fff',
-    borderRadius: moderateScale(15),
-    maxHeight: moderateScale(250),
+    borderRadius: getResponsiveSpacing(15),
+    maxHeight: getResponsiveValue(250, 200, 300),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.3,
-    shadowRadius: moderateScale(10),
+    shadowRadius: getResponsiveSpacing(10),
     elevation: 15,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    marginTop: moderateScale(2),
+    marginTop: getResponsiveSpacing(2),
   },
   suggestionList: {
-    maxHeight: moderateScale(230),
+    maxHeight: getResponsiveValue(230, 180, 280),
   },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: moderateScale(15),
-    paddingVertical: moderateScale(15),
+    paddingHorizontal: getResponsiveSpacing(15),
+    paddingVertical: getResponsiveSpacing(15),
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',
   },
   suggestionTextContainer: {
-    marginLeft: moderateScale(10),
+    marginLeft: getResponsiveSpacing(10),
     flex: 1,
   },
   suggestionMainText: {
-    fontSize: moderateScale(16),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: moderateScale(2),
+    marginBottom: getResponsiveSpacing(2),
   },
   suggestionSecondaryText: {
-    fontSize: moderateScale(13),
+    fontSize: getResponsiveFontSize(13),
     color: '#7f8c8d',
   },
   modalOverlay: {
@@ -2353,28 +2413,28 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: moderateScale(20),
-    borderTopRightRadius: moderateScale(20),
-    padding: moderateScale(20),
-    paddingBottom: moderateScale(40),
+    borderTopLeftRadius: getResponsiveSpacing(20),
+    borderTopRightRadius: getResponsiveSpacing(20),
+    padding: getResponsiveSpacing(20),
+    paddingBottom: getResponsiveSpacing(40),
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.3,
-    shadowRadius: moderateScale(10),
+    shadowRadius: getResponsiveSpacing(10),
     elevation: 10,
   },
   modalHandle: {
-    width: moderateScale(40),
-    height: moderateScale(4),
+    width: getResponsiveWidth(40, 30, 50),
+    height: getResponsiveSpacing(4),
     backgroundColor: '#ddd',
-    borderRadius: moderateScale(2),
+    borderRadius: getResponsiveSpacing(2),
   },
   modalTitle: {
-    fontSize: moderateScale(18),
+    fontSize: getResponsiveFontSize(18),
     fontWeight: 'bold',
     color: '#2c3e50',
-    marginBottom: moderateScale(20),
+    marginBottom: getResponsiveSpacing(20),
     textAlign: 'center',
   },
   modalOptionButton: {
@@ -2382,83 +2442,83 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     alignItems: 'center',
     justifyContent: 'flex-start',
     width: '100%',
-    paddingVertical: moderateScale(15),
-    paddingHorizontal: moderateScale(20),
-    borderRadius: moderateScale(10),
-    marginBottom: moderateScale(10),
+    paddingVertical: getResponsiveSpacing(15),
+    paddingHorizontal: getResponsiveSpacing(20),
+    borderRadius: getResponsiveSpacing(10),
+    marginBottom: getResponsiveSpacing(10),
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
   modalOptionText: {
-    marginLeft: moderateScale(15),
-    fontSize: moderateScale(16),
+    marginLeft: getResponsiveSpacing(15),
+    fontSize: getResponsiveFontSize(16),
     color: '#2c3e50',
     fontWeight: '500',
   },
   modalDescription: {
-    fontSize: moderateScale(12),
+    fontSize: getResponsiveFontSize(12),
     color: '#7f8c8d',
     textAlign: 'center',
-    marginTop: moderateScale(15),
-    lineHeight: moderateScale(18),
-    paddingHorizontal: moderateScale(20),
+    marginTop: getResponsiveSpacing(15),
+    lineHeight: getResponsiveFontSize(18),
+    paddingHorizontal: getResponsiveSpacing(20),
   },
   errorText: {
     color: '#e74c3c',
-    fontSize: moderateScale(14),
-    marginTop: moderateScale(5),
-    marginLeft: moderateScale(15),
+    fontSize: getResponsiveFontSize(14),
+    marginTop: getResponsiveSpacing(5),
+    marginLeft: getResponsiveSpacing(15),
     fontWeight: '500',
   },
   validatingText: {
     color: '#A1CEDC',
-    fontSize: moderateScale(14),
-    marginTop: moderateScale(5),
-    marginLeft: moderateScale(15),
+    fontSize: getResponsiveFontSize(14),
+    marginTop: getResponsiveSpacing(5),
+    marginLeft: getResponsiveSpacing(15),
     fontStyle: 'italic',
   },
   successText: {
     color: '#27ae60',
-    fontSize: moderateScale(14),
-    marginTop: moderateScale(5),
-    marginLeft: moderateScale(15),
+    fontSize: getResponsiveFontSize(14),
+    marginTop: getResponsiveSpacing(5),
+    marginLeft: getResponsiveSpacing(15),
     fontWeight: '500',
   },
   nextButtonDisabled: {
     backgroundColor: '#bdc3c7',
   },
   existingDocumentsContainer: {
-    marginTop: moderateScale(-5),
-    marginBottom: moderateScale(-20),
-    paddingHorizontal: moderateScale(10),
+    marginTop: getResponsiveSpacingWithNegative(-5),
+    marginBottom: getResponsiveSpacingWithNegative(-20),
+    paddingHorizontal: getResponsiveSpacing(10),
     backgroundColor: '#f8f9fa',
-    borderRadius: moderateScale(10),
-    paddingVertical: moderateScale(10),
+    borderRadius: getResponsiveSpacing(10),
+    paddingVertical: getResponsiveSpacing(10),
   },
   existingDocumentsTitle: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     fontWeight: '600',
     color: '#2c3e50',
-    marginBottom: moderateScale(8),
+    marginBottom: getResponsiveSpacing(8),
   },
   existingDocumentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#e8f4fd',
-    borderRadius: moderateScale(8),
-    paddingVertical: moderateScale(8),
-    paddingHorizontal: moderateScale(12),
-    marginBottom: moderateScale(6),
-    borderLeftWidth: moderateScale(3),
+    borderRadius: getResponsiveSpacing(8),
+    paddingVertical: getResponsiveSpacing(8),
+    paddingHorizontal: getResponsiveSpacing(12),
+    marginBottom: getResponsiveSpacing(6),
+    borderLeftWidth: getResponsiveSpacing(3),
     borderLeftColor: '#3498db',
   },
   newDocumentsTitle: {
-    fontSize: moderateScale(14),
+    fontSize: getResponsiveFontSize(14),
     fontWeight: '600',
     color: '#27ae60',
-    marginBottom: moderateScale(8),
-    marginTop: moderateScale(10),
+    marginBottom: getResponsiveSpacing(8),
+    marginTop: getResponsiveSpacing(10),
   },
 });

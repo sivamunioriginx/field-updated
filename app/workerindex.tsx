@@ -1066,8 +1066,8 @@ export default function Index() {
   // Show loading screen while checking authentication
   if (!isAuthenticated) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: moderateScale(18), color: '#666' }}>Redirecting to login...</Text>
+      <View style={[styles.container, styles.fullScreenLoadingContainer]}>
+        <Text style={styles.fullScreenLoadingText}>Redirecting to login...</Text>
       </View>
     );
   }
@@ -1075,8 +1075,8 @@ export default function Index() {
   // Show loading screen while worker data is being fetched
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: moderateScale(18), color: '#666' }}>Loading worker data...</Text>
+      <View style={[styles.container, styles.fullScreenLoadingContainer]}>
+        <Text style={styles.fullScreenLoadingText}>Loading worker data...</Text>
       </View>
     );
   }
@@ -1218,9 +1218,11 @@ export default function Index() {
                             <View style={styles.bookingRow}>
                               <Ionicons name="location" size={moderateScale(16)} color="#666" />
                               <Text style={styles.bookingLabel}>Work Location: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.work_location}
-                              </Text>
+                              <View style={styles.bookingValueContainer}>
+                                <Text style={styles.bookingValue}>
+                                  {booking.work_location}
+                                </Text>
+                              </View>
                             </View>
                           )}
                           
@@ -1229,9 +1231,11 @@ export default function Index() {
                             <View style={styles.bookingRow}>
                               <Ionicons name="document-text" size={moderateScale(18)} color="#666" />
                               <Text style={styles.bookingLabel}>Requirements: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.description}
-                              </Text>
+                              <View style={styles.bookingValueContainer}>
+                                <Text style={styles.bookingValue}>
+                                  {booking.description}
+                                </Text>
+                              </View>
                             </View>
                           )}
                           
@@ -1556,7 +1560,7 @@ export default function Index() {
                 </View>
                 
                 <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: '100%' }]} />
+                  <View style={styles.progressFill} />
                 </View>
               </View>
             </View>
@@ -1935,13 +1939,19 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   bookingRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: moderateScale(5),
   },
   bookingLabel: {
     fontSize: moderateScale(14),
     color: '#666',
     marginLeft: moderateScale(5),
+    flexShrink: 0,
+  },
+  bookingValueContainer: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: moderateScale(2),
   },
   bookingValue: {
     fontSize: moderateScale(14),
@@ -2299,8 +2309,17 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   progressFill: {
     height: '100%',
+    width: '100%',
     backgroundColor: '#4CAF50',
     borderRadius: moderateScale(2),
+  },
+  fullScreenLoadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenLoadingText: {
+    fontSize: moderateScale(18),
+    color: '#666',
   },
   });
 };
