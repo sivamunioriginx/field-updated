@@ -7,7 +7,7 @@ import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import * as Notifications from 'expo-notifications';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, AppState, Keyboard, KeyboardAvoidingView, Linking, NativeModules, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -50,7 +50,7 @@ interface Booking {
 }
 
 export default function Index() {
-  const { width, height } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { logout, user, isAuthenticated } = useAuth();
   const params = useLocalSearchParams();
   const { name: paramName, id: paramId, email: paramEmail } = params;
@@ -60,17 +60,23 @@ export default function Index() {
   const id = user?.id || paramId;
   const email = user?.email || paramEmail;
   
-  // Calculate responsive values based on screen size
-  const isSmallScreen = width < 375;
-  const isMediumScreen = width >= 375 && width < 768;
-  const isLargeScreen = width >= 768;
+  // Responsive scaling helper functions
+  const baseWidth = 375; // iPhone standard
+  const baseHeight = 812; // iPhone standard
   
-  // Scale factor for responsive sizing
-  const scale = width / 375; // Base width of 375px (iPhone X)
-  const moderateScale = (size: number, factor = 0.5) => size + (scale - 1) * size * factor;
+  const moderateScale = useMemo(() => (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  }, [screenWidth]);
   
-  // Create responsive styles early
-  const styles = createStyles(width, height, scale, moderateScale, isLargeScreen);
+  // Create responsive styles based on screen dimensions
+  const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
+  
+  // Calculate menu width for animation initialization (must match menuContainer width)
+  const isLargeScreen = screenWidth >= 414 && screenWidth < 768;
+  const menuWidth = useMemo(() => {
+    return isLargeScreen ? moderateScale(300) : moderateScale(260);
+  }, [isLargeScreen, moderateScale]);
   
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuClosedByOutside, setMenuClosedByOutside] = useState(false);
@@ -84,7 +90,15 @@ export default function Index() {
   const [rejectPopupVisible, setRejectPopupVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectingBookingId, setRejectingBookingId] = useState<number | null>(null);
-  const slideAnim = useRef(new Animated.Value(moderateScale(300))).current;
+  
+  // Initialize animation value - start with a large value to ensure menu is completely hidden
+  // Will be set to correct menuWidth in useEffect
+  const slideAnim = useRef(new Animated.Value(500)).current;
+  
+  // Set initial animation value on mount to ensure menu is hidden
+  useEffect(() => {
+    slideAnim.setValue(menuWidth);
+  }, [menuWidth, slideAnim]);
   const isAnimating = useRef(false);
   const [shouldLogout, setShouldLogout] = useState(false);
   const [showDisplayOverAppsPrompt, setShowDisplayOverAppsPrompt] = useState(false);
@@ -103,9 +117,9 @@ export default function Index() {
   useEffect(() => {
     if (menuClosedByOutside && !menuOpen) {
       // Menu was closed by outside click, ensure it stays closed
-      slideAnim.setValue(moderateScale(300));
+      slideAnim.setValue(menuWidth);
     }
-  }, [menuClosedByOutside, menuOpen, slideAnim, moderateScale]);
+  }, [menuClosedByOutside, menuOpen, slideAnim, menuWidth]);
 
   // Location permission function
   // Request location permission - native dialog only
@@ -916,7 +930,7 @@ export default function Index() {
     
     isAnimating.current = true;
     Animated.timing(slideAnim, {
-      toValue: moderateScale(300),
+      toValue: menuWidth,
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
@@ -938,7 +952,7 @@ export default function Index() {
     isAnimating.current = false;
     
     // Reset animation value to closed position
-    slideAnim.setValue(moderateScale(300));
+    slideAnim.setValue(menuWidth);
   };
 
   const handleLogout = async () => {
@@ -1084,11 +1098,13 @@ export default function Index() {
         <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <View style={styles.headerContainer}>
             <View style={styles.headerLeft} />
-            <Image
-              source={require('@/assets/images/OriginX.png')}
-              style={styles.mainlogo}
-              contentFit="contain"
-            />
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('@/assets/images/OriginX.png')}
+                style={styles.mainlogo}
+                contentFit="contain"
+              />
+            </View>
             <TouchableOpacity style={styles.personButton} onPress={toggleMenu}>
               <Ionicons style={styles.personicon} name="person-circle-outline" size={moderateScale(28)} color="black" />
             </TouchableOpacity>
@@ -1116,7 +1132,7 @@ export default function Index() {
                   <View style={styles.bookingsTitleContainer}>
                     <Ionicons name="notifications" size={moderateScale(24)} color="#3498db" />
                     <Text style={styles.bookingsTitle}>
-                      {activeTab === 'notifications' ? 'Notifications & Missed' : 'Total Bookings'}
+                      {activeTab === 'notifications' ? 'Notifications' : 'Total Bookings'}
                     </Text>
                   </View>
                   <View style={styles.bookingsActions}>
@@ -1354,7 +1370,7 @@ export default function Index() {
                 styles.bottomNavText,
                 activeTab === 'paymentHistory' && styles.bottomNavTextActive
               ]}>
-                Payment History
+                Payment
               </Text>
             </TouchableOpacity>
             
@@ -1552,7 +1568,67 @@ export default function Index() {
   );
 }
 
-const createStyles = (width: number, height: number, scale: number, moderateScale: (size: number, factor?: number) => number, isLargeScreen: boolean) => StyleSheet.create({
+const createStyles = (screenHeight: number, screenWidth: number) => {
+  // Base dimensions for better scaling (using standard mobile dimensions)
+  const baseWidth = 375; // iPhone standard - better scaling base
+  const baseHeight = 812; // iPhone standard - better scaling base
+  
+  // Calculate responsive icon sizes once
+  const moderateScale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+  
+  // Moderate scale function to prevent extreme sizes
+  const scale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+
+  const scaleHeight = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenHeight) / baseHeight;
+    return size + (scaledSize - size) * factor;
+  };
+
+  // Helper function to get responsive values based on screen height with min/max constraints
+  const getResponsiveValue = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scaleHeight(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive values based on screen width with min/max constraints
+  const getResponsiveWidth = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scale(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive font sizes with moderate scaling
+  const getResponsiveFontSize = (baseSize: number) => {
+    const scaledSize = scale(baseSize, 0.5);
+    return Math.max(10, Math.min(28, scaledSize));
+  };
+
+  // Helper function to get responsive padding/margins with moderate scaling
+  const getResponsiveSpacing = (baseSpacing: number) => {
+    return Math.max(2, scale(baseSpacing, 0.5));
+  };
+
+  // Helper function to get responsive spacing that supports negative values
+  const getResponsiveSpacingWithNegative = (baseSpacing: number) => {
+    return scale(baseSpacing, 0.5);
+  };
+
+  // Device type detection with more accurate breakpoints
+  const isSmallScreen = screenWidth < 360; // Small phones
+  const isMediumScreen = screenWidth >= 360 && screenWidth < 414; // Regular phones  
+  const isLargeScreen = screenWidth >= 414 && screenWidth < 768; // Large phones
+  const isTablet = screenWidth >= 768; // Tablets
+
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -1573,18 +1649,27 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     justifyContent: 'space-between',
     paddingHorizontal: moderateScale(12, 0.3),
     paddingTop: moderateScale(40, 0.3),
-    paddingBottom: moderateScale(6),
+    paddingBottom: moderateScale(2),
     backgroundColor: '#A1CEDC',
     marginTop: moderateScale(-40, 0.3),
+    position: 'relative',
   },
   headerLeft: {
     width: moderateScale(38),
   },
+  logoContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: moderateScale(-190),
+  },
   mainlogo: {
-    height: moderateScale(45),
-    width: isLargeScreen ? '35%' : '45%',
-    maxWidth: moderateScale(180),
-    marginLeft: isLargeScreen ? '-42%' : '-52%',
+    height: moderateScale(50),
+    width: isSmallScreen ? moderateScale(140) : 
+           isMediumScreen ? moderateScale(160) : 
+           isLargeScreen ? moderateScale(180) : 
+           isTablet ? moderateScale(200) : moderateScale(160),
+    maxWidth: moderateScale(200),
   },
   personButton: {
     padding: moderateScale(5),
@@ -1597,12 +1682,12 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     top: 0,
     right: 0,
     height: '100%',
-    width: isLargeScreen ? moderateScale(350) : moderateScale(300),
+    width: isLargeScreen ? moderateScale(300) : moderateScale(260),
     backgroundColor: '#ffffff',
     shadowColor: '#000',
-    shadowOffset: { width: -4, height: 0 },
+    shadowOffset: { width: getResponsiveSpacing(-4), height: 0 },
     shadowOpacity: 0.15,
-    shadowRadius: moderateScale(12),
+    shadowRadius: getResponsiveSpacing(12),
     elevation: 8,
     borderTopLeftRadius: moderateScale(20),
     borderBottomLeftRadius: moderateScale(20),
@@ -1655,8 +1740,8 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     color: '#ffffff',
     marginBottom: moderateScale(5),
     textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowOffset: { width: 0, height: getResponsiveSpacing(1) },
+    textShadowRadius: getResponsiveSpacing(2),
   },
   menuDivider: {
     height: 1,
@@ -1681,9 +1766,9 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     marginBottom: moderateScale(8),
     backgroundColor: '#ffffff',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: getResponsiveSpacing(1) },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowRadius: getResponsiveSpacing(2),
     elevation: 1,
   },
   menuItemIcon: {
@@ -1733,7 +1818,7 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
   bookingsTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: isLargeScreen ? moderateScale(120) : moderateScale(95),
+    marginLeft: isLargeScreen ? moderateScale(110) : moderateScale(85),
   },
   bookingsTitle: {
     fontSize: moderateScale(18),
@@ -1774,9 +1859,9 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     padding: moderateScale(15),
     marginBottom: moderateScale(10),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: getResponsiveSpacing(1) },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowRadius: getResponsiveSpacing(2),
     elevation: 1,
     marginLeft: moderateScale(-5),
     marginRight: moderateScale(-5),
@@ -1945,13 +2030,13 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
-    paddingVertical: moderateScale(15),
+    paddingVertical: moderateScale(8),
     paddingHorizontal: moderateScale(20),
     justifyContent: 'space-around',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: getResponsiveSpacing(-2) },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: getResponsiveSpacing(4),
     elevation: 8,
     zIndex: 1000,
   },
@@ -1962,7 +2047,7 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
   bottomNavText: {
     fontSize: moderateScale(12),
     color: '#9CA3AF',
-    marginTop: moderateScale(5),
+    marginTop: moderateScale(2),
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -1991,9 +2076,9 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     width: '90%',
     maxWidth: isLargeScreen ? moderateScale(450) : moderateScale(400),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: getResponsiveSpacing(4) },
     shadowOpacity: 0.25,
-    shadowRadius: moderateScale(8),
+    shadowRadius: getResponsiveSpacing(8),
     elevation: 8,
   },
   popupHeader: {
@@ -2119,9 +2204,9 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     width: '90%',
     maxWidth: isLargeScreen ? moderateScale(450) : moderateScale(400),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: getResponsiveSpacing(8) },
     shadowOpacity: 0.3,
-    shadowRadius: moderateScale(16),
+    shadowRadius: getResponsiveSpacing(16),
     elevation: 16,
   },
   permissionHeader: {
@@ -2195,9 +2280,9 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     paddingHorizontal: moderateScale(24),
     borderRadius: moderateScale(12),
     shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: getResponsiveSpacing(4) },
     shadowOpacity: 0.3,
-    shadowRadius: moderateScale(8),
+    shadowRadius: getResponsiveSpacing(8),
     elevation: 8,
   },
   allowButtonText: {
@@ -2217,4 +2302,5 @@ const createStyles = (width: number, height: number, scale: number, moderateScal
     backgroundColor: '#4CAF50',
     borderRadius: moderateScale(2),
   },
-});
+  });
+};
