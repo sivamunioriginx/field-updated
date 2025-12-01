@@ -37,19 +37,7 @@ interface Booking {
   reject_reason?: string;
 }
 
-// Helper function to get responsive values based on screen height
-const getResponsiveValue = (baseValue: number, screenHeight: number) => {
-  // Base height is considered as 800 (typical phone screen)
-  const baseHeight = 800;
-  return (baseValue * screenHeight) / baseHeight;
-};
-
-// Helper function to get responsive values based on screen width
-const getResponsiveWidth = (baseValue: number, screenWidth: number) => {
-  // Base width is considered as 400 (typical phone screen width)
-  const baseWidth = 400;
-  return (baseValue * screenWidth) / baseWidth;
-};
+// Helper functions moved inside createStyles for better responsive scaling
 
 export default function Index() {
   const { width, height } = useWindowDimensions();
@@ -64,7 +52,16 @@ export default function Index() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('notifications');
-  const slideAnim = useRef(new Animated.Value(getResponsiveWidth(300, width))).current;
+  // Calculate menu width responsively - will be updated in useEffect
+  const menuWidth = useMemo(() => {
+    const baseWidth = 375;
+    const scale = (size: number, factor: number = 0.5) => {
+      const scaledSize = (size * width) / baseWidth;
+      return size + (scaledSize - size) * factor;
+    };
+    return Math.max(250, Math.min(350, scale(300, 1)));
+  }, [width]);
+  const slideAnim = useRef(new Animated.Value(menuWidth)).current;
   const isAnimating = useRef(false);
 
   // Create responsive styles based on screen dimensions
@@ -81,9 +78,9 @@ export default function Index() {
   useEffect(() => {
     if (menuClosedByOutside && !menuOpen) {
       // Menu was closed by outside click, ensure it stays closed
-      slideAnim.setValue(getResponsiveWidth(300, width));
+      slideAnim.setValue(menuWidth);
     }
-  }, [menuClosedByOutside, menuOpen, slideAnim, width]);
+  }, [menuClosedByOutside, menuOpen, slideAnim, menuWidth]);
 
   const handleOutsideTouch = () => {
     Keyboard.dismiss();
@@ -121,7 +118,7 @@ export default function Index() {
     
     isAnimating.current = true;
     Animated.timing(slideAnim, {
-      toValue: getResponsiveWidth(300, width),
+      toValue: menuWidth,
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
@@ -143,7 +140,7 @@ export default function Index() {
     isAnimating.current = false;
     
     // Reset animation value to closed position
-    slideAnim.setValue(getResponsiveWidth(300, width));
+    slideAnim.setValue(menuWidth);
   };
 
   const handleEditProfile = () => {
@@ -550,7 +547,7 @@ export default function Index() {
   if (!isAuthenticated) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, color: '#666' }}>Redirecting to login...</Text>
+        <Text style={styles.loadingRedirectText}>Redirecting to login...</Text>
       </View>
     );
   }
@@ -572,15 +569,22 @@ export default function Index() {
         <TouchableWithoutFeedback onPress={menuOpen ? forceCloseMenu : undefined}>
           <View style={styles.headerContainer}>
             <TouchableOpacity style={styles.backButton} onPress={() => router.push('/(tabs)')}>
-              <Ionicons name="arrow-back" size={28} color="black" />
+              <Ionicons name="arrow-back" size={styles.iconSize} color="black" />
             </TouchableOpacity>
-            <Image
-              source={require('@/assets/images/OriginX.png')}
-              style={styles.mainlogo}
-              contentFit="contain"
-            />
-            <TouchableOpacity style={styles.personButton} onPress={toggleMenu}>
-              <Ionicons style={styles.personicon} name="person-circle-outline" size={28} color="black" />
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('@/assets/images/OriginX.png')}
+                style={styles.mainlogo}
+                contentFit="contain"
+              />
+            </View>
+            <TouchableOpacity 
+              style={styles.personButton} 
+              onPress={toggleMenu}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="person-circle-outline" size={styles.iconSize} color="black" />
             </TouchableOpacity>
           </View>
         </TouchableWithoutFeedback>
@@ -605,7 +609,7 @@ export default function Index() {
               <View style={styles.bookingsSection}>
                 <View style={styles.bookingsHeader}>
                   <View style={styles.bookingsTitleContainer}>
-                    <Ionicons name="notifications" size={24} color="#3498db" />
+                    <Ionicons name="notifications" size={styles.titleIconSize} color="#3498db" />
                     <Text style={styles.bookingsTitle}>
                       {activeTab === 'notifications' ? 'All Notifications' : 'Total Bookings'}
                     </Text>
@@ -632,7 +636,7 @@ export default function Index() {
                           <View style={styles.bookingIdContainer}>
                             <Ionicons 
                               name={getStatusIcon(booking.status)} 
-                              size={20} 
+                              size={styles.statusIconSize} 
                               color={getStatusColor(booking.status)} 
                             />
                             <Text style={styles.bookingId}>#{booking.booking_id}</Text>
@@ -660,7 +664,7 @@ export default function Index() {
                           // For pending bookings (status = 0) - show minimal info
                           <View style={styles.pendingBookingContent}>
                             <View style={styles.bookingRow}>
-                              <Ionicons name="calendar" size={16} color="#666" />
+                              <Ionicons name="calendar" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Booking For: </Text>
                               <Text style={styles.bookingValue}>
                                 {new Date(booking.booking_time).toLocaleString("en-GB", {
@@ -685,7 +689,7 @@ export default function Index() {
                           // For rejected/cancelled bookings (status = 3) - show worker and reject reason only
                           <View style={styles.rejectedBookingContent}>
                             <View style={styles.bookingRow}>
-                              <Ionicons name="person" size={16} color="#666" />
+                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Worker: </Text>
                               <Text style={styles.bookingValue}>
                                 {booking.worker_name || `Worker #${booking.worker_id}`}
@@ -696,7 +700,7 @@ export default function Index() {
                             {booking.reject_reason && (
                               <View style={styles.rejectReasonContainer}>
                                 <View style={styles.bookingRow}>
-                                  <Ionicons name="close-circle" size={16} color="#ef4444" />
+                                  <Ionicons name="close-circle" size={styles.smallIconSize} color="#ef4444" />
                                   <Text style={styles.bookingLabel}>Reject Reason: </Text>
                                   <Text style={styles.rejectReasonText}>
                                     {booking.reject_reason}
@@ -715,7 +719,7 @@ export default function Index() {
                           // For all other statuses (1, 2) - show full details
                           <View style={styles.bookingDetails}>
                             <View style={styles.bookingRow}>
-                              <Ionicons name="person" size={16} color="#666" />
+                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Worker: </Text>
                               <Text style={styles.bookingValue}>
                                 {booking.worker_name || `Worker #${booking.worker_id}`}
@@ -723,7 +727,7 @@ export default function Index() {
                             </View>
                             
                             <View style={styles.bookingRow}>
-                              <Ionicons name="call" size={16} color="#666" />
+                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Contact: </Text>
                               <Text style={styles.bookingValue}>
                                 {booking.worker_mobile || 'N/A'}
@@ -731,7 +735,7 @@ export default function Index() {
                             </View>
                             
                             <View style={styles.bookingRow}>
-                              <Ionicons name="time" size={16} color="#666" />
+                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Booking For: </Text>
                               <Text style={styles.bookingValue}>
                                 {new Date(booking.created_at).toLocaleString("en-GB", {
@@ -759,7 +763,7 @@ export default function Index() {
                   </View>
                 ) : (
                   <View style={styles.noBookings}>
-                    <Ionicons name="checkmark-circle" size={48} color="#e5e7eb" />
+                    <Ionicons name="checkmark-circle" size={styles.emptyIconSize} color="#e5e7eb" />
                     <Text style={styles.noBookingsText}>No {activeTab === 'notifications' ? 'notifications' : 'bookings'}</Text>
                     <Text style={styles.noBookingsSubtext}>
                       {serviceSeeker?.id ? 'You\'re all caught up!' : 'Service seeker data not loaded'}
@@ -780,7 +784,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="notifications" 
-                size={24} 
+                size={styles.bottomNavIconSize} 
                 color={activeTab === 'notifications' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -797,7 +801,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="list" 
-                size={24} 
+                size={styles.bottomNavIconSize} 
                 color={activeTab === 'totalBookings' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -814,14 +818,14 @@ export default function Index() {
             >
               <Ionicons 
                 name="card" 
-                size={24} 
+                size={styles.bottomNavIconSize} 
                 color={activeTab === 'paymentHistory' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
                 styles.bottomNavText,
                 activeTab === 'paymentHistory' && styles.bottomNavTextActive
               ]}>
-                Payment History
+                Payment
               </Text>
             </TouchableOpacity>
             
@@ -831,7 +835,7 @@ export default function Index() {
             >
               <Ionicons 
                 name="headset" 
-                size={24} 
+                size={styles.bottomNavIconSize} 
                 color={activeTab === 'customerCare' ? '#4CAF50' : '#9CA3AF'} 
               />
               <Text style={[
@@ -896,18 +900,18 @@ export default function Index() {
               <View style={styles.menuItems}>
                 <TouchableOpacity style={styles.menuItem} onPress={handleEditProfile}>
                   <View style={styles.menuItemIcon}>
-                    <Ionicons name="create-outline" size={24} color="#3498db" />
+                    <Ionicons name="create-outline" size={styles.menuIconSize} color="#3498db" />
                   </View>
                   <Text style={styles.menuText}>Edit Profile</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Ionicons name="chevron-forward" size={styles.chevronIconSize} color="#9ca3af" />
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
                   <View style={styles.menuItemIcon}>
-                    <Ionicons name="log-out-outline" size={24} color="#ef4444" />
+                    <Ionicons name="log-out-outline" size={styles.menuIconSize} color="#ef4444" />
                   </View>
                   <Text style={styles.menuText}>Logout</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Ionicons name="chevron-forward" size={styles.chevronIconSize} color="#9ca3af" />
                 </TouchableOpacity>
               </View>
 
@@ -925,388 +929,494 @@ export default function Index() {
   );
 }
 
-const createStyles = (screenHeight: number, screenWidth: number) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  innerContainer: {
-    padding: getResponsiveValue(20, screenHeight),
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: getResponsiveValue(100, screenHeight), // Add padding to ensure content doesn't get hidden behind bottom navigation
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: getResponsiveWidth(10, screenWidth),
-    paddingTop: getResponsiveValue(45, screenHeight),
-    paddingBottom: getResponsiveValue(6, screenHeight),
-    backgroundColor: '#A1CEDC',
-    marginTop: getResponsiveValue(-40, screenHeight),
-  },
-  menuButton: {
-    padding: getResponsiveValue(5, screenHeight),
-  },
-  menuicon: {
-    marginRight: getResponsiveWidth(10, screenWidth),
-  },
-  backButton: {
-    padding: getResponsiveValue(5, screenHeight),
-  },
-  mainlogo: {
-    height: getResponsiveValue(50, screenHeight),
-    width: getResponsiveWidth(180, screenWidth),
-    marginRight: getResponsiveWidth(140, screenWidth),
-  },
-  personButton: {
-    padding: getResponsiveValue(5, screenHeight),
-  },
-  personicon: {
-    marginLeft: -25, 
-  },
-  // Sliding Menu Styles
-  menuContainer: {
-    position: 'absolute',
-    top: -40,
-    right: 0,
-    height: screenHeight, // Use full screen height
-    width: getResponsiveWidth(300, screenWidth),
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: -4, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    borderTopLeftRadius: getResponsiveValue(20, screenHeight),
-    borderBottomLeftRadius: getResponsiveValue(20, screenHeight),
-    zIndex: 1001, // Higher than bottom navigation (1000)
-  },
-  menuContent: {
-    flex: 1,
-    paddingTop: getResponsiveValue(60, screenHeight),
-  },
-  profileSection: {
-    alignItems: 'center',
-    paddingVertical: getResponsiveValue(20, screenHeight),
-    paddingHorizontal: getResponsiveWidth(20, screenWidth),
-    backgroundColor: '#667eea',
-    borderTopLeftRadius: getResponsiveValue(20, screenHeight),
-    position: 'relative',
-    overflow: 'hidden',
-    marginTop: getResponsiveValue(-60, screenHeight),
-  },
-  profileImageContainer: {
-    position: 'relative',
-    marginBottom: getResponsiveValue(5, screenHeight),
-    marginTop: getResponsiveValue(40, screenHeight),
-  },
-  profileImage: {
-    width: getResponsiveValue(100, screenHeight),
-    height: getResponsiveValue(100, screenHeight),
-    borderRadius: getResponsiveValue(50, screenHeight),
-    borderWidth: 4,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  profileImagePlaceholder: {
-    width: getResponsiveValue(100, screenHeight),
-    height: getResponsiveValue(100, screenHeight),
-    borderRadius: getResponsiveValue(50, screenHeight),
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  profileInitials: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  serviceSeekerName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: getResponsiveValue(5, screenHeight),
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginHorizontal: getResponsiveWidth(20, screenWidth),
-    marginVertical: getResponsiveValue(10, screenHeight),
-  },
-  menuItems: {
-    flex: 1,
-    paddingHorizontal: getResponsiveWidth(20, screenWidth),
-    paddingTop: getResponsiveValue(20, screenHeight),
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: getResponsiveValue(18, screenHeight),
-    paddingHorizontal: getResponsiveWidth(16, screenWidth),
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    borderRadius: getResponsiveValue(12, screenHeight),
-    marginBottom: getResponsiveValue(8, screenHeight),
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  menuItemIcon: {
-    marginRight: getResponsiveWidth(12, screenWidth),
-    width: getResponsiveValue(40, screenHeight),
-    height: getResponsiveValue(40, screenHeight),
-    borderRadius: getResponsiveValue(20, screenHeight),
-    backgroundColor: '#fef2f2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  menuText: {
-    fontSize: 16,
-    color: '#374151',
-    flex: 1,
-    fontWeight: '500',
-  },
-  bottomSection: {
-    paddingHorizontal: getResponsiveWidth(20, screenWidth),
-    paddingBottom: getResponsiveValue(30, screenHeight),
-    paddingTop: getResponsiveValue(20, screenHeight),
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    marginTop: 'auto',
-  },
-  versionInfo: {
-    alignItems: 'center',
-    paddingVertical: getResponsiveValue(15, screenHeight),
-    backgroundColor: '#f8fafc',
-    borderRadius: getResponsiveValue(12, screenHeight),
-  },
-  versionText: {
-    fontSize: 12,
-    color: '#9ca3af',
-    fontWeight: '500',
-  },
-  // New styles for bookings and bottom navigation
-  bookingsSection: {
-    marginTop: getResponsiveValue(2, screenHeight),
-  },
-  bookingsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: getResponsiveValue(10, screenHeight),
-    marginTop: getResponsiveValue(-10, screenHeight),
-  },
-  bookingsTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: getResponsiveWidth(90, screenWidth),
-  },
-  bookingsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginLeft: getResponsiveWidth(10, screenWidth),
-  },
-  bookingsActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bookingCount: {
-    backgroundColor: '#3498db',
-    borderRadius: getResponsiveValue(15, screenHeight),
-    paddingHorizontal: getResponsiveWidth(10, screenWidth),
-    paddingVertical: getResponsiveValue(5, screenHeight),
-    marginRight: getResponsiveWidth(20, screenWidth),
-  },
-  bookingCountText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: getResponsiveValue(30, screenHeight),
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  bookingsList: {
-    gap: getResponsiveValue(15, screenHeight),
-  },
-  bookingCard: {
-    backgroundColor: '#ebeef1ff',
-    borderRadius: getResponsiveValue(10, screenHeight),
-    padding: getResponsiveValue(15, screenHeight),
-    marginBottom: getResponsiveValue(-5, screenHeight),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    marginLeft: getResponsiveWidth(-5, screenWidth),
-    marginRight: getResponsiveWidth(-5, screenWidth),
-  },
-  bookingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: getResponsiveValue(12, screenHeight),
-  },
+const createStyles = (screenHeight: number, screenWidth: number) => {
+  // Base dimensions for better scaling (using standard mobile dimensions)
+  const baseWidth = 375; // iPhone standard - better scaling base
+  const baseHeight = 812; // iPhone standard - better scaling base
   
-  bookingIdContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: getResponsiveWidth(8, screenWidth),
-  },
-  
-  bookingId: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  
-  statusBadge: {
-    paddingHorizontal: getResponsiveWidth(8, screenWidth),
-    paddingVertical: getResponsiveValue(4, screenHeight),
-    borderRadius: getResponsiveValue(6, screenHeight),
-  },
-  
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  
-  // New styles for pending booking content
-  pendingBookingContent: {
-    gap: getResponsiveValue(8, screenHeight),
-  },
-  
-  bookingDetails: {
-    gap: getResponsiveValue(8, screenHeight),
-  },
-  bookingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bookingLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: getResponsiveWidth(5, screenWidth),
-  },
-  bookingValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  statusInfoContainer: {
-    alignItems: 'center',
-    paddingVertical: getResponsiveValue(12, screenHeight),
-    backgroundColor: '#f8f9fa',
-    borderRadius: getResponsiveValue(8, screenHeight),
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    marginTop: getResponsiveValue(8, screenHeight),
-  },
-  statusInfoText: {
-    fontSize: 14,
-    color: '#6c757d',
-    fontStyle: 'italic',
-    textAlign: 'center',
-  },
-  noBookings: {
-    alignItems: 'center',
-    paddingVertical: getResponsiveValue(30, screenHeight),
-  },
-  noBookingsText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: getResponsiveValue(10, screenHeight),
-  },
-  noBookingsSubtext: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: getResponsiveValue(5, screenHeight),
-  },
-  bottomNavigation: {
-    position: 'absolute', // Make it absolutely positioned
-    bottom: 0, // Always at bottom
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingVertical: getResponsiveValue(15, screenHeight),
-    paddingHorizontal: getResponsiveWidth(20, screenWidth),
-    justifyContent: 'space-around',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: getResponsiveValue(-2, screenHeight) },
-    shadowOpacity: 0.05,
-    shadowRadius: getResponsiveValue(4, screenHeight),
-    elevation: 8,
-    zIndex: 1000, // Ensure it's above other content
-  },
-  bottomNavItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  bottomNavText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: getResponsiveValue(5, screenHeight),
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  bottomNavTextActive: {
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  // New styles for rejected booking content
-  rejectedBookingContent: {
-    gap: getResponsiveValue(8, screenHeight),
-  },
-  
-  rejectReasonContainer: {
-    backgroundColor: '#fef2f2',
-    borderRadius: getResponsiveValue(8, screenHeight),
-    padding: getResponsiveValue(12, screenHeight),
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    marginTop: getResponsiveValue(8, screenHeight),
-  },
-  
-  rejectReasonText: {
-    fontSize: 14,
-    color: '#dc2626',
-    fontWeight: '500',
-    flex: 1,
-  },
-  // Menu backdrop style
-  menuBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 1000, // Below menu but above everything else
-  },
-});
+  // Moderate scale function to prevent extreme sizes
+  const scale = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * factor;
+  };
+
+  const scaleHeight = (size: number, factor: number = 0.5) => {
+    const scaledSize = (size * screenHeight) / baseHeight;
+    return size + (scaledSize - size) * factor;
+  };
+
+  // Helper function to get responsive values based on screen height with min/max constraints
+  const getResponsiveValue = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scaleHeight(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive values based on screen width with min/max constraints
+  const getResponsiveWidth = (baseValue: number, minValue?: number, maxValue?: number) => {
+    const scaledValue = scale(baseValue, 1);
+    if (minValue !== undefined && scaledValue < minValue) return minValue;
+    if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+    return scaledValue;
+  };
+
+  // Helper function to get responsive font sizes with moderate scaling
+  const getResponsiveFontSize = (baseSize: number) => {
+    const scaledSize = scale(baseSize, 0.5);
+    return Math.max(10, Math.min(28, scaledSize));
+  };
+
+  // Helper function to get responsive padding/margins with moderate scaling
+  const getResponsiveSpacing = (baseSpacing: number) => {
+    return Math.max(2, scale(baseSpacing, 0.5));
+  };
+
+  // Helper function to get responsive spacing that supports negative values
+  const getResponsiveSpacingWithNegative = (baseSpacing: number) => {
+    return scale(baseSpacing, 0.5);
+  };
+
+  // Calculate responsive icon sizes
+  const moderateScale = (size: number) => {
+    const scaledSize = (size * screenWidth) / baseWidth;
+    return size + (scaledSize - size) * 0.5;
+  };
+
+  // Icon sizes
+  const iconSize = Math.max(24, Math.min(32, moderateScale(28)));
+  const titleIconSize = Math.max(20, Math.min(28, moderateScale(24)));
+  const statusIconSize = Math.max(16, Math.min(24, moderateScale(20)));
+  const smallIconSize = Math.max(14, Math.min(20, moderateScale(16)));
+  const bottomNavIconSize = Math.max(20, Math.min(28, moderateScale(24)));
+  const menuIconSize = Math.max(20, Math.min(28, moderateScale(24)));
+  const chevronIconSize = Math.max(14, Math.min(20, moderateScale(16)));
+  const emptyIconSize = Math.max(40, Math.min(56, moderateScale(48)));
+
+  // Calculate menu width responsively
+  const menuWidth = Math.max(250, Math.min(350, scale(300, 1)));
+
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#f8f9fa',
+    },
+    loadingRedirectText: {
+      fontSize: getResponsiveFontSize(18),
+      color: '#666',
+    },
+    innerContainer: {
+      padding: getResponsiveSpacing(20),
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollViewContent: {
+      flexGrow: 1,
+      paddingBottom: getResponsiveValue(100, 80, 120), // Add padding to ensure content doesn't get hidden behind bottom navigation
+    },
+    headerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: getResponsiveWidth(10, 8, 16),
+      paddingTop: getResponsiveValue(39, 32, 46),
+      paddingBottom: getResponsiveValue(4, 3, 6),
+      backgroundColor: '#A1CEDC',
+      marginTop: getResponsiveValue(-40, -50, -30),
+      position: 'relative',
+    },
+    menuButton: {
+      padding: getResponsiveSpacing(5),
+    },
+    menuicon: {
+      marginRight: getResponsiveSpacing(10),
+    },
+    backButton: {
+      padding: getResponsiveSpacing(5),
+      minWidth: getResponsiveValue(44, 40, 48),
+      minHeight: getResponsiveValue(44, 40, 48),
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    logoContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: getResponsiveSpacingWithNegative(-85),
+    },
+    mainlogo: {
+      height: getResponsiveValue(50, 40, 60),
+      width: getResponsiveWidth(180, 150, 220),
+    },
+    personButton: {
+      padding: getResponsiveSpacing(5),
+      minWidth: getResponsiveValue(44, 40, 48),
+      minHeight: getResponsiveValue(44, 40, 48),
+      justifyContent: 'center',
+      alignItems: 'center',
+      alignSelf: 'flex-end',
+    },
+    // Sliding Menu Styles
+    menuContainer: {
+      position: 'absolute',
+      top: getResponsiveValue(-40, -50, -30),
+      right: 0,
+      height: screenHeight, // Use full screen height
+      width: menuWidth,
+      backgroundColor: '#ffffff',
+      shadowColor: '#000',
+      shadowOffset: { width: -4, height: 0 },
+      shadowOpacity: 0.15,
+      shadowRadius: getResponsiveSpacing(12),
+      elevation: 8,
+      borderTopLeftRadius: getResponsiveValue(20, 15, 25),
+      borderBottomLeftRadius: getResponsiveValue(20, 15, 25),
+      zIndex: 1001, // Higher than bottom navigation (1000)
+    },
+    menuContent: {
+      flex: 1,
+      paddingTop: getResponsiveValue(60, 50, 70),
+    },
+    profileSection: {
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(20, 15, 25),
+      paddingHorizontal: getResponsiveWidth(20, 16, 24),
+      backgroundColor: '#667eea',
+      borderTopLeftRadius: getResponsiveValue(20, 15, 25),
+      position: 'relative',
+      overflow: 'hidden',
+      marginTop: getResponsiveValue(-60, -70, -50),
+    },
+    profileImageContainer: {
+      position: 'relative',
+      marginBottom: getResponsiveSpacing(5),
+      marginTop: getResponsiveValue(40, 35, 45),
+    },
+    profileImage: {
+      width: getResponsiveValue(100, 80, 120),
+      height: getResponsiveValue(100, 80, 120),
+      borderRadius: getResponsiveValue(50, 40, 60),
+      borderWidth: 4,
+      borderColor: 'rgba(255,255,255,0.3)',
+    },
+    profileImagePlaceholder: {
+      width: getResponsiveValue(100, 80, 120),
+      height: getResponsiveValue(100, 80, 120),
+      borderRadius: getResponsiveValue(50, 40, 60),
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 4,
+      borderColor: 'rgba(255,255,255,0.3)',
+    },
+    profileInitials: {
+      fontSize: getResponsiveFontSize(36),
+      fontWeight: 'bold',
+      color: '#ffffff',
+    },
+    serviceSeekerName: {
+      fontSize: getResponsiveFontSize(22),
+      fontWeight: 'bold',
+      color: '#ffffff',
+      marginBottom: getResponsiveSpacing(5),
+      textShadowColor: 'rgba(0,0,0,0.1)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 2,
+    },
+    menuDivider: {
+      height: 1,
+      backgroundColor: '#f1f5f9',
+      marginHorizontal: getResponsiveWidth(20, 16, 24),
+      marginVertical: getResponsiveSpacing(10),
+    },
+    menuItems: {
+      flex: 1,
+      paddingHorizontal: getResponsiveWidth(20, 16, 24),
+      paddingTop: getResponsiveValue(20, 15, 25),
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: getResponsiveValue(18, 15, 22),
+      paddingHorizontal: getResponsiveWidth(16, 12, 20),
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+      borderRadius: getResponsiveValue(12, 10, 15),
+      marginBottom: getResponsiveSpacing(8),
+      backgroundColor: '#ffffff',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    menuItemIcon: {
+      marginRight: getResponsiveSpacing(12),
+      width: getResponsiveValue(40, 35, 45),
+      height: getResponsiveValue(40, 35, 45),
+      borderRadius: getResponsiveValue(20, 17, 22),
+      backgroundColor: '#fef2f2',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    menuText: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#374151',
+      flex: 1,
+      fontWeight: '500',
+    },
+    bottomSection: {
+      paddingHorizontal: getResponsiveWidth(20, 16, 24),
+      paddingBottom: getResponsiveValue(30, 25, 35),
+      paddingTop: getResponsiveValue(20, 15, 25),
+      borderTopWidth: 1,
+      borderTopColor: '#f1f5f9',
+      marginTop: 'auto',
+    },
+    versionInfo: {
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(15, 12, 18),
+      backgroundColor: '#f8fafc',
+      borderRadius: getResponsiveValue(12, 10, 15),
+    },
+    versionText: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#9ca3af',
+      fontWeight: '500',
+    },
+    // New styles for bookings and bottom navigation
+    bookingsSection: {
+      marginTop: getResponsiveSpacing(2),
+    },
+    bookingsHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: getResponsiveSpacing(10),
+      marginTop: getResponsiveSpacingWithNegative(-10),
+    },
+    bookingsTitleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: getResponsiveWidth(90, 70, 110),
+    },
+    bookingsTitle: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: 'bold',
+      color: '#333',
+      marginLeft: getResponsiveSpacing(10),
+    },
+    bookingsActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    bookingCount: {
+      backgroundColor: '#3498db',
+      borderRadius: getResponsiveValue(15, 12, 18),
+      paddingHorizontal: getResponsiveWidth(10, 8, 12),
+      paddingVertical: getResponsiveSpacing(5),
+      marginRight: getResponsiveWidth(20, 16, 24),
+    },
+    bookingCountText: {
+      color: '#ffffff',
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: 'bold',
+    },
+    loadingContainer: {
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(30, 25, 35),
+    },
+    loadingText: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#666',
+    },
+    bookingsList: {
+      gap: getResponsiveSpacing(15),
+    },
+    bookingCard: {
+      backgroundColor: '#ebeef1ff',
+      borderRadius: getResponsiveValue(10, 8, 12),
+      padding: getResponsiveSpacing(15),
+      marginBottom: getResponsiveSpacingWithNegative(-5),
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+      marginLeft: getResponsiveSpacingWithNegative(-5),
+      marginRight: getResponsiveSpacingWithNegative(-5),
+    },
+    bookingHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: getResponsiveSpacing(12),
+    },
+    
+    bookingIdContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(8),
+    },
+    
+    bookingId: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: 'bold',
+      color: '#333',
+    },
+    
+    statusBadge: {
+      paddingHorizontal: getResponsiveSpacing(8),
+      paddingVertical: getResponsiveSpacing(4),
+      borderRadius: getResponsiveValue(6, 5, 8),
+    },
+    
+    statusText: {
+      fontSize: getResponsiveFontSize(12),
+      fontWeight: '600',
+    },
+    
+    // New styles for pending booking content
+    pendingBookingContent: {
+      gap: getResponsiveSpacing(8),
+    },
+    
+    bookingDetails: {
+      gap: getResponsiveSpacing(8),
+    },
+    bookingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    bookingLabel: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+      marginLeft: getResponsiveSpacing(5),
+    },
+    bookingValue: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#333',
+      fontWeight: '500',
+    },
+    statusInfoContainer: {
+      alignItems: 'center',
+      paddingVertical: getResponsiveSpacing(12),
+      backgroundColor: '#f8f9fa',
+      borderRadius: getResponsiveValue(8, 6, 10),
+      borderWidth: 1,
+      borderColor: '#e9ecef',
+      marginTop: getResponsiveSpacing(8),
+    },
+    statusInfoText: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#6c757d',
+      fontStyle: 'italic',
+      textAlign: 'center',
+    },
+    noBookings: {
+      alignItems: 'center',
+      paddingVertical: getResponsiveValue(30, 25, 35),
+    },
+    noBookingsText: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: 'bold',
+      color: '#333',
+      marginTop: getResponsiveSpacing(10),
+    },
+    noBookingsSubtext: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#666',
+      marginTop: getResponsiveSpacing(5),
+    },
+    bottomNavigation: {
+      position: 'absolute', // Make it absolutely positioned
+      bottom: 0, // Always at bottom
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      backgroundColor: '#ffffff',
+      borderTopWidth: 1,
+      borderTopColor: '#e5e7eb',
+      paddingVertical: getResponsiveValue(4, 2, 6),
+      paddingHorizontal: getResponsiveWidth(20, 16, 24),
+      justifyContent: 'space-around',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: getResponsiveSpacingWithNegative(-2) },
+      shadowOpacity: 0.05,
+      shadowRadius: getResponsiveSpacing(4),
+      elevation: 8,
+      zIndex: 1000, // Ensure it's above other content
+    },
+    bottomNavItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    bottomNavText: {
+      fontSize: getResponsiveFontSize(12),
+      color: '#9CA3AF',
+      marginTop: getResponsiveSpacing(1),
+      fontWeight: '500',
+      textAlign: 'center',
+    },
+    bottomNavTextActive: {
+      color: '#4CAF50',
+      fontWeight: '600',
+    },
+    // New styles for rejected booking content
+    rejectedBookingContent: {
+      gap: getResponsiveSpacing(8),
+    },
+    
+    rejectReasonContainer: {
+      backgroundColor: '#fef2f2',
+      borderRadius: getResponsiveValue(8, 6, 10),
+      padding: getResponsiveSpacing(12),
+      borderWidth: 1,
+      borderColor: '#fecaca',
+      marginTop: getResponsiveSpacing(8),
+    },
+    
+    rejectReasonText: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#dc2626',
+      fontWeight: '500',
+      flex: 1,
+    },
+    // Menu backdrop style
+    menuBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: '100%',
+      height: '100%',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      zIndex: 1000, // Below menu but above everything else
+    },
+  });
+
+  // Return styles with icon sizes as additional properties
+  return {
+    ...styles,
+    iconSize,
+    titleIconSize,
+    statusIconSize,
+    smallIconSize,
+    bottomNavIconSize,
+    menuIconSize,
+    chevronIconSize,
+    emptyIconSize,
+  } as typeof styles & {
+    iconSize: number;
+    titleIconSize: number;
+    statusIconSize: number;
+    smallIconSize: number;
+    bottomNavIconSize: number;
+    menuIconSize: number;
+    chevronIconSize: number;
+    emptyIconSize: number;
+  };
+};
