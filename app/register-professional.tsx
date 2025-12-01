@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { router, Stack } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -42,12 +42,61 @@ interface Skill {
 }
 
 export default function RegisterProfessionalScreen() {
-  const { width, height } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
-  // Responsive scaling functions
-  const scale = (size: number) => (width / 375) * size; // Base width: 375 (iPhone X)
-  const verticalScale = (size: number) => (height / 812) * size; // Base height: 812 (iPhone X)
-  const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
+  // Responsive helper functions (memoized for performance)
+  const responsiveHelpers = useMemo(() => {
+    // Base dimensions for better scaling
+    const baseWidth = 375; // iPhone standard
+    const baseHeight = 812; // iPhone standard
+    
+    // Moderate scale function to prevent extreme sizes
+    const moderateScale = (size: number, factor: number = 0.5) => {
+      const scaledSize = (size * screenWidth) / baseWidth;
+      return size + (scaledSize - size) * factor;
+    };
+    
+    const scale = (size: number, factor: number = 0.5) => {
+      const scaledSize = (size * screenWidth) / baseWidth;
+      return size + (scaledSize - size) * factor;
+    };
+    
+    const scaleHeight = (size: number, factor: number = 0.5) => {
+      const scaledSize = (size * screenHeight) / baseHeight;
+      return size + (scaledSize - size) * factor;
+    };
+    
+    const getResponsiveFontSize = (baseSize: number) => {
+      const scaledSize = scale(baseSize, 0.5);
+      return Math.max(10, Math.min(28, scaledSize));
+    };
+    
+    const getResponsiveSpacing = (baseSpacing: number) => {
+      return Math.max(2, scale(baseSpacing, 0.5));
+    };
+    
+    const getResponsiveValue = (baseValue: number, minValue?: number, maxValue?: number) => {
+      const scaledValue = scaleHeight(baseValue, 1);
+      if (minValue !== undefined && scaledValue < minValue) return minValue;
+      if (maxValue !== undefined && scaledValue > maxValue) return maxValue;
+      return scaledValue;
+    };
+    
+    return {
+      moderateScale,
+      scale,
+      scaleHeight,
+      getResponsiveFontSize,
+      getResponsiveSpacing,
+      getResponsiveValue,
+    };
+  }, [screenWidth, screenHeight]);
+  
+  // Destructure helpers for easier use in JSX
+  const { moderateScale, scale, scaleHeight } = responsiveHelpers;
+  
+  // Create responsive styles based on screen dimensions
+  const styles = useMemo(() => createStyles(screenHeight, screenWidth, responsiveHelpers), [screenHeight, screenWidth, responsiveHelpers]);
   
   // Form state
   const [name, setName] = useState('');
@@ -175,11 +224,14 @@ export default function RegisterProfessionalScreen() {
         // Use your backend IP or localhost if running on emulator
         const response = await fetch(API_ENDPOINTS.CATEGORIES);
         const result = await response.json();
-        if (result.success) {
-          setSkillsData(result.data.map((cat: any) => ({
+        if (result.success && result.data && Array.isArray(result.data)) {
+          const mappedSkills = result.data.map((cat: any) => ({
             id: cat.id,
-            name: cat.name,
-          })));
+            name: cat.title
+          }));
+          setSkillsData(mappedSkills);
+        } else {
+          console.warn('Categories API returned unsuccessful or no data:', result);
         }
       } catch (error) {
         console.error('Error fetching categories:', error);
@@ -969,7 +1021,13 @@ export default function RegisterProfessionalScreen() {
     if (!visible || suggestions.length === 0) return null;
     return (
       <View style={[styles.suggestionDropdown, style]}>
-        <ScrollView style={styles.suggestionList} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
+        <ScrollView 
+          style={styles.suggestionList} 
+          nestedScrollEnabled={true} 
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+          bounces={false}
+        >
           {suggestions.map((suggestion: Suggestion) => (
             <TouchableOpacity
               key={suggestion.id}
@@ -1146,7 +1204,7 @@ export default function RegisterProfessionalScreen() {
       {/* Location Field */}
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Location *</Text>
-        <View style={{ position: 'relative' }}>
+        <View style={styles.locationInputWrapper}>
           <View style={styles.inputWrapper}>
             <Ionicons name="location-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
             <TextInput
@@ -1177,7 +1235,7 @@ export default function RegisterProfessionalScreen() {
             visible={showLocationModal}
             suggestions={locationSuggestions}
             onSelect={selectLocationSuggestion}
-            style={{ position: 'absolute', top: moderateScale(55), left: 0, right: 0, zIndex: 10 }}
+            style={styles.suggestionDropdownWrapper}
           />
         </View>
         {locationError ? (
@@ -1206,532 +1264,7 @@ export default function RegisterProfessionalScreen() {
     </View>
   );
 
-  // Responsive styles
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: '#f8f9fa',
-    },
-    scrollView: {
-      flex: 1,
-    },
-    headerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: '3%',
-      paddingTop: moderateScale(10),
-      paddingBottom: moderateScale(10),
-      backgroundColor: '#A1CEDC',
-    },
-    menuButton: {
-      padding: moderateScale(5),
-    },
-    mainlogo: {
-      height: moderateScale(45),
-      width: '45%',
-      maxWidth: moderateScale(180),
-      marginRight: '50%',
-    },
-    menuicon: {
-      marginRight: moderateScale(10),
-    },
-    progressContainer: {
-      paddingHorizontal: '5%',
-      paddingVertical: verticalScale(15),
-      backgroundColor: '#f8f9fa',
-    },
-    progressBar: {
-      height: moderateScale(4),
-      backgroundColor: '#e0e0e0',
-      borderRadius: moderateScale(2),
-      marginBottom: verticalScale(8),
-    },
-    progressFill: {
-      height: '100%',
-      backgroundColor: '#A1CEDC',
-      borderRadius: moderateScale(2),
-    },
-    progressText: {
-      fontSize: moderateScale(13),
-      color: '#666',
-      textAlign: 'center',
-    },
-    logoContainer: {
-      alignItems: 'center',
-      paddingVertical: verticalScale(10),
-      marginTop: verticalScale(-20),
-      marginBottom: verticalScale(7),
-    },
-    logoSubtitle: {
-      fontSize: moderateScale(18),
-      color: '#2c3e50',
-      fontStyle: 'italic',
-      fontWeight: 'bold'
-    },
-    formContainer: {
-      paddingHorizontal: '5%',
-      paddingVertical: verticalScale(25),
-      backgroundColor: '#f8f9fa',
-    },
-    profilePhotoContainer: {
-      alignItems: 'center',
-      marginBottom: verticalScale(5),
-      marginTop: verticalScale(-45),
-    },
-    profilePhotoButton: {
-      width: moderateScale(95),
-      height: moderateScale(95),
-      borderRadius: moderateScale(48),
-      overflow: 'hidden',
-      borderWidth: moderateScale(3),
-      borderColor: '#A1CEDC',
-      backgroundColor: '#fff',
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: moderateScale(4),
-      },
-      shadowOpacity: 0.2,
-      shadowRadius: moderateScale(8),
-      elevation: 8,
-    },
-    profilePhoto: {
-      width: '100%',
-      height: '100%',
-    },
-    profilePhotoPlaceholder: {
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    profilePhotoText: {
-      fontSize: moderateScale(11),
-      color: '#A1CEDC',
-      marginTop: verticalScale(5),
-      fontWeight: '600',
-    },
-    inputContainer: {
-      marginBottom: verticalScale(15),
-    },
-    inputLabel: {
-      fontSize: moderateScale(16),
-      fontWeight: '600',
-      color: '#2c3e50',
-      marginBottom: verticalScale(8),
-    },
-    inputWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#fff',
-      borderRadius: moderateScale(15),
-      paddingHorizontal: scale(15),
-      borderWidth: moderateScale(2),
-      borderColor: '#A1CEDC',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: moderateScale(2),
-      },
-      shadowOpacity: 0.1,
-      shadowRadius: moderateScale(4),
-      elevation: 3,
-    },
-    inputIcon: {
-      marginRight: scale(10),
-    },
-    input: {
-      flex: 1,
-      height: moderateScale(50),
-      fontSize: moderateScale(16),
-      color: '#2c3e50',
-    },
-    nextButton: {
-      backgroundColor: '#A1CEDC',
-      borderRadius: moderateScale(15),
-      paddingVertical: verticalScale(18),
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: verticalScale(20),
-      shadowColor: '#A1CEDC',
-      shadowOffset: {
-        width: 0,
-        height: moderateScale(6),
-      },
-      shadowOpacity: 0.3,
-      shadowRadius: moderateScale(10),
-      elevation: 8,
-    },
-    nextButtonDisabled: {
-      backgroundColor: '#bdc3c7',
-    },
-    nextButtonText: {
-      color: '#fff',
-      fontSize: moderateScale(18),
-      fontWeight: 'bold',
-      marginRight: scale(8),
-    },
-    backButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#fff',
-      borderRadius: moderateScale(10),
-      paddingVertical: verticalScale(10),
-      paddingHorizontal: scale(15),
-      marginBottom: verticalScale(20),
-      borderWidth: moderateScale(1),
-      borderColor: '#A1CEDC',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: moderateScale(2) },
-      shadowOpacity: 0.1,
-      shadowRadius: moderateScale(4),
-      elevation: 3,
-    },
-    backButtonText: {
-      color: '#A1CEDC',
-      fontSize: moderateScale(16),
-      fontWeight: '600',
-      marginLeft: scale(8),
-    },
-    headerBackButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      position: 'absolute',
-      left: scale(20),
-      top: 0,
-      zIndex: 10,
-      marginTop: verticalScale(15),
-    },
-    headerBackButtonText: {
-      color: '#A1CEDC',
-      fontSize: moderateScale(16),
-      fontWeight: '600',
-      marginLeft: scale(8),
-    },
-    skillsDropdown: {
-      backgroundColor: '#fff',
-      borderRadius: moderateScale(15),
-      borderWidth: moderateScale(2),
-      borderColor: '#A1CEDC',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: moderateScale(2),
-      },
-      shadowOpacity: 0.1,
-      shadowRadius: moderateScale(4),
-      elevation: 3,
-    },
-    skillsDropdownHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: scale(15),
-      paddingVertical: verticalScale(15),
-    },
-    skillsDropdownText: {
-      flex: 1,
-      fontSize: moderateScale(16),
-      color: '#2c3e50',
-      marginLeft: scale(10),
-    },
-    selectedSkillsContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      marginTop: verticalScale(10),
-      gap: moderateScale(8),
-    },
-    selectedSkillTag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#e8f5e8',
-      borderRadius: moderateScale(20),
-      paddingHorizontal: scale(12),
-      paddingVertical: verticalScale(6),
-      borderWidth: moderateScale(1),
-      borderColor: '#27ae60',
-    },
-    selectedSkillText: {
-      fontSize: moderateScale(14),
-      color: '#27ae60',
-      fontWeight: '600',
-      marginRight: scale(5),
-    },
-    skillsDropdownContent: {
-      backgroundColor: '#fff',
-      borderRadius: moderateScale(15),
-      marginTop: verticalScale(5),
-      maxHeight: verticalScale(200),
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: moderateScale(4),
-      },
-      shadowOpacity: 0.15,
-      shadowRadius: moderateScale(8),
-      elevation: 8,
-    },
-    skillsList: {
-      maxHeight: verticalScale(180),
-    },
-    skillItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: scale(15),
-      paddingVertical: verticalScale(12),
-      borderBottomWidth: moderateScale(1),
-      borderBottomColor: '#f0f0f0',
-    },
-    skillText: {
-      fontSize: moderateScale(16),
-      color: '#2c3e50',
-    },
-    uploadOptionsContainer: {
-      marginTop: verticalScale(10),
-      marginBottom: verticalScale(10),
-    },
-    uploadOptionButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#e0f2f7',
-      borderRadius: moderateScale(10),
-      paddingVertical: verticalScale(10),
-      paddingHorizontal: scale(15),
-      borderWidth: moderateScale(1),
-      borderColor: '#a7dbd8',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: moderateScale(2) },
-      shadowOpacity: 0.1,
-      shadowRadius: moderateScale(4),
-      elevation: 3,
-    },
-    uploadOptionText: {
-      marginLeft: scale(10),
-      fontSize: moderateScale(14),
-      color: '#2c3e50',
-      fontWeight: '600',
-    },
-    uploadedDocumentsContainer: {
-      marginTop: verticalScale(10),
-      paddingHorizontal: scale(10),
-    },
-    uploadedDocumentItem: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      backgroundColor: '#f0f0f0',
-      borderRadius: moderateScale(10),
-      paddingVertical: verticalScale(8),
-      paddingHorizontal: scale(12),
-      marginBottom: verticalScale(8),
-    },
-    uploadedDocumentName: {
-      fontSize: moderateScale(14),
-      color: '#2c3e50',
-      flex: 1,
-    },
-    submitButton: {
-      backgroundColor: '#3498db',
-      borderRadius: moderateScale(15),
-      paddingVertical: verticalScale(18),
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: verticalScale(20),
-      shadowColor: '#3498db',
-      shadowOffset: {
-        width: 0,
-        height: moderateScale(6),
-      },
-      shadowOpacity: 0.3,
-      shadowRadius: moderateScale(10),
-      elevation: 8,
-    },
-    submitButtonDisabled: {
-      backgroundColor: '#bdc3c7',
-    },
-    loadingContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    spinningIcon: {
-      marginRight: scale(8),
-    },
-    submitButtonText: {
-      color: '#fff',
-      fontSize: moderateScale(18),
-      fontWeight: 'bold',
-      marginLeft: scale(8),
-    },
-    suggestionDropdown: {
-      backgroundColor: '#fff',
-      borderRadius: moderateScale(15),
-      maxHeight: verticalScale(250),
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: moderateScale(5) },
-      shadowOpacity: 0.3,
-      shadowRadius: moderateScale(10),
-      elevation: 15,
-      borderWidth: moderateScale(1),
-      borderColor: '#e0e0e0',
-      marginTop: verticalScale(2),
-    },
-    suggestionList: {
-      maxHeight: verticalScale(230),
-    },
-    suggestionItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: scale(15),
-      paddingVertical: verticalScale(15),
-      borderBottomWidth: moderateScale(1),
-      borderBottomColor: '#f0f0f0',
-      backgroundColor: '#fff',
-    },
-    suggestionTextContainer: {
-      marginLeft: scale(10),
-      flex: 1,
-    },
-    suggestionMainText: {
-      fontSize: moderateScale(16),
-      fontWeight: '600',
-      color: '#2c3e50',
-      marginBottom: verticalScale(2),
-    },
-    suggestionSecondaryText: {
-      fontSize: moderateScale(13),
-      color: '#7f8c8d',
-    },
-    modalOverlay: {
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    modalContent: {
-      backgroundColor: '#fff',
-      borderTopLeftRadius: moderateScale(20),
-      borderTopRightRadius: moderateScale(20),
-      padding: scale(20),
-      paddingBottom: verticalScale(40),
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: moderateScale(-4) },
-      shadowOpacity: 0.3,
-      shadowRadius: moderateScale(10),
-      elevation: 10,
-    },
-    modalHandle: {
-      width: moderateScale(40),
-      height: moderateScale(4),
-      backgroundColor: '#ddd',
-      borderRadius: moderateScale(2),
-    },
-    modalTitle: {
-      fontSize: moderateScale(18),
-      fontWeight: 'bold',
-      color: '#2c3e50',
-      marginBottom: verticalScale(20),
-      textAlign: 'center',
-    },
-    modalOptionButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-      width: '100%',
-      paddingVertical: verticalScale(15),
-      paddingHorizontal: scale(20),
-      borderRadius: moderateScale(10),
-      marginBottom: verticalScale(10),
-      backgroundColor: '#fff',
-      borderWidth: moderateScale(1),
-      borderColor: '#e0e0e0',
-    },
-    modalOptionText: {
-      marginLeft: scale(15),
-      fontSize: moderateScale(16),
-      color: '#2c3e50',
-      fontWeight: '500',
-    },
-    modalDescription: {
-      fontSize: moderateScale(12),
-      color: '#7f8c8d',
-      textAlign: 'center',
-      marginTop: verticalScale(15),
-      lineHeight: moderateScale(18),
-      paddingHorizontal: scale(20),
-    },
-    errorText: {
-      color: '#e74c3c',
-      fontSize: moderateScale(14),
-      marginTop: verticalScale(5),
-      marginLeft: scale(15),
-      fontWeight: '500',
-    },
-    validatingText: {
-      color: '#A1CEDC',
-      fontSize: moderateScale(14),
-      marginTop: verticalScale(5),
-      marginLeft: scale(15),
-      fontStyle: 'italic',
-    },
-    successText: {
-      color: '#27ae60',
-      fontSize: moderateScale(14),
-      marginTop: verticalScale(5),
-      marginLeft: scale(15),
-      fontWeight: '500',
-    },
-    documentCountText: {
-      fontSize: moderateScale(12),
-      color: '#7f8c8d',
-      marginTop: verticalScale(5),
-      marginLeft: scale(15),
-    },
-    documentSizeText: {
-      fontSize: moderateScale(12),
-      color: '#e74c3c',
-      fontWeight: '600',
-    },
-    documentHeaderRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: verticalScale(8),
-    },
-    newDocumentsTitle: {
-      fontSize: moderateScale(14),
-      color: '#2c3e50',
-      fontWeight: '600',
-    },
-    clearAllButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#f0f0f0',
-      borderRadius: moderateScale(15),
-      paddingVertical: verticalScale(5),
-      paddingHorizontal: scale(10),
-    },
-    clearAllText: {
-      color: '#e74c3c',
-      fontSize: moderateScale(12),
-      fontWeight: '600',
-      marginLeft: scale(5),
-    },
-    documentInfoContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
-    documentSizeInfo: {
-      fontSize: moderateScale(12),
-      color: '#7f8c8d',
-      marginLeft: scale(10),
-    },
-  });
-
-  // Step 2: Skills and Documents
+  // Step 2: Skills and Documents  
   const renderStep2 = () => (
     <View style={styles.formContainer}>
 
@@ -1741,13 +1274,12 @@ export default function RegisterProfessionalScreen() {
         <View style={styles.inputWrapper}>
           <Ionicons name="home-outline" size={moderateScale(30)} color="#666" style={styles.inputIcon} />
           <TextInput
-            style={[styles.input, { height: moderateScale(80), textAlignVertical: 'top' }]}
+            style={[styles.input, styles.addressInput]}
             placeholder="Enter your complete address"
             placeholderTextColor="#999"
             value={address}
             onChangeText={(text) => {
               setAddress(text);
-              // Clear error immediately when user types
               if (addressError) {
                 if (errorTimers.current['address']) {
                   clearTimeout(errorTimers.current['address']);
@@ -1807,31 +1339,31 @@ export default function RegisterProfessionalScreen() {
           </View>
         )}
 
-                 {/* Skills Dropdown */}
-         {showSkillsDropdown && (
-           <View style={styles.skillsDropdownContent}>
-             <ScrollView style={styles.skillsList} nestedScrollEnabled={true}>
-               {skillsData.map((skill) => (
-                 <TouchableOpacity
-                   key={skill.id}
-                   style={styles.skillItem}
-                   onPress={() => toggleSkill(skill.id)}
-                 >
-                   <Text style={styles.skillText}>{skill.name}</Text>
-                   {selectedSkills.includes(skill.id) && (
-                     <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#27ae60" />
-                   )}
-                 </TouchableOpacity>
-               ))}
-             </ScrollView>
-           </View>
-         )}
-         
-         {/* Skills Error Message */}
-         {skillsError ? (
-           <Text style={styles.errorText}>{skillsError}</Text>
-         ) : null}
-       </View>
+        {/* Skills Dropdown */}
+        {showSkillsDropdown && (
+          <View style={styles.skillsDropdownContent}>
+            <ScrollView style={styles.skillsList} nestedScrollEnabled={true}>
+              {skillsData.map((skill) => (
+                <TouchableOpacity
+                  key={skill.id}
+                  style={styles.skillItem}
+                  onPress={() => toggleSkill(skill.id)}
+                >
+                  <Text style={styles.skillText}>{skill.name}</Text>
+                  {selectedSkills.includes(skill.id) && (
+                    <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#27ae60" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+        
+        {/* Skills Error Message */}
+        {skillsError ? (
+          <Text style={styles.errorText}>{skillsError}</Text>
+        ) : null}
+      </View>
 
       {/* Personal Documents Field */}
       <View style={styles.inputContainer}>
@@ -1977,25 +1509,30 @@ export default function RegisterProfessionalScreen() {
           headerShown: false,
         }}
       />
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        {/* Header - moved outside ScrollView */}
+        <View style={styles.headerContainer}>
+          <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
+            <Ionicons style={styles.menuicon} name="arrow-back" size={moderateScale(28)} color="black" />
+          </TouchableOpacity>
+          <Image
+            source={require('@/assets/images/OriginX.png')}
+            style={styles.mainlogo}
+            contentFit="contain"
+          />
+        </View>
         <TouchableWithoutFeedback onPress={handleOutsideTouch}>
           <KeyboardAvoidingView 
-            style={styles.container} 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardView} 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+            keyboardVerticalOffset={0}
           >
-            {/* Header - moved outside ScrollView */}
-            <View style={styles.headerContainer}>
-              <TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
-                <Ionicons style={styles.menuicon} name="arrow-back" size={moderateScale(28)} color="black" />
-              </TouchableOpacity>
-              <Image
-                source={require('@/assets/images/OriginX.png')}
-                style={styles.mainlogo}
-                contentFit="contain"
-              />
-            </View>
-
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.scrollView} 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollViewContent}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Progress Indicator */}
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
@@ -2108,3 +1645,562 @@ export default function RegisterProfessionalScreen() {
     </>
   );
 }
+
+// Create responsive styles function
+const createStyles = (screenHeight: number, screenWidth: number, helpers: any) => {
+  const { moderateScale, scale, scaleHeight, getResponsiveFontSize, getResponsiveSpacing, getResponsiveValue } = helpers;
+  
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#A1CEDC',
+    },
+    keyboardView: {
+      flex: 1,
+      backgroundColor: '#f8f9fa',
+    },
+    container: {
+      flex: 1,
+      backgroundColor: '#f8f9fa',
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollViewContent: {
+      flexGrow: 1,
+      paddingBottom: scaleHeight(20, 0.5),
+    },
+    headerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: getResponsiveSpacing(12),
+      paddingTop: getResponsiveValue(5, 3, 8),
+      paddingBottom: getResponsiveValue(5, 3, 8),
+      backgroundColor: '#667eea',
+    },
+    menuButton: {
+      padding: moderateScale(5),
+    },
+    mainlogo: {
+      height: moderateScale(45),
+      width: '45%',
+      maxWidth: moderateScale(180),
+      marginRight: '50%',
+    },
+    menuicon: {
+      marginRight: moderateScale(10),
+    },
+    progressContainer: {
+      paddingHorizontal: '5%',
+      paddingVertical: scaleHeight(15, 0.5),
+      backgroundColor: '#f8f9fa',
+    },
+    progressBar: {
+      height: moderateScale(4),
+      backgroundColor: '#e0e0e0',
+      borderRadius: moderateScale(2),
+      marginBottom: scaleHeight(8, 0.5),
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: '#A1CEDC',
+      borderRadius: moderateScale(2),
+    },
+    progressText: {
+      fontSize: getResponsiveFontSize(13),
+      color: '#666',
+      textAlign: 'center',
+    },
+    logoContainer: {
+      alignItems: 'center',
+      paddingVertical: scaleHeight(10, 0.5),
+      marginTop: scaleHeight(-20, 0.5),
+      marginBottom: scaleHeight(7, 0.5),
+    },
+    logoSubtitle: {
+      fontSize: getResponsiveFontSize(18),
+      color: '#2c3e50',
+      fontStyle: 'italic',
+      fontWeight: 'bold'
+    },
+    formContainer: {
+      paddingHorizontal: '5%',
+      paddingVertical: scaleHeight(25, 0.5),
+      backgroundColor: '#f8f9fa',
+    },
+    profilePhotoContainer: {
+      alignItems: 'center',
+      marginBottom: scaleHeight(5, 0.5),
+      marginTop: scaleHeight(-45, 0.5),
+    },
+    profilePhotoButton: {
+      width: moderateScale(95),
+      height: moderateScale(95),
+      borderRadius: moderateScale(48),
+      overflow: 'hidden',
+      borderWidth: moderateScale(3),
+      borderColor: '#A1CEDC',
+      backgroundColor: '#fff',
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: moderateScale(4),
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: moderateScale(8),
+      elevation: 8,
+    },
+    profilePhoto: {
+      width: '100%',
+      height: '100%',
+    },
+    profilePhotoPlaceholder: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profilePhotoText: {
+      fontSize: getResponsiveFontSize(11),
+      color: '#A1CEDC',
+      marginTop: scaleHeight(5, 0.5),
+      fontWeight: '600',
+    },
+    inputContainer: {
+      marginBottom: scaleHeight(15, 0.5),
+    },
+    inputLabel: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#2c3e50',
+      marginBottom: scaleHeight(8, 0.5),
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+      borderRadius: moderateScale(15),
+      paddingHorizontal: scale(15),
+      borderWidth: moderateScale(2),
+      borderColor: '#A1CEDC',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: moderateScale(2),
+      },
+      shadowOpacity: 0.1,
+      shadowRadius: moderateScale(4),
+      elevation: 3,
+    },
+    inputIcon: {
+      marginRight: scale(10),
+    },
+    input: {
+      flex: 1,
+      height: moderateScale(50),
+      fontSize: getResponsiveFontSize(16),
+      color: '#2c3e50',
+    },
+    addressInput: {
+      height: moderateScale(80),
+      textAlignVertical: 'top',
+    },
+    locationInputWrapper: {
+      position: 'relative',
+      zIndex: 9999,
+      elevation: 9999,
+    },
+    suggestionDropdownWrapper: {
+      position: 'absolute',
+      top: moderateScale(55),
+      left: 0,
+      right: 0,
+      zIndex: 9999,
+      elevation: 9999,
+    },
+      nextButton: {
+        backgroundColor: '#A1CEDC',
+        borderRadius: moderateScale(15),
+        paddingVertical: scaleHeight(18, 0.5),
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: scaleHeight(20, 0.5),
+        shadowColor: '#A1CEDC',
+        shadowOffset: {
+          width: 0,
+          height: moderateScale(6),
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: moderateScale(10),
+        elevation: 8,
+      },
+      nextButtonDisabled: {
+        backgroundColor: '#bdc3c7',
+      },
+      nextButtonText: {
+        color: '#fff',
+        fontSize: getResponsiveFontSize(18),
+        fontWeight: 'bold',
+        marginRight: scale(8),
+      },
+      backButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+        borderRadius: moderateScale(10),
+        paddingVertical: scaleHeight(10, 0.5),
+        paddingHorizontal: scale(15),
+        marginBottom: scaleHeight(20, 0.5),
+        borderWidth: moderateScale(1),
+        borderColor: '#A1CEDC',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: moderateScale(2) },
+        shadowOpacity: 0.1,
+        shadowRadius: moderateScale(4),
+        elevation: 3,
+      },
+      backButtonText: {
+        color: '#A1CEDC',
+        fontSize: getResponsiveFontSize(16),
+        fontWeight: '600',
+        marginLeft: scale(8),
+      },
+      headerBackButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        position: 'absolute',
+        left: scale(20),
+        top: 0,
+        zIndex: 10,
+        marginTop: scaleHeight(15, 0.5),
+      },
+      headerBackButtonText: {
+        color: '#A1CEDC',
+        fontSize: getResponsiveFontSize(16),
+        fontWeight: '600',
+        marginLeft: scale(8),
+      },
+      skillsDropdown: {
+        backgroundColor: '#fff',
+        borderRadius: moderateScale(15),
+        borderWidth: moderateScale(2),
+        borderColor: '#A1CEDC',
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: moderateScale(2),
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: moderateScale(4),
+        elevation: 3,
+      },
+      skillsDropdownHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: scale(15),
+        paddingVertical: scaleHeight(15, 0.5),
+      },
+      skillsDropdownText: {
+        flex: 1,
+        fontSize: getResponsiveFontSize(16),
+        color: '#2c3e50',
+        marginLeft: scale(10),
+      },
+      selectedSkillsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: scaleHeight(10, 0.5),
+        gap: moderateScale(8),
+      },
+      selectedSkillTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e8f5e8',
+        borderRadius: moderateScale(20),
+        paddingHorizontal: scale(12),
+        paddingVertical: scaleHeight(6, 0.5),
+        borderWidth: moderateScale(1),
+        borderColor: '#27ae60',
+      },
+      selectedSkillText: {
+        fontSize: getResponsiveFontSize(14),
+        color: '#27ae60',
+        fontWeight: '600',
+        marginRight: scale(5),
+      },
+      skillsDropdownContent: {
+        backgroundColor: '#fff',
+        borderRadius: moderateScale(15),
+        marginTop: scaleHeight(5, 0.5),
+        maxHeight: scaleHeight(200, 0.5),
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: moderateScale(4),
+        },
+        shadowOpacity: 0.15,
+        shadowRadius: moderateScale(8),
+        elevation: 8,
+      },
+      skillsList: {
+        maxHeight: scaleHeight(180, 0.5),
+      },
+      skillItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: scale(15),
+        paddingVertical: scaleHeight(12, 0.5),
+        borderBottomWidth: moderateScale(1),
+        borderBottomColor: '#f0f0f0',
+      },
+      skillText: {
+        fontSize: getResponsiveFontSize(16),
+        color: '#2c3e50',
+      },
+      uploadOptionsContainer: {
+        marginTop: scaleHeight(10, 0.5),
+        marginBottom: scaleHeight(10, 0.5),
+      },
+      uploadOptionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e0f2f7',
+        borderRadius: moderateScale(10),
+        paddingVertical: scaleHeight(10, 0.5),
+        paddingHorizontal: scale(15),
+        borderWidth: moderateScale(1),
+        borderColor: '#a7dbd8',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: moderateScale(2) },
+        shadowOpacity: 0.1,
+        shadowRadius: moderateScale(4),
+        elevation: 3,
+      },
+      uploadOptionText: {
+        marginLeft: scale(10),
+        fontSize: getResponsiveFontSize(14),
+        color: '#2c3e50',
+        fontWeight: '600',
+      },
+      uploadedDocumentsContainer: {
+        marginTop: scaleHeight(10, 0.5),
+        paddingHorizontal: scale(10),
+      },
+      uploadedDocumentItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#f0f0f0',
+        borderRadius: moderateScale(10),
+        paddingVertical: scaleHeight(8, 0.5),
+        paddingHorizontal: scale(12),
+        marginBottom: scaleHeight(8, 0.5),
+      },
+      uploadedDocumentName: {
+        fontSize: getResponsiveFontSize(14),
+        color: '#2c3e50',
+        flex: 1,
+      },
+      submitButton: {
+        backgroundColor: '#3498db',
+        borderRadius: moderateScale(15),
+        paddingVertical: scaleHeight(18, 0.5),
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: scaleHeight(20, 0.5),
+        shadowColor: '#3498db',
+        shadowOffset: {
+          width: 0,
+          height: moderateScale(6),
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: moderateScale(10),
+        elevation: 8,
+      },
+      submitButtonDisabled: {
+        backgroundColor: '#bdc3c7',
+      },
+      loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+      },
+      spinningIcon: {
+        marginRight: scale(8),
+      },
+      submitButtonText: {
+        color: '#fff',
+        fontSize: getResponsiveFontSize(18),
+        fontWeight: 'bold',
+        marginLeft: scale(8),
+      },
+      suggestionDropdown: {
+        backgroundColor: '#fff',
+        borderRadius: moderateScale(15),
+        maxHeight: scaleHeight(300, 0.5),
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: moderateScale(5) },
+        shadowOpacity: 0.3,
+        shadowRadius: moderateScale(10),
+        elevation: 9999,
+        borderWidth: moderateScale(1),
+        borderColor: '#e0e0e0',
+        marginTop: scaleHeight(2, 0.5),
+        zIndex: 9999,
+      },
+      suggestionList: {
+        maxHeight: scaleHeight(280, 0.5),
+      },
+      suggestionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: scale(15),
+        paddingVertical: scaleHeight(15, 0.5),
+        borderBottomWidth: moderateScale(1),
+        borderBottomColor: '#f0f0f0',
+        backgroundColor: '#fff',
+      },
+      suggestionTextContainer: {
+        marginLeft: scale(10),
+        flex: 1,
+      },
+      suggestionMainText: {
+        fontSize: getResponsiveFontSize(16),
+        fontWeight: '600',
+        color: '#2c3e50',
+        marginBottom: scaleHeight(2, 0.5),
+      },
+      suggestionSecondaryText: {
+        fontSize: getResponsiveFontSize(13),
+        color: '#7f8c8d',
+      },
+      modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+      },
+      modalContent: {
+        backgroundColor: '#fff',
+        borderTopLeftRadius: moderateScale(20),
+        borderTopRightRadius: moderateScale(20),
+        padding: scale(20),
+        paddingBottom: scaleHeight(40, 0.5),
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: moderateScale(-4) },
+        shadowOpacity: 0.3,
+        shadowRadius: moderateScale(10),
+        elevation: 10,
+      },
+      modalHandle: {
+        width: moderateScale(40),
+        height: moderateScale(4),
+        backgroundColor: '#ddd',
+        borderRadius: moderateScale(2),
+      },
+      modalTitle: {
+        fontSize: getResponsiveFontSize(18),
+        fontWeight: 'bold',
+        color: '#2c3e50',
+        marginBottom: scaleHeight(20, 0.5),
+        textAlign: 'center',
+      },
+      modalOptionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        width: '100%',
+        paddingVertical: scaleHeight(15, 0.5),
+        paddingHorizontal: scale(20),
+        borderRadius: moderateScale(10),
+        marginBottom: scaleHeight(10, 0.5),
+        backgroundColor: '#fff',
+        borderWidth: moderateScale(1),
+        borderColor: '#e0e0e0',
+      },
+      modalOptionText: {
+        marginLeft: scale(15),
+        fontSize: getResponsiveFontSize(16),
+        color: '#2c3e50',
+        fontWeight: '500',
+      },
+      modalDescription: {
+        fontSize: getResponsiveFontSize(12),
+        color: '#7f8c8d',
+        textAlign: 'center',
+        marginTop: scaleHeight(15, 0.5),
+        lineHeight: moderateScale(18),
+        paddingHorizontal: scale(20),
+      },
+      errorText: {
+        color: '#e74c3c',
+        fontSize: getResponsiveFontSize(14),
+        marginTop: scaleHeight(5, 0.5),
+        marginLeft: scale(15),
+        fontWeight: '500',
+      },
+      validatingText: {
+        color: '#A1CEDC',
+        fontSize: getResponsiveFontSize(14),
+        marginTop: scaleHeight(5, 0.5),
+        marginLeft: scale(15),
+        fontStyle: 'italic',
+      },
+      successText: {
+        color: '#27ae60',
+        fontSize: getResponsiveFontSize(14),
+        marginTop: scaleHeight(5, 0.5),
+        marginLeft: scale(15),
+        fontWeight: '500',
+      },
+      documentCountText: {
+        fontSize: getResponsiveFontSize(12),
+        color: '#7f8c8d',
+        marginTop: scaleHeight(5, 0.5),
+        marginLeft: scale(15),
+      },
+      documentSizeText: {
+        fontSize: getResponsiveFontSize(12),
+        color: '#e74c3c',
+        fontWeight: '600',
+      },
+      documentHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: scaleHeight(8, 0.5),
+      },
+      newDocumentsTitle: {
+        fontSize: getResponsiveFontSize(14),
+        color: '#2c3e50',
+        fontWeight: '600',
+      },
+      clearAllButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f0f0f0',
+        borderRadius: moderateScale(15),
+        paddingVertical: scaleHeight(5, 0.5),
+        paddingHorizontal: scale(10),
+      },
+      clearAllText: {
+        color: '#e74c3c',
+        fontSize: getResponsiveFontSize(12),
+        fontWeight: '600',
+        marginLeft: scale(5),
+      },
+      documentInfoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+      },
+      documentSizeInfo: {
+        fontSize: getResponsiveFontSize(12),
+        color: '#7f8c8d',
+        marginLeft: scale(10),
+      },
+    });
+  };
