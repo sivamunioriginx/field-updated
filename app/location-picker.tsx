@@ -15,7 +15,11 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+
+// Import react-native-maps - Metro will resolve to web mock on web platform
+import MapViewModule from 'react-native-maps';
+const MapView = MapViewModule.default || MapViewModule;
+const PROVIDER_GOOGLE = MapViewModule.PROVIDER_GOOGLE || 'google';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
 
@@ -29,7 +33,7 @@ interface LocationResult {
 export default function LocationPickerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   
@@ -508,18 +512,24 @@ export default function LocationPickerScreen() {
       </View>
 
       {/* Map */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        initialRegion={region}
-        onRegionChange={handleRegionChange}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={true}
-        toolbarEnabled={false}
-      />
+      {Platform.OS !== 'web' && MapView ? (
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={region}
+          onRegionChange={handleRegionChange}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          showsUserLocation
+          showsMyLocationButton={false}
+          showsCompass={true}
+          toolbarEnabled={false}
+        />
+      ) : (
+        <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0' }]}>
+          <Text style={{ color: '#666', fontSize: 16 }}>Map view is not available on web</Text>
+        </View>
+      )}
 
       {/* Center Marker Overlay */}
       <View style={styles.centerMarkerContainer} pointerEvents="none">

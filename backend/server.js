@@ -2223,7 +2223,7 @@ app.get('/api/category-subcategory', async (req, res) => {
 
 // OTP Configuration
 const MSG91_AUTHKEY = process.env.MSG91_AUTHKEY || '476418A4ojfZq9690af21aP1';
-const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || '690aea2528a9db2fff68d6d5';
+const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || '693274123c3a6e1e873efbf3';
 
 // In-memory OTP storage (in production, use Redis or database)
 const otpStore = new Map();
@@ -2753,6 +2753,61 @@ app.post('/api/login', async (req, res) => {
     });
 
   } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Admin Login endpoint
+app.post('/api/admin/login', async (req, res) => {
+  const { username, password } = req.body;
+  const bcrypt = require('bcryptjs');
+
+  try {
+    // Check tbl_admin table
+    const [admins] = await pool.execute(
+      'SELECT * FROM tbl_admin WHERE user_name = ? LIMIT 1',
+      [username]
+    );
+
+    if (admins.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid username or password' });
+    }
+
+    const admin = admins[0];
+    
+    // Check if password is hashed (starts with $2a$, $2b$, or $2y$)
+    const isHashed = admin.password.startsWith('$2a$') || 
+                     admin.password.startsWith('$2b$') || 
+                     admin.password.startsWith('$2y$');
+    
+    let isMatch = false;
+    
+    if (isHashed) {
+      // Compare hashed password
+      isMatch = await bcrypt.compare(password, admin.password);
+    } else {
+      // Compare plain text password (for initial setup)
+      isMatch = password === admin.password;
+    }
+    
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid username or password' });
+    }
+
+    // ✅ Success - Return admin data
+    res.json({
+      success: true,
+      admin: {
+        id: admin.id,
+        username: admin.user_name,
+        created_at: admin.created_at,
+        updated_at: admin.updated_at
+      },
+      token: `admin_token_${admin.id}_${Date.now()}` // Simple token generation
+    });
+
+  } catch (error) {
+    console.error('Admin login error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

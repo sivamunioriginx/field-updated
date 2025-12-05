@@ -45,6 +45,7 @@ export const API_ENDPOINTS = {
   WORKERS_NEARBY: (lat: number, lng: number, skillId: string) =>
     `${getBaseUrl()}/workers-nearby?lat=${lat}&lng=${lng}&skill_id=${skillId}`,
   LOGIN: `${getBaseUrl()}/login`,
+  ADMIN_LOGIN: `${getBaseUrl()}/admin/login`,
   SEND_OTP: `${getBaseUrl()}/send-otp`,
   VERIFY_OTP: `${getBaseUrl()}/verify-otp`,
   BOOKINGS: `${getBaseUrl()}/bookings`,
