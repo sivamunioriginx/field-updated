@@ -1163,6 +1163,116 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
   }
 });
 
+// Update booking payment status and amount endpoint
+app.put('/api/bookings/:bookingId/payment', async (req, res) => {
+  try {
+    const { bookingId } = req.params; // This is the booking_id (not the id)
+    const { payment_status, amount } = req.body;
+    
+    
+    if (!bookingId || payment_status === undefined || amount === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID, payment_status, and amount are required'
+      });
+    }
+
+    // Validate payment_status
+    if (payment_status !== 0 && payment_status !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment_status value. Must be 0 or 1'
+      });
+    }
+
+    // Update all bookings with the same booking_id where status = 1
+    const updateQuery = 'UPDATE tbl_bookings SET payment_status = ?, amount = ? WHERE booking_id = ? AND status = 1';
+    const [result] = await pool.execute(updateQuery, [payment_status, amount, bookingId]);
+
+    if (result.affectedRows > 0) {
+      // Send SMS to worker after successful payment update
+      try {
+        // Get booking details with worker information
+        const [bookings] = await pool.execute(
+          `SELECT b.worker_id, b.booking_time, w.name as worker_name, w.mobile as worker_mobile 
+           FROM tbl_bookings b 
+           JOIN tbl_workers w ON b.worker_id = w.id 
+           WHERE b.booking_id = ? AND b.status = 1 
+           LIMIT 1`,
+          [bookingId]
+        );
+
+        if (bookings.length > 0) {
+          const booking = bookings[0];
+          const workerName = booking.worker_name || 'Worker';
+          const workerMobile = booking.worker_mobile;
+          const bookingTime = new Date(booking.booking_time);
+          
+          // Format booking date (e.g., "Jan 15, 2024 at 10:30 AM")
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const day = bookingTime.getDate();
+          const month = months[bookingTime.getMonth()];
+          const year = bookingTime.getFullYear();
+          let hours = bookingTime.getHours();
+          const minutes = bookingTime.getMinutes().toString().padStart(2, '0');
+          const period = hours >= 12 ? 'PM' : 'AM';
+          hours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+          const formattedDate = `${month} ${day}, ${year} at ${hours}:${minutes} ${period}`;
+
+          // Send SMS via MSG91
+          if (workerMobile) {
+            const msg91Url = 'https://control.msg91.com/api/v5/flow/';
+            const requestData = {
+              authkey: MSG91_AUTHKEY,
+              template_id: '693661ac52bee02e5a2c1965',
+              recipients: [
+                {
+                  mobiles: '91' + workerMobile,
+                  workername: workerName,
+                  bookingid: bookingId,
+                  bookingdate: formattedDate
+                }
+              ]
+            };
+
+            await axios.post(msg91Url, requestData, {
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+          }
+        }
+      } catch (smsError) {
+        // Log SMS error but don't fail the payment update
+        console.error('❌ Error sending SMS to worker:', smsError);
+      }
+
+      res.json({
+        success: true,
+        message: 'Payment status and amount updated successfully',
+        data: { 
+          bookingId, 
+          payment_status, 
+          amount,
+          updatedCount: result.affectedRows
+        }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'No bookings found with the given booking_id and status = 1'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error updating payment status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
 // Get service seeker by ID endpoint
 app.get('/api/serviceseeker/:id', async (req, res) => {
   try {

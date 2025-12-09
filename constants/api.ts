@@ -53,6 +53,7 @@ export const API_ENDPOINTS = {
   // Add this new endpoint for total bookings (status != 0)
   TOTAL_BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=1,2,3,4`,
   UPDATE_BOOKING_STATUS: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/status`,
+  UPDATE_BOOKING_PAYMENT: (bookingId: string) => `${getBaseUrl()}/bookings/${bookingId}/payment`,
   CHECK_USER_EXISTS: (mobile?: string, email?: string, userType?: string) => {
     const params = new URLSearchParams();
     if (mobile) params.append('mobile', mobile);

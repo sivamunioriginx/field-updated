@@ -54,6 +54,9 @@ export default function CartScreen() {
   const [showWaitingModal, setShowWaitingModal] = useState(false);
   const [currentBookingId, setCurrentBookingId] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showPaymentFailedModal, setShowPaymentFailedModal] = useState(false);
+  const [paymentFailedMessage, setPaymentFailedMessage] = useState('');
+  const [paymentFailedBookingId, setPaymentFailedBookingId] = useState<string | null>(null);
   const pollingIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Animation values for circular progress ring with orbiting particles
@@ -653,32 +656,49 @@ export default function CartScreen() {
     };
 
     RazorpayCheckout.open(options)
-      .then((data: any) => {
-        // Payment success - show success modal
-        setShowSuccessModal(true);
+      .then(async (data: any) => {
+        // Payment success - update booking payment status and amount
+        try {
+          const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_PAYMENT(bookingId), {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              payment_status: 1,
+              amount: totalAmount,
+            }),
+          });
+
+          const result = await response.json();
+          
+          if (result.success) {
+            console.log('✅ Payment status and amount updated successfully');
+            // Show success modal
+            setShowSuccessModal(true);
+          } else {
+            console.error('❌ Failed to update payment status:', result.message);
+            Alert.alert(
+              'Payment Successful',
+              'Payment completed, but there was an issue updating the booking. Please contact support.\n\nBooking ID: ' + bookingId,
+              [{ text: 'OK', onPress: () => setShowSuccessModal(true) }]
+            );
+          }
+        } catch (error) {
+          console.error('❌ Error updating payment status:', error);
+          Alert.alert(
+            'Payment Successful',
+            'Payment completed, but there was an issue updating the booking. Please contact support.\n\nBooking ID: ' + bookingId,
+            [{ text: 'OK', onPress: () => setShowSuccessModal(true) }]
+          );
+        }
       })
       .catch((error: any) => {
         // Payment failed or cancelled
         console.log('❌ Payment failed:', error);
-        Alert.alert(
-          'Payment Failed',
-          `Payment was not completed. ${error.description || 'Please try again.'}\n\nBooking ID: ${bookingId}`,
-          [
-            {
-              text: 'Retry Payment',
-              onPress: () => {
-                initiateRazorpayPayment(bookingId);
-              },
-            },
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => {
-                router.back();
-              },
-            },
-          ]
-        );
+        setPaymentFailedMessage(error.description || 'Please try again.');
+        setPaymentFailedBookingId(bookingId);
+        setShowPaymentFailedModal(true);
       });
   };
 
@@ -1560,6 +1580,57 @@ export default function CartScreen() {
             >
               <Text style={styles.successButtonText}>OK</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Payment Failed Modal */}
+      <Modal
+        visible={showPaymentFailedModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPaymentFailedModal(false)}
+      >
+        <View style={styles.failedModalOverlay}>
+          <View style={styles.failedModalContent}>
+            {/* Failed Icon */}
+            <View style={styles.failedIconContainer}>
+              <Ionicons name="close-circle" size={80} color="#FF3B30" />
+            </View>
+            
+            {/* Failed Text */}
+            <Text style={styles.failedTitle}>Payment Failed</Text>
+            {paymentFailedBookingId && (
+              <Text style={styles.failedBookingId}>Booking ID: {paymentFailedBookingId}</Text>
+            )}
+            
+            {/* Action Buttons */}
+            <View style={styles.failedButtonContainer}>
+              <TouchableOpacity
+                style={styles.failedRetryButton}
+                onPress={() => {
+                  setShowPaymentFailedModal(false);
+                  if (paymentFailedBookingId) {
+                    initiateRazorpayPayment(paymentFailedBookingId);
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="refresh" size={getIconSize(20)} color="#FFFFFF" style={styles.failedButtonIcon} />
+                <Text style={styles.failedRetryButtonText}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.failedCancelButton}
+                onPress={() => {
+                  setShowPaymentFailedModal(false);
+                  router.back();
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={getIconSize(20)} color="#666" style={styles.failedButtonIcon} />
+                <Text style={styles.failedCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -2559,6 +2630,93 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: getResponsiveFontSize(18),
       fontWeight: '700',
       textAlign: 'center',
+    },
+    failedModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    failedModalContent: {
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(24),
+      padding: getResponsiveSpacing(30),
+      alignItems: 'center',
+      minWidth: screenWidth * 0.7,
+      maxWidth: screenWidth * 0.85,
+      shadowColor: '#FF3B30',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 15,
+    },
+    failedIconContainer: {
+      marginBottom: getResponsiveValue(12, 10, 14),
+    },
+    failedTitle: {
+      fontSize: getResponsiveFontSize(22),
+      fontWeight: '700',
+      color: '#FF3B30',
+      marginBottom: getResponsiveValue(10, 8, 12),
+      textAlign: 'center',
+    },
+    failedBookingId: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#8B5CF6',
+      textAlign: 'center',
+      marginBottom: getResponsiveValue(20, 18, 22),
+      fontWeight: '600',
+      backgroundColor: '#F8F5FF',
+      paddingHorizontal: getResponsiveSpacing(14),
+      paddingVertical: getResponsiveSpacing(8),
+      borderRadius: getResponsiveSpacing(18),
+      borderWidth: 1.5,
+      borderColor: '#E8D5FF',
+    },
+    failedButtonContainer: {
+      flexDirection: 'row',
+      width: '100%',
+      gap: getResponsiveSpacing(12),
+    },
+    failedRetryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#8B5CF6',
+      borderRadius: getResponsiveSpacing(28),
+      paddingVertical: getResponsiveValue(16, 14, 18),
+      paddingHorizontal: getResponsiveWidth(24, 20, 28),
+      shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    failedRetryButtonText: {
+      color: '#FFFFFF',
+      fontSize: getResponsiveFontSize(17),
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    failedCancelButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'transparent',
+      borderRadius: getResponsiveSpacing(28),
+      paddingVertical: getResponsiveValue(16, 14, 18),
+      paddingHorizontal: getResponsiveWidth(24, 20, 28),
+      borderWidth: 2,
+      borderColor: '#E0E0E0',
+    },
+    failedCancelButtonText: {
+      color: '#666',
+      fontSize: getResponsiveFontSize(17),
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    failedButtonIcon: {
+      marginRight: getResponsiveSpacing(8),
     },
   });
 };

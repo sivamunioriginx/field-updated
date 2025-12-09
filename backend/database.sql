@@ -126,6 +126,8 @@ CREATE TABLE tbl_bookings (
   work_location_lng DECIMAL(10,6) NULL,
   booking_time DATETIME NOT NULL,
   status TINYINT NOT NULL DEFAULT 0,
+  payment_status TINYINT NOT NULL DEFAULT 0,
+  amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   reject_reason TEXT NULL,
   description TEXT NULL,
   work_documents TEXT NULL,
