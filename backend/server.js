@@ -3655,7 +3655,50 @@ app.post('/api/send-manual-alert', async (req, res) => {
   }
 });
 
-// 404 handler
+app.get('/api/admin/bookings', async (req, res) => {
+  try {
+
+    const query = `
+      SELECT 
+        b.id,
+        b.booking_id,
+        b.worker_id,
+        b.user_id,
+        b.contact_number,
+        b.work_location,
+        b.booking_time,
+        b.status,
+        b.created_at,
+        b.description,
+        w.name as worker_name,
+        w.mobile as worker_mobile,
+        s.name as customer_name,
+        s.mobile as customer_mobile
+      FROM tbl_bookings b
+      LEFT JOIN tbl_workers w ON b.worker_id = w.id
+      LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+      WHERE b.status IN (1, 2, 4)
+      ORDER BY b.created_at DESC
+    `;
+
+    const [bookings] = await pool.query(query);
+
+    res.json({
+      success: true,
+      bookings: bookings
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching admin bookings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bookings',
+      error: error.message
+    });
+  }
+});
+
+// 404 handler - THIS MUST BE LAST!
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
