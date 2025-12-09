@@ -81,6 +81,9 @@ export const API_ENDPOINTS = {
   SERVICES_BY_SUBCATEGORY: (subcategoryId: string) => `${getBaseUrl()}/services/${subcategoryId}`,
   SEARCH_SERVICES: (query: string) => `${getBaseUrl()}/services/search?q=${encodeURIComponent(query)}`,
   REQUEST_QUOTE: `${getBaseUrl()}/request-quote`,
+  
+  // Admin endpoints
+  ADMIN_BOOKINGS: `${getBaseUrl()}/admin/bookings`,
 };
 
 export const API_BASE_URL = getBaseUrl();
