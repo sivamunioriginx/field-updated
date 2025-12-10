@@ -1026,6 +1026,8 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
       console.log(`📊 No status filter applied - fetching all bookings for worker`);
     }
     
+    query += ' AND b.payment_status = 1';
+    
     query += ' ORDER BY b.created_at DESC';
 
     console.log(`🔍 Executing query: ${query}`);
@@ -1167,7 +1169,7 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
 app.put('/api/bookings/:bookingId/payment', async (req, res) => {
   try {
     const { bookingId } = req.params; // This is the booking_id (not the id)
-    const { payment_status, amount } = req.body;
+    const { payment_status, amount, payment_id } = req.body;
     
     
     if (!bookingId || payment_status === undefined || amount === undefined) {
@@ -1190,6 +1192,37 @@ app.put('/api/bookings/:bookingId/payment', async (req, res) => {
     const [result] = await pool.execute(updateQuery, [payment_status, amount, bookingId]);
 
     if (result.affectedRows > 0) {
+      // If payment is successful (payment_status = 1) and payment details are provided, insert into tbl_payments
+      if (payment_status === 1 && payment_id) {
+        try {
+          // Get all booking ids (primary keys) from tbl_bookings using booking_id
+          // Since multiple bookings can have the same booking_id (one per worker), we insert payment for each
+          const [bookingRows] = await pool.execute(
+            'SELECT id FROM tbl_bookings WHERE booking_id = ? AND status = 1',
+            [bookingId]
+          );
+
+          if (bookingRows.length > 0) {
+            // Insert payment record for each booking
+            const insertPaymentQuery = `
+              INSERT INTO tbl_payments (bookingid, payment_id, amount, created_at)
+              VALUES (?, ?, ?, NOW())
+            `;
+            
+            for (const bookingRow of bookingRows) {
+              await pool.execute(insertPaymentQuery, [
+                bookingRow.id,
+                payment_id,
+                amount
+              ]);
+            }
+            console.log(`✅ Payment records inserted into tbl_payments for booking_id: ${bookingId} (${bookingRows.length} record(s))`);
+          }
+        } catch (paymentInsertError) {
+          // Log error but don't fail the payment update
+          console.error('❌ Error inserting payment record into tbl_payments:', paymentInsertError);
+        }
+      }
       // Send SMS to worker after successful payment update
       try {
         // Get booking details with worker information
@@ -2944,7 +2977,7 @@ app.use((error, req, res, next) => {
 app.get('/api/bookings/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { status } = req.query;
+    const { status, skip_payment_check } = req.query;
     
     if (!userId) {
       return res.status(400).json({
@@ -2982,30 +3015,33 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
     // Handle multiple status values (comma-separated)
     if (status !== undefined && status !== '') {
       if (status.includes(',')) {
-        // Multiple statuses (e.g., "1,2,3")
+        // Multiple statuses (e.g., "0,1,3" or "0,1,2,3")
         const statusArray = status.split(',').map(s => parseInt(s.trim()));
         const placeholders = statusArray.map(() => '?').join(',');
         query += ` AND b.status IN (${placeholders})`;
         params.push(...statusArray);
-        console.log(`📊 Applied multiple status filter: ${statusArray}`);
       } else {
         // Single status
+        const singleStatus = parseInt(status);
         query += ' AND b.status = ?';
-        params.push(parseInt(status));
+        params.push(singleStatus);
         console.log(`📊 Applied single status filter: ${status}`);
       }
     } else {
       console.log(`📊 No status filter applied - fetching all bookings for user`);
     }
+    // Apply payment_status = 1 condition unless skip_payment_check is true (for polling)
+    if (skip_payment_check !== 'true') {
+      query += ' AND b.payment_status = 1';
+    }
+    // Only exclude status 2 if status filter doesn't include 2 (for BOOKINGS_BY_USER - Notifications tab)
+    if (status === undefined || status === '' || !status.includes('2')) {
+      query += ' AND b.status != 2';
+    }
     
     query += ' ORDER BY b.created_at DESC';
 
-    console.log(`🔍 Executing query: ${query}`);
-    console.log(`🔍 With params:`, params);
-
     const [bookings] = await pool.execute(query, params);
-
-    console.log(`✅ Found ${bookings.length} bookings for user ${userId}`);
 
     res.json({
       success: true,

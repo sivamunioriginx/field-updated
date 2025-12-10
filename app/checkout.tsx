@@ -57,6 +57,7 @@ export default function CartScreen() {
   const [showPaymentFailedModal, setShowPaymentFailedModal] = useState(false);
   const [paymentFailedMessage, setPaymentFailedMessage] = useState('');
   const [paymentFailedBookingId, setPaymentFailedBookingId] = useState<string | null>(null);
+  const [showNoWorkersModal, setShowNoWorkersModal] = useState(false);
   const pollingIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Animation values for circular progress ring with orbiting particles
@@ -579,7 +580,8 @@ export default function CartScreen() {
 
     const pollBookingStatus = async () => {
       try {
-        const response = await fetch(API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(user.id.toString()));
+        // Fetch all records for the booking_id to check all statuses
+        const response = await fetch(`${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(user.id.toString())}?skip_payment_check=true`);
         if (!response.ok) {
           console.error('Failed to fetch booking status');
           return;
@@ -591,15 +593,41 @@ export default function CartScreen() {
           const allBookingsWithSameId = result.data.filter((b: any) => b.booking_id === bookingId);
           
           if (allBookingsWithSameId.length > 0) {
-            // Check if ANY booking has status != 0
+            // Check if ANY booking has status = 1
             const confirmedBooking = allBookingsWithSameId.find((b: any) => {
               const status = parseInt(b.status);
-              return status !== 0;
+              return status === 1;
             });
-            
-            if (confirmedBooking) {
-              console.log(`✅ Booking ${bookingId} confirmed with status: ${confirmedBooking.status}`);
+            // Check if ALL bookings with same booking_id have status = 3 (No workers available)
+            const allStatus3 = allBookingsWithSameId.every((b: any) => {
+              const status = parseInt(b.status);
+              return status === 3;
+            });
+            // Only show popup if ALL records with same booking_id have status = 3
+            if (allStatus3) {
+              console.log(`❌ Booking ${bookingId} - All records have status 3 (No workers available)`);
               
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+              }
+              
+              // Stop animations
+              ringRotateAnim.stopAnimation();
+              particle1Anim.stopAnimation();
+              particle2Anim.stopAnimation();
+              particle3Anim.stopAnimation();
+              progressAnim.stopAnimation();
+              pulseAnim.stopAnimation();
+              timerRotateAnim.stopAnimation();
+              // Close waiting modal
+              setShowWaitingModal(false);
+              setCurrentBookingId(null);
+              // Show no workers modal
+              setShowNoWorkersModal(true);
+            } else if (confirmedBooking) {
+             
               // Stop polling
               if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current);
@@ -659,6 +687,8 @@ export default function CartScreen() {
       .then(async (data: any) => {
         // Payment success - update booking payment status and amount
         try {
+          // Extract payment_id from Razorpay response
+          const razorpayPaymentId = data.razorpay_payment_id || data.payment_id || '';
           const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_PAYMENT(bookingId), {
             method: 'PUT',
             headers: {
@@ -667,6 +697,7 @@ export default function CartScreen() {
             body: JSON.stringify({
               payment_status: 1,
               amount: totalAmount,
+              payment_id: razorpayPaymentId,
             }),
           });
 
@@ -1631,6 +1662,45 @@ export default function CartScreen() {
                 <Text style={styles.failedCancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* No Workers Available Modal */}
+      <Modal
+        visible={showNoWorkersModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowNoWorkersModal(false)}
+      >
+        <View style={styles.noWorkersModalOverlay}>
+          <View style={styles.noWorkersModalContent}>
+            {/* Icon Container with Background */}
+            <View style={styles.noWorkersIconWrapper}>
+              <View style={styles.noWorkersIconBackground}>
+                <Ionicons name="people-outline" size={getIconSize(70)} color="#FF9500" />
+              </View>
+            </View>
+            
+            {/* Message */}
+            <Text style={styles.noWorkersTitle}>No Workers Available</Text>
+            <Text style={styles.noWorkersSubtitle}>Try again later please</Text>
+            
+            {/* Decorative Line */}
+            <View style={styles.noWorkersDivider} />
+            
+            {/* Action Button */}
+            <TouchableOpacity
+              style={styles.noWorkersButton}
+              onPress={() => {
+                setShowNoWorkersModal(false);
+                router.back();
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-circle" size={getIconSize(18)} color="#FFFFFF" style={styles.noWorkersButtonIcon} />
+              <Text style={styles.noWorkersButtonText}>OK</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -2716,6 +2786,91 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       textAlign: 'center',
     },
     failedButtonIcon: {
+      marginRight: getResponsiveSpacing(8),
+    },
+    noWorkersModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    noWorkersModalContent: {
+      backgroundColor: '#FFFFFF',
+      borderRadius: getResponsiveSpacing(28),
+      padding: getResponsiveSpacing(35),
+      alignItems: 'center',
+      minWidth: screenWidth * 0.75,
+      maxWidth: screenWidth * 0.9,
+      shadowColor: '#FF9500',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.35,
+      shadowRadius: 24,
+      elevation: 20,
+      borderWidth: 2,
+      borderColor: '#FFF5E6',
+    },
+    noWorkersIconWrapper: {
+      marginBottom: getResponsiveValue(20, 18, 22),
+    },
+    noWorkersIconBackground: {
+      width: getResponsiveWidth(120, 100, 140),
+      height: getResponsiveWidth(120, 100, 140),
+      borderRadius: getResponsiveWidth(60, 50, 70),
+      backgroundColor: '#FFF5E6',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 3,
+      borderColor: '#FFE5B4',
+    },
+    noWorkersIconContainer: {
+      marginBottom: getResponsiveValue(12, 10, 14),
+    },
+    noWorkersTitle: {
+      fontSize: getResponsiveFontSize(24),
+      fontWeight: '800',
+      color: '#FF9500',
+      marginBottom: getResponsiveValue(10, 8, 12),
+      textAlign: 'center',
+      letterSpacing: 0.5,
+    },
+    noWorkersSubtitle: {
+      fontSize: getResponsiveFontSize(17),
+      color: '#8B7355',
+      textAlign: 'center',
+      marginBottom: getResponsiveValue(20, 18, 22),
+      fontWeight: '500',
+      lineHeight: getResponsiveFontSize(24),
+    },
+    noWorkersDivider: {
+      width: '60%',
+      height: 2,
+      backgroundColor: '#FFE5B4',
+      marginBottom: getResponsiveValue(24, 22, 26),
+      borderRadius: 1,
+    },
+    noWorkersButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#FF9500',
+      borderRadius: getResponsiveSpacing(22),
+      paddingVertical: getResponsiveValue(10, 8, 12),
+      paddingHorizontal: getResponsiveWidth(28, 22, 34),
+      width: '45%',
+      shadowColor: '#FF9500',
+      shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+      elevation: 7,
+    },
+    noWorkersButtonText: {
+      color: '#FFFFFF',
+      fontSize: getResponsiveFontSize(15),
+      fontWeight: '700',
+      textAlign: 'center',
+      letterSpacing: 0.4,
+    },
+    noWorkersButtonIcon: {
       marginRight: getResponsiveSpacing(8),
     },
   });

@@ -359,8 +359,7 @@ export default function Index() {
     
     try {
       setBookingsLoading(true);
-      // Get all bookings for notifications (excluding status=4 which is "Missed")
-      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=0,1,2,3`;
+      const apiUrl = API_ENDPOINTS.BOOKINGS_BY_USER(userId);
       
       const response = await fetch(apiUrl);
       const result = await response.json();
@@ -406,8 +405,8 @@ export default function Index() {
     
     try {
       setBookingsLoading(true);
-      // Get bookings with status != 0 (excluding pending)
-      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=1,2,3`;
+      // Get all bookings for totalBookings tab (status=0,1,2,3 without payment_status restriction)
+      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=0,1,2,3`;
       
       const response = await fetch(apiUrl);
       const result = await response.json();

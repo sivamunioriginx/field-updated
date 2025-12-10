@@ -1173,8 +1173,8 @@ export default function Index() {
                                                                  {booking.status === 0 ? 'Pending' : 
                                   booking.status === 1 ? 'Active' : 
                                   booking.status === 2 ? 'Completed' : 
-                                  booking.status === 3 ? (booking.reject_reason ? 'Rejected' : 'Cancelled') : 
-                                  booking.status === 4 ? 'Missed' : 
+                                  // booking.status === 3 ? (booking.reject_reason ? 'Rejected' : 'Cancelled') : 
+                                  booking.status === 3 ? 'Missed' : 
                                   `Status ${booking.status}`}
                               </Text>
                             </View>

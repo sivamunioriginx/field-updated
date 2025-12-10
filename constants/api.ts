@@ -49,9 +49,8 @@ export const API_ENDPOINTS = {
   SEND_OTP: `${getBaseUrl()}/send-otp`,
   VERIFY_OTP: `${getBaseUrl()}/verify-otp`,
   BOOKINGS: `${getBaseUrl()}/bookings`,
-  BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=0,4`,
-  // Add this new endpoint for total bookings (status != 0)
-  TOTAL_BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=1,2,3,4`,
+  BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=1`,
+  TOTAL_BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=2,3`,
   UPDATE_BOOKING_STATUS: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/status`,
   UPDATE_BOOKING_PAYMENT: (bookingId: string) => `${getBaseUrl()}/bookings/${bookingId}/payment`,
   CHECK_USER_EXISTS: (mobile?: string, email?: string, userType?: string) => {
@@ -63,7 +62,7 @@ export const API_ENDPOINTS = {
   },
   
   // Add these new endpoints for service seeker bookings
-  BOOKINGS_BY_USER: (userId: string) => `${getBaseUrl()}/bookings/user/${userId}?status=0`,
+  BOOKINGS_BY_USER: (userId: string) => `${getBaseUrl()}/bookings/user/${userId}?status=0,1,3`,
   TOTAL_BOOKINGS_BY_USER: (userId: string) => `${getBaseUrl()}/bookings/user/${userId}`,
   
   // Add this new endpoint for getting all service seekers

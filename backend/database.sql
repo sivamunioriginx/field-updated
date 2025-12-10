@@ -170,3 +170,12 @@ CREATE TABLE tbl_admin (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+-- Create tbl_payments table
+CREATE TABLE tbl_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    bookingid INT NOT NULL,              
+    payment_id VARCHAR(50) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
