@@ -37,6 +37,15 @@ interface Booking {
   reject_reason?: string;
 }
 
+interface Payment {
+  id: number;
+  payment_id: string;
+  amount: number;
+  booking_id: string;
+  description: string;
+  payment_date: string;
+}
+
 // Helper functions moved inside createStyles for better responsive scaling
 
 export default function Index() {
@@ -51,6 +60,8 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('notifications');
   // Calculate menu width responsively - will be updated in useEffect
   const menuWidth = useMemo(() => {
@@ -527,6 +538,35 @@ export default function Index() {
     }, [user?.id, serviceSeeker?.id, fetchBookings])
   );
 
+  // Fetch payment history
+  const fetchPayments = useCallback(async () => {
+    // Use authenticated user's ID if available, otherwise use serviceSeeker ID
+    const userId = user?.id || serviceSeeker?.id;
+    if (!userId) {
+      return;
+    }
+    
+    try {
+      setPaymentsLoading(true);
+      const apiUrl = API_ENDPOINTS.PAYMENTS_BY_USER(userId);
+      
+      const response = await fetch(apiUrl);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setPayments(result.data);
+      } else {
+        setPayments([]);
+        console.log('❌ No payment history data in response');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching payment history:', error);
+      setPayments([]);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }, [user?.id, serviceSeeker?.id]);
+
   // Modify the handleTabChange function
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -536,7 +576,20 @@ export default function Index() {
     } else if (tab === 'totalBookings') {
       // Fetch total bookings (status != 0, distinct by booking_id)
       fetchTotalBookings();
+    } else if (tab === 'paymentHistory') {
+      // Fetch payment history
+      fetchPayments();
     }
+  };
+
+  // Helper function to trim "Booking for " from description
+  const trimBookingDescription = (description: string | null | undefined): string => {
+    if (!description) return 'Service booking';
+    const trimmed = description.trim();
+    if (trimmed.toLowerCase().startsWith('booking for ')) {
+      return trimmed.substring(12).trim();
+    }
+    return trimmed;
   };
 
   // Get the current name (prioritize authenticated user, then serviceSeeker, then fallback to initial)
@@ -604,29 +657,108 @@ export default function Index() {
           >
             <View style={styles.innerContainer}>
               
-              {/* Booking Notifications Section */}
-              <View style={styles.bookingsSection}>
-                <View style={styles.bookingsHeader}>
-                  <View style={styles.bookingsTitleContainer}>
-                    <Ionicons name="notifications" size={styles.titleIconSize} color="#3498db" />
-                    <Text style={styles.bookingsTitle}>
-                      {activeTab === 'notifications' ? 'All Notifications' : 'Total Bookings'}
-                    </Text>
+              {/* Conditional Content Based on Active Tab */}
+              {activeTab === 'paymentHistory' ? (
+                // Payment History Section
+                <View style={styles.bookingsSection}>
+                  <View style={styles.bookingsHeader}>
+                    <View style={styles.bookingsTitleContainer}>
+                      <Ionicons name="card" size={styles.titleIconSize} color="#8B5CF6" />
+                      <Text style={styles.bookingsTitle}>Payment History</Text>
+                    </View>
+                    <View style={styles.bookingsActions}>
+                      {payments.length > 0 && (
+                        <View style={styles.bookingCount}>
+                          <Text style={styles.bookingCountText}>{payments.length}</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.bookingsActions}>
-                    {bookings.length > 0 && (
-                      <View style={styles.bookingCount}>
-                        <Text style={styles.bookingCountText}>{bookings.length}</Text>
-                      </View>
-                    )}
-                  </View>
+                  
+                  {paymentsLoading ? (
+                    <View style={styles.loadingContainer}>
+                      <Text style={styles.loadingText}>Loading payments...</Text>
+                    </View>
+                  ) : payments.length > 0 ? (
+                    <View style={styles.paymentsList}>
+                      {payments.map((payment) => (
+                        <View key={payment.id} style={styles.paymentCard}>
+                          {/* Payment Card Header with Gradient */}
+                          <View style={styles.paymentCardHeader}>
+                            <View style={styles.paymentIconContainer}>
+                              <Ionicons name="checkmark-circle" size={styles.paymentIconSize} color="#FFFFFF" />
+                            </View>
+                            <View style={styles.paymentHeaderContent}>
+                              <Text style={styles.paymentAmount}>₹{payment.amount}</Text>
+                              <Text style={styles.paymentDate}>
+                                {new Date(payment.payment_date).toLocaleDateString("en-GB", {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </Text>
+                            </View>
+                          </View>
+                          
+                          {/* Payment Details */}
+                          <View style={styles.paymentDetails}>
+                            <View style={styles.paymentDetailRow}>
+                              <Ionicons name="receipt-outline" size={styles.smallIconSize} color="#8B5CF6" />
+                              <Text style={styles.paymentDetailLabel}>Payment ID:</Text>
+                              <Text style={styles.paymentDetailValue} numberOfLines={1}>{payment.payment_id}</Text>
+                            </View>
+                            
+                            <View style={styles.paymentDetailRow}>
+                              <Ionicons name="calendar-outline" size={styles.smallIconSize} color="#8B5CF6" />
+                              <Text style={styles.paymentDetailLabel}>Booking ID:</Text>
+                              <Text style={styles.paymentDetailValue}>#{payment.booking_id}</Text>
+                            </View>
+                            
+                            <View style={styles.paymentDetailRow}>
+                              <Ionicons name="briefcase-outline" size={styles.smallIconSize} color="#8B5CF6" />
+                              <Text style={styles.paymentDetailLabel}>Booking For:</Text>
+                              <Text style={styles.paymentDetailValue} numberOfLines={2}>
+                                {trimBookingDescription(payment.description)}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.noBookings}>
+                      <Ionicons name="card-outline" size={styles.emptyIconSize} color="#e5e7eb" />
+                      <Text style={styles.noBookingsText}>No payment history</Text>
+                      <Text style={styles.noBookingsSubtext}>
+                        Your payment history will appear here
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                
-                {bookingsLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Loading bookings...</Text>
+              ) : (
+                // Booking Notifications Section
+                <View style={styles.bookingsSection}>
+                  <View style={styles.bookingsHeader}>
+                    <View style={styles.bookingsTitleContainer}>
+                      <Ionicons name="notifications" size={styles.titleIconSize} color="#3498db" />
+                      <Text style={styles.bookingsTitle}>
+                        {activeTab === 'notifications' ? 'All Notifications' : 'Total Bookings'}
+                      </Text>
+                    </View>
+                    <View style={styles.bookingsActions}>
+                      {bookings.length > 0 && (
+                        <View style={styles.bookingCount}>
+                          <Text style={styles.bookingCountText}>{bookings.length}</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                ) : bookings.length > 0 ? (
+                  
+                  {bookingsLoading ? (
+                    <View style={styles.loadingContainer}>
+                      <Text style={styles.loadingText}>Loading bookings...</Text>
+                    </View>
+                  ) : bookings.length > 0 ? (
                   <View style={styles.bookingsList}>
                     {bookings.map((booking) => (
                       <View key={`${booking.booking_id}-${booking.status}`} style={styles.bookingCard}>
@@ -769,7 +901,8 @@ export default function Index() {
                     </Text>
                   </View>
                 )}
-              </View>
+                </View>
+              )}
             </View>
           </ScrollView>
         </TouchableWithoutFeedback>
@@ -991,6 +1124,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   const menuIconSize = Math.max(20, Math.min(28, moderateScale(24)));
   const chevronIconSize = Math.max(14, Math.min(20, moderateScale(16)));
   const emptyIconSize = Math.max(40, Math.min(56, moderateScale(48)));
+  const paymentIconSize = Math.max(24, Math.min(32, moderateScale(28)));
 
   // Calculate menu width responsively
   const menuWidth = Math.max(250, Math.min(350, scale(300, 1)));
@@ -1383,6 +1517,80 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontWeight: '500',
       flex: 1,
     },
+    // Payment History Styles
+    paymentsList: {
+      gap: getResponsiveSpacing(15),
+    },
+    paymentCard: {
+      backgroundColor: '#e0ddebff',
+      borderRadius: getResponsiveValue(12, 10, 14),
+      padding: getResponsiveSpacing(12),
+      marginBottom: getResponsiveSpacingWithNegative(-5),
+      shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
+      marginLeft: getResponsiveSpacingWithNegative(-5),
+      marginRight: getResponsiveSpacingWithNegative(-5),
+      borderWidth: 1,
+      borderColor: '#E9D5FF',
+    },
+    paymentCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#8B5CF6',
+      borderRadius: getResponsiveValue(8, 6, 10),
+      padding: getResponsiveSpacing(10),
+      marginBottom: getResponsiveSpacing(8),
+      marginHorizontal: getResponsiveSpacingWithNegative(-12),
+      marginTop: getResponsiveSpacingWithNegative(-12),
+    },
+    paymentIconContainer: {
+      width: getResponsiveValue(36, 32, 40),
+      height: getResponsiveValue(36, 32, 40),
+      borderRadius: getResponsiveValue(18, 16, 20),
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: getResponsiveSpacing(8),
+    },
+    paymentHeaderContent: {
+      flex: 1,
+    },
+    paymentAmount: {
+      fontSize: getResponsiveFontSize(22),
+      fontWeight: '800',
+      color: '#FFFFFF',
+      marginBottom: getResponsiveSpacing(2),
+    },
+    paymentDate: {
+      fontSize: getResponsiveFontSize(11),
+      color: 'rgba(255, 255, 255, 0.9)',
+      fontWeight: '500',
+    },
+    paymentDetails: {
+      gap: getResponsiveSpacing(6),
+    },
+    paymentDetailRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingVertical: getResponsiveSpacing(4),
+    },
+    paymentDetailLabel: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#6B7280',
+      fontWeight: '600',
+      marginLeft: getResponsiveSpacing(8),
+      minWidth: getResponsiveWidth(100, 90, 110),
+    },
+    paymentDetailValue: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#1F2937',
+      fontWeight: '500',
+      flex: 1,
+      flexWrap: 'wrap',
+    },
     // Menu backdrop style
     menuBackdrop: {
       position: 'absolute',
@@ -1408,6 +1616,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     menuIconSize,
     chevronIconSize,
     emptyIconSize,
+    paymentIconSize,
   } as typeof styles & {
     iconSize: number;
     titleIconSize: number;
@@ -1417,5 +1626,6 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     menuIconSize: number;
     chevronIconSize: number;
     emptyIconSize: number;
+    paymentIconSize: number;
   };
 };

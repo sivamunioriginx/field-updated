@@ -64,6 +64,7 @@ export const API_ENDPOINTS = {
   // Add these new endpoints for service seeker bookings
   BOOKINGS_BY_USER: (userId: string) => `${getBaseUrl()}/bookings/user/${userId}?status=0,1,3`,
   TOTAL_BOOKINGS_BY_USER: (userId: string) => `${getBaseUrl()}/bookings/user/${userId}`,
+  PAYMENTS_BY_USER: (userId: string) => `${getBaseUrl()}/payments/user/${userId}`,
   
   // Add this new endpoint for getting all service seekers
   ALL_SERVICESEEKERS: `${getBaseUrl()}/serviceseekers`,

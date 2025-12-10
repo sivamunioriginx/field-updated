@@ -26,6 +26,7 @@ interface Booking {
   work_location: string;
   booking_time: string;
   status: number;
+  payment_status: number;
   created_at: string;
   description: string;
   worker_name: string;
@@ -122,9 +123,9 @@ export default function AdminIndexScreen() {
   // Get status label
   const getStatusLabel = (status: number) => {
     switch (status) {
-      case 1: return 'Active';
-      case 2: return 'InProgress';
-      case 4: return 'Completed';
+      case 1: return 'InProgress';
+      case 2: return 'Completed';
+      case 3: return 'Reject';
       default: return 'Unknown';
     }
   };
@@ -132,9 +133,9 @@ export default function AdminIndexScreen() {
   // Get status color
   const getStatusColor = (status: number) => {
     switch (status) {
-      case 1: return { bg: '#dcfce7', border: '#86efac', text: '#16a34a' }; // Green for Active
-      case 2: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' }; // Blue for InProgress
-      case 4: return { bg: '#f3e8ff', border: '#c084fc', text: '#9333ea' }; // Purple for Completed
+      case 1: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' }; // Blue for InProgress
+      case 2: return { bg: '#f3e8ff', border: '#c084fc', text: '#9333ea' }; // Purple for Completed
+      case 3: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; // Red for Reject
       default: return { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' };
     }
   };
@@ -144,9 +145,41 @@ export default function AdminIndexScreen() {
     let filtered = [...bookings];
 
     // Apply status filter
-    if (statusFilter !== 'all') {
-      const statusValue = statusFilter === 'active' ? 1 : statusFilter === 'inprogress' ? 2 : 4;
-      filtered = filtered.filter(booking => booking.status === statusValue);
+    if (statusFilter === 'reject') {
+      // Reject: Only include booking_ids where ALL records have status = 3
+      const bookingsByBookingId = new Map<string, Booking[]>();
+      
+      // Group bookings by booking_id
+      filtered.forEach(booking => {
+        if (!bookingsByBookingId.has(booking.booking_id)) {
+          bookingsByBookingId.set(booking.booking_id, []);
+        }
+        bookingsByBookingId.get(booking.booking_id)!.push(booking);
+      });
+      
+      // Filter: Only keep booking_ids where ALL records have status = 3
+      const rejectedBookingIds = new Set<string>();
+      bookingsByBookingId.forEach((bookingGroup, bookingId) => {
+        const allRejected = bookingGroup.every(booking => booking.status === 3);
+        if (allRejected) {
+          rejectedBookingIds.add(bookingId);
+        }
+      });
+      
+      // Keep only bookings with rejected booking_ids
+      filtered = filtered.filter(booking => rejectedBookingIds.has(booking.booking_id));
+    } else {
+      // For all other filters, require payment_status = 1
+      filtered = filtered.filter(booking => booking.payment_status === 1);
+      
+      if (statusFilter === 'inprogress') {
+        // InProgress: status = 1 AND payment_status = 1
+        filtered = filtered.filter(booking => booking.status === 1);
+      } else if (statusFilter === 'completed') {
+        // Completed: status = 2 AND payment_status = 1
+        filtered = filtered.filter(booking => booking.status === 2);
+      }
+      // For 'all', we only filter by payment_status = 1 (already applied above)
     }
 
     // Apply search filter
@@ -161,6 +194,23 @@ export default function AdminIndexScreen() {
         (booking.description && booking.description.toLowerCase().includes(query))
       );
     }
+
+    // Deduplicate by booking_id - keep only the latest record for each booking_id
+    const bookingsMap = new Map<string, Booking>();
+    filtered.forEach(booking => {
+      const existing = bookingsMap.get(booking.booking_id);
+      if (!existing) {
+        bookingsMap.set(booking.booking_id, booking);
+      } else {
+        // Compare by created_at to get the latest one
+        const existingTime = new Date(existing.created_at).getTime();
+        const currentTime = new Date(booking.created_at).getTime();
+        if (currentTime > existingTime) {
+          bookingsMap.set(booking.booking_id, booking);
+        }
+      }
+    });
+    filtered = Array.from(bookingsMap.values());
 
     // Apply sorting
     filtered.sort((a, b) => {
@@ -194,10 +244,10 @@ export default function AdminIndexScreen() {
     : Math.ceil(getFilteredAndSortedBookings().length / (typeof recordsPerPage === 'number' ? recordsPerPage : 10));
 
   const statusOptions = [
-    { value: 'all', label: 'All Status' },
-    { value: 'active', label: 'Active' },
+    { value: 'all', label: 'All' },
     { value: 'inprogress', label: 'InProgress' },
     { value: 'completed', label: 'Completed' },
+    { value: 'reject', label: 'Reject' },
   ];
 
   const sortOptions = [

@@ -3065,6 +3065,49 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
   }
 });
 
+// Get payment history by user ID endpoint
+app.get('/api/payments/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+    // Join tbl_payments with tbl_bookings to get payment details with booking info
+    const query = `
+      SELECT 
+        p.id,
+        p.payment_id,
+        p.amount,
+        p.created_at as payment_date,
+        b.booking_id,
+        b.description
+      FROM tbl_payments p
+      INNER JOIN tbl_bookings b ON p.bookingid = b.id
+      WHERE b.user_id = ?
+      ORDER BY p.created_at DESC
+    `;
+    
+    const [payments] = await pool.execute(query, [userId]);
+
+    res.json({
+      success: true,
+      data: payments
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching payment history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching payment history',
+      error: error.message
+    });
+  }
+});
+
 // Get all service seekers endpoint - ADD THIS TOO
 app.get('/api/serviceseekers', async (req, res) => {
   try {
@@ -3814,6 +3857,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         b.work_location,
         b.booking_time,
         b.status,
+        b.payment_status,
         b.created_at,
         b.description,
         w.name as worker_name,
@@ -3823,7 +3867,6 @@ app.get('/api/admin/bookings', async (req, res) => {
       FROM tbl_bookings b
       LEFT JOIN tbl_workers w ON b.worker_id = w.id
       LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
-      WHERE b.status IN (1, 2, 4)
       ORDER BY b.created_at DESC
     `;
 
