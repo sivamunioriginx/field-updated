@@ -3867,7 +3867,7 @@ app.get('/api/admin/bookings', async (req, res) => {
       FROM tbl_bookings b
       LEFT JOIN tbl_workers w ON b.worker_id = w.id
       LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
-      ORDER BY b.created_at DESC
+      ORDER BY b.id DESC
     `;
 
     const [bookings] = await pool.query(query);
@@ -3882,6 +3882,76 @@ app.get('/api/admin/bookings', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch bookings',
+      error: error.message
+    });
+  }
+});
+
+// Admin Payments endpoint
+app.get('/api/admin/payments', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        p.id,
+        p.payment_id,
+        p.amount,
+        p.created_at as payment_date,
+        b.booking_id
+      FROM tbl_payments p
+      INNER JOIN tbl_bookings b ON p.bookingid = b.id
+      ORDER BY p.id DESC
+    `;
+
+    const [payments] = await pool.query(query);
+
+    res.json({
+      success: true,
+      payments: payments
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching admin payments:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payments',
+      error: error.message
+    });
+  }
+});
+
+// Admin Customers endpoint
+app.get('/api/admin/customers', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        id,
+        name,
+        mobile,
+        email,
+        pincode,
+        address,
+        mandal,
+        city,
+        district,
+        state,
+        country,
+        created_at
+      FROM tbl_serviceseeker
+      ORDER BY id DESC
+    `;
+
+    const [customers] = await pool.query(query);
+
+    res.json({
+      success: true,
+      customers: customers
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching admin customers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch customers',
       error: error.message
     });
   }
