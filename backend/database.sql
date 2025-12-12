@@ -128,7 +128,6 @@ CREATE TABLE tbl_bookings (
   status TINYINT NOT NULL DEFAULT 0,
   payment_status TINYINT NOT NULL DEFAULT 0,
   amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  reject_reason TEXT NULL,
   description TEXT NULL,
   work_documents TEXT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -178,4 +177,23 @@ CREATE TABLE tbl_payments (
     payment_id VARCHAR(50) NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create tbl_canceledbooking table
+CREATE TABLE tbl_canceledbookings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  bookingid VARCHAR(50) NOT NULL,
+  cancel_reason TEXT NOT NULL,
+  type TINYINT(1) NOT NULL COMMENT '1 or 2',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create tbl_rescheduledbookings table
+CREATE TABLE tbl_rescheduledbookings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  bookingid VARCHAR(50) NOT NULL,
+  reschedule_reason TEXT NOT NULL,
+  reschedule_date DATETIME NOT NULL,
+  type TINYINT(1) NOT NULL COMMENT '1 or 2',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

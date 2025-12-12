@@ -999,9 +999,13 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
         b.description,
         b.work_documents,
         s.name as user_name,
-        s.mobile as user_mobile
+        s.mobile as user_mobile,
+        r.reschedule_date,
+        c.created_at as canceled_at
       FROM tbl_bookings b
       LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+      LEFT JOIN tbl_rescheduledbookings r ON b.id = r.bookingid
+      LEFT JOIN tbl_canceledbookings c ON b.id = c.bookingid
       WHERE b.worker_id = ?
     `;
     
@@ -1063,7 +1067,7 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
 app.put('/api/bookings/:bookingId/status', async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { status, reject_reason } = req.body;
+    const { status } = req.body;
     
     console.log(`🔧 Updating booking ${bookingId} status to ${status}`);
     
@@ -1075,11 +1079,11 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
     }
 
     // Validate status values
-    const validStatuses = [0, 1, 2, 3, 4]; // 0=Pending, 1=Active, 2=Completed, 3=Cancelled, 4=Missed
+    const validStatuses = [0, 1, 2, 3, 4, 5, 6]; // 0=Pending, 1=Active, 2=Completed, 3=Cancelled, 4=Missed, 5=Canceled, 6=Rescheduled
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status value. Must be 0, 1, 2, 3, or 4'
+        message: 'Invalid status value. Must be 0, 1, 2, 3, 4, 5, or 6'
       });
     }
 
@@ -1130,20 +1134,28 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
        let query = 'UPDATE tbl_bookings SET status = ?';
        let params = [status];
        
-       // If status is 3 (rejected) and reject_reason is provided, update the reject_reason column
-       if (status === 3 && reject_reason) {
-         query += ', reject_reason = ?';
-         params.push(reject_reason);
-       }
-       
-       query += ' WHERE id = ?';
+      const { reschedule_date, reschedule_reason, cancel_reason } = req.body;
+      
+      query += ' WHERE id = ?';
        params.push(bookingId);
        
        const [result] = await pool.execute(query, params);
 
-      console.log(`📝 Database update result:`, result);
-
       if (result.affectedRows > 0) {
+        // If status is 5 (canceled), insert into tbl_canceledbookings
+        if (status === 5 && cancel_reason) {
+          const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type) VALUES (?, ?, ?)';
+          await pool.execute(insertCancelQuery, [bookingId, cancel_reason, 1]);
+          console.log(`📝 Inserted canceled booking record for booking ID: ${bookingId}`);
+        }
+        
+        // If status is 6 (rescheduled), insert into tbl_rescheduledbookings
+        if (status === 6 && reschedule_date && reschedule_reason) {
+          const insertRescheduleQuery = 'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_date, reschedule_reason, type) VALUES (?, ?, ?, ?)';
+          await pool.execute(insertRescheduleQuery, [bookingId, reschedule_date, reschedule_reason, 1]);
+          console.log(`📝 Inserted rescheduled booking record for booking ID: ${bookingId}`);
+        }
+        
         res.json({
           success: true,
           message: 'Booking status updated successfully',
@@ -3000,7 +3012,6 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
         b.booking_time,
         b.status,
         b.created_at,
-        b.reject_reason,
         b.description,
         b.work_documents,
         w.name as worker_name,
@@ -3655,7 +3666,7 @@ app.post('/api/accept-booking-alert', async (req, res) => {
     if (updateResult.affectedRows > 0) {
       // Update all other bookings with the same booking_id to rejected (status = 3)
       const [updateOthersResult] = await pool.execute(
-        'UPDATE tbl_bookings SET status = 3 WHERE booking_id = ? AND id != ? AND status = 0',
+        'UPDATE tbl_bookings SET status = 4 WHERE booking_id = ? AND id != ? AND status = 0',
         [booking.booking_id, booking.id]
       );
 
@@ -3716,10 +3727,10 @@ app.post('/api/reject-booking-alert', async (req, res) => {
 
     const booking = bookings[0];
 
-    // Update this booking to rejected (status = 3)
+    // Update this booking to rejected (status = 4)
     const [updateResult] = await pool.execute(
-      'UPDATE tbl_bookings SET status = 3, reject_reason = ? WHERE id = ?',
-      [reason || 'Worker rejected', booking.id]
+      'UPDATE tbl_bookings SET status = 4 WHERE id = ?',
+      [booking.id]
     );
 
     if (updateResult.affectedRows > 0) {
