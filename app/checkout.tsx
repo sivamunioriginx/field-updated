@@ -599,12 +599,12 @@ export default function CartScreen() {
               return status === 1;
             });
             // Check if ALL bookings with same booking_id have status = 3 (No workers available)
-            const allStatus3 = allBookingsWithSameId.every((b: any) => {
+            const allStatus4 = allBookingsWithSameId.every((b: any) => {
               const status = parseInt(b.status);
-              return status === 3;
+              return status === 4;
             });
             // Only show popup if ALL records with same booking_id have status = 3
-            if (allStatus3) {
+            if (allStatus4) {
               console.log(`❌ Booking ${bookingId} - All records have status 3 (No workers available)`);
               
               // Stop polling

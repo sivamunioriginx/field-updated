@@ -1079,7 +1079,7 @@ export default function Index() {
   };
 
 
-  const handleBookingAction = async (bookingId: number, action: 'accept' | 'reject' | 'complete' | 'cancel' | 'reschedule') => {
+  const handleBookingAction = async (bookingId: number, action: 'accept' | 'reject' | 'complete' | 'cancel' | 'reschedule' | 'start') => {
     try {
       if (action === 'accept') {
         // Update booking status to 1 (Accepted)
@@ -1184,6 +1184,30 @@ export default function Index() {
           'Reschedule functionality will be implemented soon. Please contact the customer directly to reschedule.',
           [{ text: 'OK' }]
         );
+      } else if (action === 'start') {
+        // Update booking status to 2 (Inprogress)
+        const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(bookingId), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: 2 }),
+        });
+
+        if (response.ok) {
+          // Update local state immediately
+          setBookings(prevBookings => 
+            prevBookings.map(booking => 
+              booking.id === bookingId 
+                ? { ...booking, status: 2 }
+                : booking
+            )
+          );
+          // Refresh bookings to show updated status
+          fetchBookings();
+        } else {
+          console.error('Failed to start booking');
+        }
       }
     } catch (error) {
       console.error(`Error updating booking status:`, error);
@@ -1687,7 +1711,7 @@ export default function Index() {
                               <>
                                 <TouchableOpacity 
                                   style={[styles.actionButton, styles.completeButton]}
-                                  onPress={() => handleBookingAction(booking.id, 'complete')}
+                                  onPress={() => handleBookingAction(booking.id, 'start')}
                                 >
                                   <Ionicons name="checkmark-circle" size={moderateScale(14)} color="#ffffff" />
                                   <Text style={styles.actionButtonText} numberOfLines={1}>Start</Text>

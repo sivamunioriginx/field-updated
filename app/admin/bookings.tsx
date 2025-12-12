@@ -105,9 +105,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   // Get status label
   const getStatusLabel = (status: number) => {
     switch (status) {
-      case 1: return 'InProgress';
-      case 2: return 'Completed';
-      case 3: return 'Reject';
+      case 1: return 'Accepted';
+      case 2: return 'In Progress';
+      case 3: return 'Completed';
+      case 4: return 'Reject';
+      case 5: return 'Canceled';
+      case 6: return 'Rescheduled';
       default: return 'Unknown';
     }
   };
@@ -115,9 +118,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   // Get status color
   const getStatusColor = (status: number) => {
     switch (status) {
-      case 1: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' }; // Blue for InProgress
-      case 2: return { bg: '#f3e8ff', border: '#c084fc', text: '#9333ea' }; // Purple for Completed
-      case 3: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; // Red for Reject
+      case 1: return { bg: '#dcfce7', border: '#86efac', text: '#16a34a' }; // Green for Accepted
+      case 2: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' }; // Blue for In Progress
+      case 3: return { bg: '#f3e8ff', border: '#c084fc', text: '#9333ea' }; // Purple for Completed
+      case 4: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; // Red for Reject
+      case 5: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; // Red for Canceled
+      case 6: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; // Yellow for Rescheduled
       default: return { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' };
     }
   };
@@ -128,7 +134,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
     // Apply status filter
     if (statusFilter === 'reject') {
-      // Reject: Only include booking_ids where ALL records have status = 3
+      // Reject: Only include booking_ids where ALL records have status = 4
       const bookingsByBookingId = new Map<string, Booking[]>();
       
       // Group bookings by booking_id
@@ -139,10 +145,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         bookingsByBookingId.get(booking.booking_id)!.push(booking);
       });
       
-      // Filter: Only keep booking_ids where ALL records have status = 3
+      // Filter: Only keep booking_ids where ALL records have status = 4
       const rejectedBookingIds = new Set<string>();
       bookingsByBookingId.forEach((bookingGroup, bookingId) => {
-        const allRejected = bookingGroup.every(booking => booking.status === 3);
+        const allRejected = bookingGroup.every(booking => booking.status === 4);
         if (allRejected) {
           rejectedBookingIds.add(bookingId);
         }
@@ -155,14 +161,23 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       filtered = filtered.filter(booking => booking.payment_status === 1);
       
       if (statusFilter === 'all') {
-        // All: (status = 1 OR status = 2) AND payment_status = 1
-        filtered = filtered.filter(booking => booking.status === 1 || booking.status === 2);
+        // All: status = 1, 2, 3, 5, 6 AND payment_status = 1
+        filtered = filtered.filter(booking => 
+          booking.status === 1 || 
+          booking.status === 2 || 
+          booking.status === 3 || 
+          booking.status === 5 || 
+          booking.status === 6
+        );
+      } else if (statusFilter === 'active') {
+        // Active: status = 1 AND payment_status = 1
+        filtered = filtered.filter(booking => booking.status === 1);
       } else if (statusFilter === 'inprogress') {
         // InProgress: status = 1 AND payment_status = 1
-        filtered = filtered.filter(booking => booking.status === 1);
+        filtered = filtered.filter(booking => booking.status === 2);
       } else if (statusFilter === 'completed') {
         // Completed: status = 2 AND payment_status = 1
-        filtered = filtered.filter(booking => booking.status === 2);
+        filtered = filtered.filter(booking => booking.status === 3);
       }
     }
 
@@ -229,9 +244,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
   const statusOptions = [
     { value: 'all', label: 'All' },
+    { value: 'active', label: 'Accepted' },
     { value: 'inprogress', label: 'InProgress' },
     { value: 'completed', label: 'Completed' },
     { value: 'reject', label: 'Reject' },
+    { value: 'cancel', label: 'Cancel' },
+    { value: 'reschedule', label: 'Reschedule' },
   ];
 
   const sortOptions = [
