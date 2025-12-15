@@ -1030,7 +1030,7 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
       console.log(`📊 No status filter applied - fetching all bookings for worker`);
     }
     
-    query += ' AND b.payment_status = 1';
+    query += ' AND (b.payment_status = 1 OR b.status = 4)';
     
     query += ' ORDER BY b.created_at DESC';
 
@@ -1134,7 +1134,7 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
        let query = 'UPDATE tbl_bookings SET status = ?';
        let params = [status];
        
-      const { reschedule_date, reschedule_reason, cancel_reason } = req.body;
+      const { reschedule_date, reschedule_reason, cancel_reason, reschedule_type, cancel_type } = req.body;
       
       query += ' WHERE id = ?';
        params.push(bookingId);
@@ -1144,16 +1144,15 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
       if (result.affectedRows > 0) {
         // If status is 5 (canceled), insert into tbl_canceledbookings
         if (status === 5 && cancel_reason) {
+          const cancelType = cancel_type !== undefined ? cancel_type : 1;
           const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type) VALUES (?, ?, ?)';
-          await pool.execute(insertCancelQuery, [bookingId, cancel_reason, 1]);
-          console.log(`📝 Inserted canceled booking record for booking ID: ${bookingId}`);
+          await pool.execute(insertCancelQuery, [bookingId, cancel_reason, cancelType]);
         }
         
-        // If status is 6 (rescheduled), insert into tbl_rescheduledbookings
         if (status === 6 && reschedule_date && reschedule_reason) {
+          const rescheduleType = reschedule_type !== undefined ? reschedule_type : 1;
           const insertRescheduleQuery = 'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_date, reschedule_reason, type) VALUES (?, ?, ?, ?)';
-          await pool.execute(insertRescheduleQuery, [bookingId, reschedule_date, reschedule_reason, 1]);
-          console.log(`📝 Inserted rescheduled booking record for booking ID: ${bookingId}`);
+          await pool.execute(insertRescheduleQuery, [bookingId, reschedule_date, reschedule_reason, rescheduleType]);
         }
         
         res.json({
@@ -3857,31 +3856,135 @@ app.post('/api/send-manual-alert', async (req, res) => {
 
 app.get('/api/admin/bookings', async (req, res) => {
   try {
+    const { canceled, rescheduled } = req.query;
 
-    const query = `
-      SELECT 
-        b.id,
-        b.booking_id,
-        b.worker_id,
-        b.user_id,
-        b.contact_number,
-        b.work_location,
-        b.booking_time,
-        b.status,
-        b.payment_status,
-        b.created_at,
-        b.description,
-        w.name as worker_name,
-        w.mobile as worker_mobile,
-        s.name as customer_name,
-        s.mobile as customer_mobile
-      FROM tbl_bookings b
-      LEFT JOIN tbl_workers w ON b.worker_id = w.id
-      LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
-      ORDER BY b.id DESC
-    `;
+    let query;
+    
+    if (canceled === 'true') {
+      // First, check how many records match the criteria
+      const [statusCheck] = await pool.execute(
+        'SELECT COUNT(*) as count FROM tbl_bookings WHERE status = 5 AND payment_status = 1'
+      );
+      console.log('📊 Bookings with status=5 and payment_status=1:', statusCheck[0]?.count || 0);
+      
+      const [canceledCheck] = await pool.execute(
+        'SELECT COUNT(*) as count FROM tbl_canceledbookings'
+      );
+      console.log('📊 Total canceled bookings records:', canceledCheck[0]?.count || 0);
+      
+      // Fetch canceled bookings with join to tbl_canceledbookings
+      // Match on bookingid which should be tbl_bookings.id stored as VARCHAR
+      // Try multiple approaches to handle different data formats
+      query = `
+        SELECT 
+          b.id,
+          b.booking_id,
+          b.worker_id,
+          b.user_id,
+          b.contact_number,
+          b.work_location,
+          b.booking_time,
+          b.status,
+          b.payment_status,
+          b.created_at,
+          b.description,
+          w.name as worker_name,
+          w.mobile as worker_mobile,
+          s.name as customer_name,
+          s.mobile as customer_mobile,
+          c.type as canceled_by,
+          c.cancel_reason,
+          c.created_at as canceled_date
+        FROM tbl_bookings b
+        LEFT JOIN tbl_workers w ON b.worker_id = w.id
+        LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        INNER JOIN tbl_canceledbookings c ON (
+          b.id = CAST(TRIM(c.bookingid) AS UNSIGNED) 
+          OR b.booking_id = c.bookingid
+        )
+        WHERE b.status = 5 AND b.payment_status = 1
+        ORDER BY b.id DESC
+      `;
+      
+      console.log('🔍 Fetching canceled bookings with query');
+    } else if (rescheduled === 'true') {
+      // First, check how many records match the criteria
+      const [statusCheck] = await pool.execute(
+        'SELECT COUNT(*) as count FROM tbl_bookings WHERE status = 6 AND payment_status = 1'
+      );
+      console.log('📊 Bookings with status=6 and payment_status=1:', statusCheck[0]?.count || 0);
+      
+      const [rescheduledCheck] = await pool.execute(
+        'SELECT COUNT(*) as count FROM tbl_rescheduledbookings'
+      );
+      console.log('📊 Total rescheduled bookings records:', rescheduledCheck[0]?.count || 0);
+      
+      // Fetch rescheduled bookings with join to tbl_rescheduledbookings
+      query = `
+        SELECT 
+          b.id,
+          b.booking_id,
+          b.worker_id,
+          b.user_id,
+          b.contact_number,
+          b.work_location,
+          b.booking_time,
+          b.status,
+          b.payment_status,
+          b.created_at,
+          b.description,
+          w.name as worker_name,
+          w.mobile as worker_mobile,
+          s.name as customer_name,
+          s.mobile as customer_mobile,
+          r.type as rescheduled_by,
+          r.reschedule_reason,
+          r.created_at as reschedule_date
+        FROM tbl_bookings b
+        LEFT JOIN tbl_workers w ON b.worker_id = w.id
+        LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        INNER JOIN tbl_rescheduledbookings r ON (
+          b.id = CAST(TRIM(r.bookingid) AS UNSIGNED) 
+          OR b.booking_id = r.bookingid
+        )
+        WHERE b.status = 6 AND b.payment_status = 1
+        ORDER BY b.id DESC
+      `;
+      
+      console.log('🔍 Fetching rescheduled bookings with query');
+    } else {
+      // Regular bookings query
+      query = `
+        SELECT 
+          b.id,
+          b.booking_id,
+          b.worker_id,
+          b.user_id,
+          b.contact_number,
+          b.work_location,
+          b.booking_time,
+          b.status,
+          b.payment_status,
+          b.created_at,
+          b.description,
+          w.name as worker_name,
+          w.mobile as worker_mobile,
+          s.name as customer_name,
+          s.mobile as customer_mobile
+        FROM tbl_bookings b
+        LEFT JOIN tbl_workers w ON b.worker_id = w.id
+        LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        ORDER BY b.id DESC
+      `;
+    }
 
     const [bookings] = await pool.query(query);
+    
+    if (canceled === 'true') {
+      console.log(`✅ Found ${bookings.length} canceled bookings`);
+    } else if (rescheduled === 'true') {
+      console.log(`✅ Found ${bookings.length} rescheduled bookings`);
+    }
 
     res.json({
       success: true,

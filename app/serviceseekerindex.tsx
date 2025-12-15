@@ -1,10 +1,11 @@
 import { API_ENDPOINTS, default as getBaseUrl } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
+import { Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ServiceSeeker {
@@ -63,6 +64,34 @@ export default function Index() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('notifications');
+  
+  // Reschedule and Cancel popup states
+  const [reschedulePopupVisible, setReschedulePopupVisible] = useState(false);
+  const [reschedulingBooking, setReschedulingBooking] = useState<Booking | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
+  const [rescheduleSuccess, setRescheduleSuccess] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedTime, setSelectedTime] = useState(new Date());
+  
+  const [cancelPopupVisible, setCancelPopupVisible] = useState(false);
+  const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
+  
+  // Animation refs for loading dots
+  const rescheduleDotAnim1 = useRef(new Animated.Value(0)).current;
+  const rescheduleDotAnim2 = useRef(new Animated.Value(0)).current;
+  const rescheduleDotAnim3 = useRef(new Animated.Value(0)).current;
+  const cancelDotAnim1 = useRef(new Animated.Value(0)).current;
+  const cancelDotAnim2 = useRef(new Animated.Value(0)).current;
+  const cancelDotAnim3 = useRef(new Animated.Value(0)).current;
   // Calculate menu width responsively - will be updated in useEffect
   const menuWidth = useMemo(() => {
     const baseWidth = 375;
@@ -84,6 +113,72 @@ export default function Index() {
       isAnimating.current = false;
     };
   }, []);
+
+  // Animate loading dots when rescheduleLoading is true
+  useEffect(() => {
+    const createAnimation = (animValue: Animated.Value, delay: number) => {
+      return Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(animValue, {
+          toValue: -8,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animValue, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]);
+    };
+
+    if (rescheduleLoading) {
+      const anim1 = createAnimation(rescheduleDotAnim1, 0);
+      const anim2 = createAnimation(rescheduleDotAnim2, 200);
+      const anim3 = createAnimation(rescheduleDotAnim3, 400);
+      
+      Animated.loop(
+        Animated.parallel([anim1, anim2, anim3])
+      ).start();
+    } else {
+      rescheduleDotAnim1.setValue(0);
+      rescheduleDotAnim2.setValue(0);
+      rescheduleDotAnim3.setValue(0);
+    }
+  }, [rescheduleLoading]);
+
+  // Animate loading dots when cancelLoading is true
+  useEffect(() => {
+    const createAnimation = (animValue: Animated.Value, delay: number) => {
+      return Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(animValue, {
+          toValue: -8,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animValue, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]);
+    };
+
+    if (cancelLoading) {
+      const anim1 = createAnimation(cancelDotAnim1, 0);
+      const anim2 = createAnimation(cancelDotAnim2, 200);
+      const anim3 = createAnimation(cancelDotAnim3, 400);
+      
+      Animated.loop(
+        Animated.parallel([anim1, anim2, anim3])
+      ).start();
+    } else {
+      cancelDotAnim1.setValue(0);
+      cancelDotAnim2.setValue(0);
+      cancelDotAnim3.setValue(0);
+    }
+  }, [cancelLoading]);
 
   // Prevent menu from reopening automatically after outside close
   useEffect(() => {
@@ -254,19 +349,15 @@ export default function Index() {
             setProfileImage(null);
           }
         } else {
-          console.log('❌ Service seeker not found by mobile, trying fallback...');
           // Fallback to profile image param
           setProfileImageFromParam();
-          
           // Try to find by name as fallback
           if (initialName) {
             await findServiceSeekerByName(initialName);
           }
         }
       } else {
-        console.log('❌ No mobile number provided, trying fallback...');
         setProfileImageFromParam();
-        
         // Try to find by name as fallback
         if (initialName) {
           await findServiceSeekerByName(initialName);
@@ -370,14 +461,21 @@ export default function Index() {
     
     try {
       setBookingsLoading(true);
-      const apiUrl = API_ENDPOINTS.BOOKINGS_BY_USER(userId);
+      // Fetch only status 1, 2, 6 for Notifications tab
+      const apiUrl = `${API_ENDPOINTS.BOOKINGS_BY_USER(userId).split('?')[0]}?status=1,2,6`;
       
       const response = await fetch(apiUrl);
       const result = await response.json();
       
       if (result.success && result.data) {
+        // Filter to only include status 1, 2, or 6
+        const filteredBookings = result.data.filter((booking: Booking) => {
+          const status = Number(booking.status);
+          return status === 1 || status === 2 || status === 6;
+        });
+        
         // Remove duplicates by booking_id, keeping the latest status
-        const distinctBookings = result.data.reduce((acc: Booking[], current: Booking) => {
+        const distinctBookings = filteredBookings.reduce((acc: Booking[], current: Booking) => {
           const existingIndex = acc.findIndex(booking => booking.booking_id === current.booking_id);
           
           if (existingIndex === -1) {
@@ -396,7 +494,6 @@ export default function Index() {
         setBookings(distinctBookings);
       } else {
         setBookings([]);
-        console.log('❌ No notifications data in response');
       }
     } catch (error) {
       console.error('❌ Error fetching notifications:', error);
@@ -406,7 +503,213 @@ export default function Index() {
     }
   }, [user?.id, serviceSeeker?.id]);
 
-  // Add function to fetch total bookings (status != 0) with distinct booking_id
+  // Show Reschedule Popup
+  const showReschedulePopup = (booking: Booking) => {
+    const now = new Date();
+    setReschedulingBooking(booking);
+    setRescheduleDate('');
+    setRescheduleReason('');
+    setRescheduleError('');
+    setSelectedDate(now);
+    setSelectedTime(now);
+    setReschedulePopupVisible(true);
+  };
+
+  // Handle Date Change
+  const handleDateChange = (event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (event.type !== 'dismissed' && date) {
+      setSelectedDate(date);
+      if (Platform.OS === 'android') {
+        setTimeout(() => setShowTimePicker(true), 300);
+      } else {
+        const combined = new Date(date);
+        combined.setHours(selectedTime.getHours());
+        combined.setMinutes(selectedTime.getMinutes());
+        const formatted = combined.toLocaleString("en-GB", {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+        setRescheduleDate(formatted);
+      }
+    } else if (event.type === 'dismissed') {
+      setShowDatePicker(false);
+    }
+  };
+
+  // Handle Time Change
+  const handleTimeChange = (event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    if (event.type !== 'dismissed' && date) {
+      setSelectedTime(date);
+      const combined = new Date(selectedDate);
+      combined.setHours(date.getHours());
+      combined.setMinutes(date.getMinutes());
+      combined.setSeconds(0);
+      
+      const formatted = combined.toLocaleString("en-GB", {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      setRescheduleDate(formatted);
+      if (rescheduleError) setRescheduleError('');
+    } else if (event.type === 'dismissed') {
+      setShowTimePicker(false);
+    }
+  };
+
+  // Handle Reschedule Submit
+  const handleRescheduleSubmit = async () => {
+    if (!reschedulingBooking || !rescheduleDate.trim() || !rescheduleReason.trim()) {
+      if (!rescheduleDate.trim()) {
+        setRescheduleError('Please select a reschedule date');
+      } else if (!rescheduleReason.trim()) {
+        setRescheduleError('Please enter a reason for rescheduling');
+      } else {
+        setRescheduleError('Please fill all required fields');
+      }
+      return;
+    }
+
+    setRescheduleError('');
+    setRescheduleLoading(true);
+    setRescheduleSuccess(false);
+
+    try {
+      const combinedDateTime = new Date(selectedDate);
+      combinedDateTime.setHours(selectedTime.getHours());
+      combinedDateTime.setMinutes(selectedTime.getMinutes());
+      combinedDateTime.setSeconds(0);
+      
+      const year = combinedDateTime.getFullYear();
+      const month = String(combinedDateTime.getMonth() + 1).padStart(2, '0');
+      const day = String(combinedDateTime.getDate()).padStart(2, '0');
+      const hours = String(combinedDateTime.getHours()).padStart(2, '0');
+      const minutes = String(combinedDateTime.getMinutes()).padStart(2, '0');
+      const seconds = String(combinedDateTime.getSeconds()).padStart(2, '0');
+      
+      const rescheduleDateISO = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+      const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(reschedulingBooking.id), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          status: 6,
+          reschedule_date: rescheduleDateISO,
+          reschedule_reason: rescheduleReason.trim(),
+          reschedule_type: 2 // Type 2 = Customer/Service Seeker reschedule
+        }),
+      });
+
+      if (response.ok) {
+        setRescheduleLoading(false);
+        setRescheduleSuccess(true);
+        
+        setTimeout(() => {
+          closeReschedulePopup();
+          fetchBookings();
+        }, 2000);
+      } else {
+        setRescheduleLoading(false);
+        setRescheduleError('Failed to reschedule booking. Please try again.');
+      }
+    } catch (error) {
+      setRescheduleLoading(false);
+      setRescheduleError('An error occurred. Please try again.');
+      console.error('Error rescheduling booking:', error);
+    }
+  };
+
+  // Close Reschedule Popup
+  const closeReschedulePopup = () => {
+    setReschedulePopupVisible(false);
+    setRescheduleDate('');
+    setRescheduleReason('');
+    setReschedulingBooking(null);
+    setRescheduleError('');
+    setRescheduleLoading(false);
+    setRescheduleSuccess(false);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setSelectedDate(new Date());
+    setSelectedTime(new Date());
+  };
+
+  // Show Cancel Popup
+  const showCancelPopup = (booking: Booking) => {
+    setCancellingBooking(booking);
+    setCancelReason('');
+    setCancelPopupVisible(true);
+  };
+
+  // Handle Cancel Submit
+  const handleCancelSubmit = async () => {
+    if (!cancellingBooking || !cancelReason.trim()) {
+      setCancelError('Please enter a reason for cancellation');
+      return;
+    }
+
+    setCancelError('');
+    setCancelLoading(true);
+    setCancelSuccess(false);
+
+    try {
+      const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(cancellingBooking.id), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          status: 5,
+          cancel_reason: cancelReason.trim(),
+          cancel_type: 2 // Type 2 = Customer/Service Seeker cancellation
+        }),
+      });
+
+      if (response.ok) {
+        setCancelLoading(false);
+        setCancelSuccess(true);
+        
+        setTimeout(() => {
+          closeCancelPopup();
+          fetchBookings();
+        }, 2000);
+      } else {
+        setCancelLoading(false);
+        setCancelError('Failed to cancel booking. Please try again.');
+      }
+    } catch (error) {
+      setCancelLoading(false);
+      setCancelError('An error occurred. Please try again.');
+      console.error('Error cancelling booking:', error);
+    }
+  };
+
+  // Close Cancel Popup
+  const closeCancelPopup = () => {
+    setCancelPopupVisible(false);
+    setCancelReason('');
+    setCancellingBooking(null);
+    setCancelError('');
+    setCancelLoading(false);
+    setCancelSuccess(false);
+  };
+
+  // Add function to fetch total bookings (status 3,4,5: Completed, Rejected, Canceled)
   const fetchTotalBookings = async () => {
     // Use authenticated user's ID if available, otherwise use serviceSeeker ID
     const userId = user?.id || serviceSeeker?.id;
@@ -416,34 +719,109 @@ export default function Index() {
     
     try {
       setBookingsLoading(true);
-      // Get all bookings for totalBookings tab (status=0,1,2,3 without payment_status restriction)
-      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=0,1,2,3`;
+      // Get all bookings with status 1,2,3,4,5,6 to check for status 1,2,6 in same booking_id
+      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=1,2,3,4,5,6&skip_payment_check=true`;
       
       const response = await fetch(apiUrl);
       const result = await response.json();
       
       if (result.success && result.data) {
-        // Remove duplicates by booking_id, keeping the latest status
-        const distinctTotalBookings = result.data.reduce((acc: Booking[], current: Booking) => {
-          const existingIndex = acc.findIndex(booking => booking.booking_id === current.booking_id);
+        // Filter to only include status 1,2,3,4,5,6
+        const filteredBookings = result.data.filter((booking: Booking) => {
+          const status = Number(booking.status);
+          const isValid = status >= 1 && status <= 6;
+          if (!isValid) {
+            console.log(`❌ Filtered out booking with status ${status} (booking_id: ${booking.booking_id})`);
+          }
+          return isValid;
+        });
+        // Group bookings by booking_id
+        const bookingsByBookingId = filteredBookings.reduce((acc: { [key: string]: Booking[] }, booking: Booking) => {
+          const bookingId = booking.booking_id;
+          if (!acc[bookingId]) {
+            acc[bookingId] = [];
+          }
+          acc[bookingId].push(booking);
+          return acc;
+        }, {});
+        
+        // Process each booking_id group
+        const distinctTotalBookings: Booking[] = [];
+        
+        Object.keys(bookingsByBookingId).forEach((bookingId) => {
+          const bookings = bookingsByBookingId[bookingId];
           
-          if (existingIndex === -1) {
-            // New booking_id, add it
-            acc.push(current);
+          // Priority order: Status 1 (Accepted) > Status 2 (In Progress) > Status 6 (Rescheduled) > Status 3 (Completed) > Status 5 (Canceled) > Status 4 (Rejected - only if ALL are 4)
+          let selectedBooking: Booking | null = null;
+          
+          // First, check if any record has status 1 (Accepted)
+          const status1Bookings = bookings.filter((b: Booking) => Number(b.status) === 1);
+          if (status1Bookings.length > 0) {
+            selectedBooking = status1Bookings.reduce((latest: Booking, current: Booking) => 
+              new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+            );
           } else {
-            // Existing booking_id, keep the one with the latest created_at
-            if (new Date(current.created_at) > new Date(acc[existingIndex].created_at)) {
-              acc[existingIndex] = current;
+            // Check for status 2 (In Progress)
+            const status2Bookings = bookings.filter((b: Booking) => Number(b.status) === 2);
+            if (status2Bookings.length > 0) {
+              selectedBooking = status2Bookings.reduce((latest: Booking, current: Booking) => 
+                new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+              );
+            } else {
+              // Check for status 6 (Rescheduled)
+              const status6Bookings = bookings.filter((b: Booking) => Number(b.status) === 6);
+              if (status6Bookings.length > 0) {
+                selectedBooking = status6Bookings.reduce((latest: Booking, current: Booking) => 
+                  new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+                );
+              } else {
+                // Check for status 3 (Completed)
+                const status3Bookings = bookings.filter((b: Booking) => Number(b.status) === 3);
+                if (status3Bookings.length > 0) {
+                  selectedBooking = status3Bookings.reduce((latest: Booking, current: Booking) => 
+                    new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+                  );
+                } else {
+                  // Check if ALL records have status 4 (Rejected)
+                  const allStatus4 = bookings.every((b: Booking) => Number(b.status) === 4);
+                  if (allStatus4) {
+                    // ALL records have status 4 - it's rejected
+                    selectedBooking = bookings.reduce((latest: Booking, current: Booking) => 
+                      new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+                    );
+                  } else {
+                    // Check for status 5 (Canceled)
+                    const status5Bookings = bookings.filter((b: Booking) => Number(b.status) === 5);
+                    if (status5Bookings.length > 0) {
+                      selectedBooking = status5Bookings.reduce((latest: Booking, current: Booking) => 
+                        new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+                      );
+                    } else {
+                      // Fallback: use latest record
+                      selectedBooking = bookings.reduce((latest: Booking, current: Booking) => 
+                        new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+                      );
+                    }
+                  }
+                }
+              }
             }
           }
           
-          return acc;
-        }, []);
+          if (selectedBooking) {
+            distinctTotalBookings.push(selectedBooking);
+          }
+        });
         
-        setBookings(distinctTotalBookings);
+        // Filter to only show status 3, 4, or 5 in Total Bookings tab
+        const finalBookings = distinctTotalBookings.filter((booking: Booking) => {
+          const status = Number(booking.status);
+          return status === 3 || status === 4 || status === 5;
+        });
+        
+        setBookings(finalBookings);
       } else {
         setBookings([]);
-        console.log('❌ No total bookings data in response');
       }
     } catch (error) {
       console.error('❌ Error fetching total bookings:', error);
@@ -455,31 +833,42 @@ export default function Index() {
 
   // Add function to get status change message
   const getStatusChangeMessage = (status: number, previousStatus?: number) => {
-    if (previousStatus !== undefined && previousStatus !== status) {
+    const statusNum = Number(status);
+    const prevStatusNum = previousStatus !== undefined ? Number(previousStatus) : undefined;
+    
+    if (prevStatusNum !== undefined && prevStatusNum !== statusNum) {
       // Status changed
-      switch (status) {
-        case 0:
-          return 'Booking created - waiting for worker confirmation';
+      switch (statusNum) {
         case 1:
           return 'Worker accepted your booking!';
         case 2:
-          return 'Job completed successfully!';
+          return 'Work is in progress';
         case 3:
+          return 'Work completed successfully!';
+        case 4:
+          return 'Booking was rejected By Worker';
+        case 5:
           return 'Booking was cancelled';
+        case 6:
+          return 'Booking was rescheduled';
         default:
           return 'Status updated';
       }
     } else {
       // Initial status
-      switch (status) {
-        case 0:
-          return 'Waiting for worker confirmation';
+      switch (statusNum) {
         case 1:
-          return 'Worker is on the job';
+          return 'Worker accepted your booking';
         case 2:
-          return 'Job completed successfully!';
+          return 'Work is in progress';
         case 3:
+          return 'Work completed successfully!';
+        case 4:
+          return 'Booking was rejected By Worker';
+        case 5:
           return 'Booking was cancelled';
+        case 6:
+          return 'Booking was rescheduled';
         default:
           return 'Status updated';
       }
@@ -488,15 +877,20 @@ export default function Index() {
 
   // Add function to get status icon
   const getStatusIcon = (status: number) => {
-    switch (status) {
-      case 0:
-        return 'time-outline';
+    const statusNum = Number(status);
+    switch (statusNum) {
       case 1:
-        return 'checkmark-circle-outline';
+        return 'checkmark-circle-outline'; // Accepted
       case 2:
-        return 'checkmark-done-circle';
+        return 'hourglass-outline'; // In Progress
       case 3:
-        return 'close-circle-outline';
+        return 'checkmark-done-circle'; // Completed
+      case 4:
+        return 'close-circle-outline'; // Rejected
+      case 5:
+        return 'close-circle-outline'; // Canceled
+      case 6:
+        return 'calendar-outline'; // Rescheduled
       default:
         return 'information-circle-outline';
     }
@@ -504,15 +898,20 @@ export default function Index() {
 
   // Add function to get status color
   const getStatusColor = (status: number) => {
-    switch (status) {
-      case 0:
-        return '#f59e0b'; // Amber
+    const statusNum = Number(status);
+    switch (statusNum) {
       case 1:
-        return '#3b82f6'; // Blue
+        return '#3b82f6'; // Blue (Accepted)
       case 2:
-        return '#10b981'; // Green
+        return '#f59e0b'; // Amber (In Progress)
       case 3:
-        return '#ef4444'; // Red
+        return '#10b981'; // Green (Completed)
+      case 4:
+        return '#ef4444'; // Red (Rejected)
+      case 5:
+        return '#ef4444'; // Red (Canceled)
+      case 6:
+        return '#8b5cf6'; // Purple (Rescheduled)
       default:
         return '#6b7280'; // Gray
     }
@@ -557,7 +956,6 @@ export default function Index() {
         setPayments(result.data);
       } else {
         setPayments([]);
-        console.log('❌ No payment history data in response');
       }
     } catch (error) {
       console.error('❌ Error fetching payment history:', error);
@@ -570,11 +968,13 @@ export default function Index() {
   // Modify the handleTabChange function
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
+    // Clear bookings when switching tabs to avoid showing wrong data
+    setBookings([]);
     if (tab === 'notifications') {
-      // Fetch all bookings for notifications (all statuses, distinct by booking_id)
+      // Fetch bookings for notifications (status 1,2,3,4,5,6: Accepted, In Progress, Completed, Rejected, Canceled, Rescheduled)
       fetchBookings();
     } else if (tab === 'totalBookings') {
-      // Fetch total bookings (status != 0, distinct by booking_id)
+      // Fetch total bookings (ONLY status 3,4,5: Completed, Rejected, Canceled)
       fetchTotalBookings();
     } else if (tab === 'paymentHistory') {
       // Fetch payment history
@@ -781,24 +1181,46 @@ export default function Index() {
                               styles.statusText,
                               { color: getStatusColor(booking.status) }
                             ]}>
-                              {booking.status === 0 ? 'Pending' : 
-                               booking.status === 1 ? 'Active' : 
-                               booking.status === 2 ? 'Completed' : 
-                               booking.status === 3 ? 'Rejected' : 
-                               `Status ${booking.status}`}
+                              {(() => {
+                                const statusNum = Number(booking.status);
+                                // Ensure status 3 shows as Completed, not Rejected
+                                if (statusNum === 1) return 'Accepted';
+                                if (statusNum === 2) return 'In Progress';
+                                if (statusNum === 3) return 'Completed';
+                                if (statusNum === 4) return 'Rejected';
+                                if (statusNum === 5) return 'Canceled';
+                                if (statusNum === 6) return 'Rescheduled';
+                                return `Status ${booking.status}`;
+                              })()}
                             </Text>
                           </View>
                         </View>
                         
                         {/* Conditional Content Based on Status */}
-                        {booking.status === 0 ? (
-                          // For pending bookings (status = 0) - show minimal info
-                          <View style={styles.pendingBookingContent}>
+                        {Number(booking.status) === 1 ? (
+                          // For Accepted bookings (status = 1) - show full details with Reschedule and Cancel buttons
+                          <View style={styles.bookingDetails}>
                             <View style={styles.bookingRow}>
-                              <Ionicons name="calendar" size={styles.smallIconSize} color="#666" />
+                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Worker: </Text>
+                              <Text style={styles.bookingValue}>
+                                {booking.worker_name || `Worker #${booking.worker_id}`}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Contact: </Text>
+                              <Text style={styles.bookingValue}>
+                                {booking.worker_mobile || 'N/A'}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Booking For: </Text>
                               <Text style={styles.bookingValue}>
-                                {new Date(booking.booking_time).toLocaleString("en-GB", {
+                                {new Date(booking.created_at).toLocaleString("en-GB", {
                                   day: '2-digit',
                                   month: '2-digit',
                                   year: 'numeric',
@@ -810,14 +1232,126 @@ export default function Index() {
                               </Text>
                             </View>
                             
+                            {/* Status Change Message */}
                             <View style={styles.statusInfoContainer}>
                               <Text style={styles.statusInfoText}>
-                                Waiting for worker confirmation
+                                {getStatusChangeMessage(booking.status)}
+                              </Text>
+                            </View>
+                            
+                            {/* Reschedule and Cancel Buttons */}
+                            <View style={styles.actionButtonsContainer}>
+                              <TouchableOpacity 
+                                style={[styles.actionButton, styles.rescheduleButton]}
+                                onPress={() => showReschedulePopup(booking)}
+                              >
+                                <Ionicons name="calendar-outline" size={styles.smallIconSize} color="#8b5cf6" />
+                                <Text style={[styles.actionButtonText, { color: '#8b5cf6' }]}>Reschedule</Text>
+                              </TouchableOpacity>
+                              
+                              <TouchableOpacity 
+                                style={[styles.actionButton, styles.cancelButton]}
+                                onPress={() => showCancelPopup(booking)}
+                              >
+                                <Ionicons name="close-circle-outline" size={styles.smallIconSize} color="#ef4444" />
+                                <Text style={[styles.actionButtonText, { color: '#ef4444' }]}>Cancel</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : Number(booking.status) === 2 ? (
+                          // For In Progress bookings (status = 2) - show full details
+                          <View style={styles.bookingDetails}>
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Worker: </Text>
+                              <Text style={styles.bookingValue}>
+                                {booking.worker_name || `Worker #${booking.worker_id}`}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Contact: </Text>
+                              <Text style={styles.bookingValue}>
+                                {booking.worker_mobile || 'N/A'}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Booking For: </Text>
+                              <Text style={styles.bookingValue}>
+                                {new Date(booking.created_at).toLocaleString("en-GB", {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                  hour12: true
+                                })}
+                              </Text>
+                            </View>
+                            
+                            {/* Status Change Message */}
+                            <View style={styles.statusInfoContainer}>
+                              <Text style={styles.statusInfoText}>
+                                {getStatusChangeMessage(booking.status)}
                               </Text>
                             </View>
                           </View>
-                        ) : booking.status === 3 ? (
-                          // For rejected/cancelled bookings (status = 3) - show worker and reject reason only
+                        ) : Number(booking.status) === 6 ? (
+                          // For Rescheduled bookings (status = 6) - show full details and reschedule time
+                          <View style={styles.bookingDetails}>
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Worker: </Text>
+                              <Text style={styles.bookingValue}>
+                                {booking.worker_name || `Worker #${booking.worker_id}`}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Contact: </Text>
+                              <Text style={styles.bookingValue}>
+                                {booking.worker_mobile || 'N/A'}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.bookingRow}>
+                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                              <Text style={styles.bookingLabel}>Booking For: </Text>
+                              <Text style={styles.bookingValue}>
+                                {new Date(booking.created_at).toLocaleString("en-GB", {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                  hour12: true
+                                })}
+                              </Text>
+                            </View>
+                            
+                            {/* Status Change Message with reschedule timestamp */}
+                            <View style={styles.statusInfoContainer}>
+                              <Text style={styles.statusInfoText}>
+                                {`Booking was rescheduled For ${new Date(booking.created_at).toLocaleString("en-GB", {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                  hour12: true
+                                })}`}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : Number(booking.status) === 4 || Number(booking.status) === 5 ? (
+                          // For rejected/cancelled bookings (status = 4 or 5) - show worker and reject reason only
                           <View style={styles.rejectedBookingContent}>
                             <View style={styles.bookingRow}>
                               <Ionicons name="person" size={styles.smallIconSize} color="#666" />
@@ -1055,6 +1589,253 @@ export default function Index() {
               </View>
             </View>
           </Animated.View>
+
+          {/* Reschedule Booking Popup */}
+          {reschedulePopupVisible && reschedulingBooking && (
+            <View style={styles.popupOverlay}>
+              <View style={styles.cancelPopupContainer}>
+                <View style={styles.cancelPopupHeader}>
+                  <Text style={styles.cancelPopupTitle}>Reschedule Booking</Text>
+                  <TouchableOpacity onPress={closeReschedulePopup} style={styles.closeButton}>
+                    <Ionicons name="close" size={styles.iconSize} color="#ffffff" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.cancelPopupContent}>
+                  <View style={styles.cancelBookingInfoContainer}>
+                    <View style={styles.bookingInfoRow}>
+                      <Text style={styles.bookingInfoLabel}>Booking ID:</Text>
+                      <Text style={styles.bookingInfoValue}>#{reschedulingBooking.booking_id}</Text>
+                    </View>
+                    <View style={styles.bookingInfoRow}>
+                      <Text style={styles.bookingInfoLabel}>Booking For:</Text>
+                      <Text style={styles.bookingInfoValue}>
+                        {new Date(reschedulingBooking.booking_time || reschedulingBooking.created_at).toLocaleString("en-GB", {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                          hour12: true
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <Text style={styles.popupLabel}>Reschedule Date:</Text>
+                  <TouchableOpacity 
+                    onPress={() => setShowDatePicker(true)}
+                    style={[styles.reasonInput, styles.dateInput, rescheduleError && !rescheduleDate.trim() && styles.reasonInputError]}
+                  >
+                    <Text style={[styles.dateInputText, !rescheduleDate && styles.dateInputPlaceholder]}>
+                      {rescheduleDate || 'Select date and time'}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  {/* Date Picker */}
+                  {showDatePicker && (
+                    <>
+                      {Platform.OS === 'ios' && (
+                        <Modal
+                          visible={showDatePicker}
+                          transparent={true}
+                          animationType="slide"
+                          onRequestClose={() => setShowDatePicker(false)}
+                        >
+                          <View style={styles.datePickerModalOverlay}>
+                            <View style={styles.datePickerModalContent}>
+                              <View style={styles.datePickerHeader}>
+                                <Text style={styles.datePickerModalTitle}>Select Date & Time</Text>
+                                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                                  <Ionicons name="close" size={styles.iconSize} color="#666" />
+                                </TouchableOpacity>
+                              </View>
+                              <DateTimePicker
+                                value={selectedDate}
+                                mode="datetime"
+                                display="spinner"
+                                onChange={(event: any, date?: Date) => {
+                                  if (date) {
+                                    setSelectedDate(date);
+                                    setSelectedTime(date);
+                                    const formatted = date.toLocaleString("en-GB", {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    });
+                                    setRescheduleDate(formatted);
+                                  }
+                                }}
+                                minimumDate={new Date()}
+                                style={{ width: '100%' }}
+                              />
+                              <View style={styles.datePickerModalActions}>
+                                <TouchableOpacity 
+                                  style={[styles.datePickerModalButton, styles.datePickerCancelButton]}
+                                  onPress={() => setShowDatePicker(false)}
+                                >
+                                  <Text style={styles.datePickerCancelButtonText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                  style={[styles.datePickerModalButton, styles.datePickerDoneButton]}
+                                  onPress={() => {
+                                    const formatted = selectedDate.toLocaleString("en-GB", {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    });
+                                    setRescheduleDate(formatted);
+                                    setShowDatePicker(false);
+                                    if (rescheduleError) setRescheduleError('');
+                                  }}
+                                >
+                                  <Text style={styles.datePickerDoneButtonText}>Done</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+                        </Modal>
+                      )}
+                      {Platform.OS === 'android' && (
+                        <DateTimePicker
+                          value={selectedDate}
+                          mode="date"
+                          display="default"
+                          onChange={handleDateChange}
+                          minimumDate={new Date()}
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {/* Time Picker for Android */}
+                  {showTimePicker && Platform.OS === 'android' && (
+                    <DateTimePicker
+                      value={selectedTime}
+                      mode="time"
+                      display="default"
+                      onChange={handleTimeChange}
+                      is24Hour={false}
+                    />
+                  )}
+                  
+                  <Text style={[styles.popupLabel, { marginTop: 12 }]}>Reason For Reschedule:</Text>
+                  <TextInput
+                    style={[styles.reasonInput, rescheduleError && !rescheduleReason.trim() && styles.reasonInputError]}
+                    placeholder="Enter reschedule reason..."
+                    value={rescheduleReason}
+                    onChangeText={(text) => {
+                      setRescheduleReason(text);
+                      if (rescheduleError) setRescheduleError('');
+                    }}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                  {rescheduleError ? (
+                    <Text style={styles.errorText}>{rescheduleError}</Text>
+                  ) : null}
+                  
+                  {rescheduleSuccess ? (
+                    <View style={styles.successContainer}>
+                      <Ionicons name="checkmark-circle" size={styles.iconSize} color="#4CAF50" />
+                      <Text style={styles.successText}>Booking Rescheduled Successfully</Text>
+                    </View>
+                  ) : null}
+                </View>
+                
+                <View style={styles.cancelPopupActions}>
+                  <TouchableOpacity 
+                    style={[styles.cancelPopupSubmitButton, styles.cancelSubmitButton]} 
+                    onPress={handleRescheduleSubmit}
+                    disabled={rescheduleLoading || rescheduleSuccess || !rescheduleDate.trim() || !rescheduleReason.trim()}
+                  >
+                    {rescheduleLoading ? (
+                      <View style={styles.loadingDotsContainer}>
+                        <Animated.View style={[styles.loadingDot, { transform: [{ translateY: rescheduleDotAnim1 }] }]} />
+                        <Animated.View style={[styles.loadingDot, { transform: [{ translateY: rescheduleDotAnim2 }] }]} />
+                        <Animated.View style={[styles.loadingDot, { transform: [{ translateY: rescheduleDotAnim3 }] }]} />
+                      </View>
+                    ) : (
+                      <Text style={styles.submitButtonText}>Submit</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Cancellation Reason Popup */}
+          {cancelPopupVisible && cancellingBooking && (
+            <View style={styles.popupOverlay}>
+              <View style={styles.cancelPopupContainer}>
+                <View style={styles.cancelPopupHeader}>
+                  <Text style={styles.cancelPopupTitle}>Cancel Booking</Text>
+                  <TouchableOpacity onPress={closeCancelPopup} style={styles.closeButton}>
+                    <Ionicons name="close" size={styles.iconSize} color="#ffffff" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.cancelPopupContent}>
+                  <View style={styles.cancelBookingInfoContainer}>
+                    <View style={styles.bookingInfoRow}>
+                      <Text style={styles.bookingInfoLabel}>Booking ID:</Text>
+                      <Text style={styles.bookingInfoValue}>#{cancellingBooking.booking_id}</Text>
+                    </View>
+                  </View>
+                  
+                  <Text style={styles.popupLabel}>Reason For Cancellation:</Text>
+                  <TextInput
+                    style={[styles.reasonInput, cancelError && styles.reasonInputError]}
+                    placeholder="Enter cancellation reason..."
+                    value={cancelReason}
+                    onChangeText={(text) => {
+                      setCancelReason(text);
+                      if (cancelError) setCancelError('');
+                    }}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                  {cancelError ? (
+                    <Text style={styles.errorText}>{cancelError}</Text>
+                  ) : null}
+                  
+                  {cancelSuccess ? (
+                    <View style={styles.successContainer}>
+                      <Ionicons name="checkmark-circle" size={styles.iconSize} color="#4CAF50" />
+                      <Text style={styles.successText}>Booking Canceled Successfully</Text>
+                    </View>
+                  ) : null}
+                </View>
+                
+                <View style={styles.cancelPopupActions}>
+                  <TouchableOpacity 
+                    style={[styles.cancelPopupSubmitButton, styles.cancelSubmitButton]} 
+                    onPress={handleCancelSubmit}
+                    disabled={cancelLoading || cancelSuccess || !cancelReason.trim()}
+                  >
+                    {cancelLoading ? (
+                      <View style={styles.loadingDotsContainer}>
+                        <Animated.View style={[styles.loadingDot, { transform: [{ translateY: cancelDotAnim1 }] }]} />
+                        <Animated.View style={[styles.loadingDot, { transform: [{ translateY: cancelDotAnim2 }] }]} />
+                        <Animated.View style={[styles.loadingDot, { transform: [{ translateY: cancelDotAnim3 }] }]} />
+                      </View>
+                    ) : (
+                      <Text style={styles.submitButtonText}>Submit</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
       </KeyboardAvoidingView>
       </SafeAreaView>
     </>
@@ -1517,6 +2298,35 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontWeight: '500',
       flex: 1,
     },
+    // Action Buttons Styles
+    actionButtonsContainer: {
+      flexDirection: 'row',
+      gap: getResponsiveSpacing(10),
+      marginTop: getResponsiveSpacing(12),
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: getResponsiveSpacing(12),
+      paddingHorizontal: getResponsiveSpacing(16),
+      borderRadius: getResponsiveValue(8, 6, 10),
+      borderWidth: 1.5,
+      gap: getResponsiveSpacing(6),
+    },
+    rescheduleButton: {
+      backgroundColor: '#f3f4f6',
+      borderColor: '#8b5cf6',
+    },
+    cancelButton: {
+      backgroundColor: '#fef2f2',
+      borderColor: '#ef4444',
+    },
+    actionButtonText: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+    },
     // Payment History Styles
     paymentsList: {
       gap: getResponsiveSpacing(15),
@@ -1602,6 +2412,220 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       height: '100%',
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       zIndex: 1000, // Below menu but above everything else
+    },
+    // Popup styles
+    popupOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 2000,
+    },
+    cancelPopupContainer: {
+      backgroundColor: '#ffffff',
+      borderRadius: getResponsiveValue(16, 12, 20),
+      padding: 0,
+      margin: getResponsiveSpacing(20),
+      width: '90%',
+      maxWidth: getResponsiveWidth(450, 350, 500),
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: getResponsiveSpacing(4) },
+      shadowOpacity: 0.25,
+      shadowRadius: getResponsiveSpacing(8),
+      elevation: 8,
+      overflow: 'hidden',
+    },
+    cancelPopupHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: '#4CAF50',
+      paddingHorizontal: getResponsiveSpacing(20),
+      paddingVertical: getResponsiveSpacing(15),
+      borderTopLeftRadius: getResponsiveValue(16, 12, 20),
+      borderTopRightRadius: getResponsiveValue(16, 12, 20),
+    },
+    cancelPopupTitle: {
+      fontSize: getResponsiveFontSize(20),
+      fontWeight: 'bold',
+      color: '#ffffff',
+      flex: 1,
+    },
+    closeButton: {
+      padding: getResponsiveSpacing(5),
+    },
+    cancelPopupContent: {
+      padding: getResponsiveSpacing(20),
+    },
+    cancelBookingInfoContainer: {
+      backgroundColor: '#fff5f5',
+      borderRadius: getResponsiveValue(8, 6, 10),
+      padding: getResponsiveSpacing(12),
+      marginBottom: getResponsiveSpacing(16),
+      borderWidth: 1,
+      borderColor: '#fecaca',
+    },
+    bookingInfoRow: {
+      flexDirection: 'row',
+      marginBottom: getResponsiveSpacing(8),
+    },
+    bookingInfoLabel: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#666',
+      marginRight: getResponsiveSpacing(8),
+    },
+    bookingInfoValue: {
+      fontSize: getResponsiveFontSize(14),
+      color: '#333',
+      flex: 1,
+    },
+    popupLabel: {
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+      color: '#333',
+      marginBottom: getResponsiveSpacing(8),
+    },
+    reasonInput: {
+      borderWidth: 1,
+      borderColor: '#ddd',
+      borderRadius: getResponsiveValue(8, 6, 10),
+      padding: getResponsiveSpacing(12),
+      fontSize: getResponsiveFontSize(16),
+      minHeight: getResponsiveValue(100, 80, 120),
+      textAlignVertical: 'top',
+      backgroundColor: '#f9f9f9',
+    },
+    reasonInputError: {
+      borderColor: '#ef4444',
+    },
+    dateInput: {
+      minHeight: getResponsiveValue(50, 40, 60),
+      textAlignVertical: 'center',
+      justifyContent: 'center',
+    },
+    dateInputText: {
+      fontSize: getResponsiveFontSize(16),
+      color: '#333',
+      paddingVertical: getResponsiveSpacing(12),
+    },
+    dateInputPlaceholder: {
+      color: '#999',
+    },
+    errorText: {
+      color: '#ef4444',
+      fontSize: getResponsiveFontSize(14),
+      marginTop: getResponsiveSpacing(8),
+    },
+    successContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#f0fdf4',
+      padding: getResponsiveSpacing(12),
+      borderRadius: getResponsiveValue(8, 6, 10),
+      marginTop: getResponsiveSpacing(12),
+      gap: getResponsiveSpacing(8),
+    },
+    successText: {
+      color: '#4CAF50',
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+    },
+    cancelPopupActions: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      paddingHorizontal: getResponsiveSpacing(20),
+      paddingBottom: getResponsiveSpacing(20),
+    },
+    cancelPopupSubmitButton: {
+      flex: 1,
+      paddingVertical: getResponsiveSpacing(12),
+      paddingHorizontal: getResponsiveSpacing(20),
+      borderRadius: getResponsiveValue(8, 6, 10),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cancelSubmitButton: {
+      backgroundColor: '#4CAF50',
+    },
+    submitButtonText: {
+      color: '#ffffff',
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+    },
+    loadingDotsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(6),
+    },
+    loadingDot: {
+      width: getResponsiveValue(8, 6, 10),
+      height: getResponsiveValue(8, 6, 10),
+      borderRadius: getResponsiveValue(4, 3, 5),
+      backgroundColor: '#ffffff',
+    },
+    datePickerModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    datePickerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: getResponsiveSpacing(20),
+      paddingVertical: getResponsiveSpacing(15),
+      borderBottomWidth: 1,
+      borderBottomColor: '#e5e7eb',
+    },
+    datePickerModalContent: {
+      backgroundColor: '#ffffff',
+      borderTopLeftRadius: getResponsiveValue(20, 15, 25),
+      borderTopRightRadius: getResponsiveValue(20, 15, 25),
+      paddingBottom: getResponsiveSpacing(20),
+      maxHeight: '70%',
+    },
+    datePickerModalTitle: {
+      fontSize: getResponsiveFontSize(18),
+      fontWeight: 'bold',
+      color: '#333',
+    },
+    datePickerModalActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: getResponsiveSpacing(12),
+      paddingHorizontal: getResponsiveSpacing(20),
+      marginTop: getResponsiveSpacing(15),
+    },
+    datePickerModalButton: {
+      flex: 1,
+      paddingVertical: getResponsiveSpacing(12),
+      paddingHorizontal: getResponsiveSpacing(20),
+      borderRadius: getResponsiveValue(8, 6, 10),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    datePickerCancelButton: {
+      backgroundColor: '#f1f5f9',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+    },
+    datePickerDoneButton: {
+      backgroundColor: '#4CAF50',
+    },
+    datePickerCancelButtonText: {
+      color: '#64748b',
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
+    },
+    datePickerDoneButtonText: {
+      color: '#ffffff',
+      fontSize: getResponsiveFontSize(16),
+      fontWeight: '600',
     },
   });
 

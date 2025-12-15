@@ -28,6 +28,12 @@ interface Booking {
   worker_mobile: string;
   customer_name: string;
   customer_mobile: string;
+  canceled_by?: number; // 1 = Worker, 2 = Customer
+  cancel_reason?: string;
+  canceled_date?: string;
+  rescheduled_by?: number; // 1 = Worker, 2 = Customer
+  reschedule_reason?: string;
+  reschedule_date?: string;
 }
 
 interface BookingsProps {
@@ -58,11 +64,18 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
   }, [externalSearchQuery]);
 
-  const fetchBookings = async () => {
+  const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false) => {
     try {
       setLoading(true);
       
-      const response = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      let url = API_ENDPOINTS.ADMIN_BOOKINGS;
+      if (isCanceled) {
+        url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?canceled=true`;
+      } else if (isRescheduled) {
+        url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?rescheduled=true`;
+      }
+      
+      const response = await fetch(url);
       
       const data = await response.json();
       
@@ -83,13 +96,17 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchBookings();
+    const isCanceled = statusFilter === 'cancel';
+    const isRescheduled = statusFilter === 'reschedule';
+    await fetchBookings(isCanceled, isRescheduled);
     setRefreshing(false);
   };
 
   useEffect(() => {
-    fetchBookings();
-  }, []);
+    const isCanceled = statusFilter === 'cancel';
+    const isRescheduled = statusFilter === 'reschedule';
+    fetchBookings(isCanceled, isRescheduled);
+  }, [statusFilter]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -128,6 +145,20 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
+  // Get canceled by label
+  const getCanceledByLabel = (type?: number) => {
+    if (type === 1) return 'Worker';
+    if (type === 2) return 'Customer';
+    return 'N/A';
+  };
+
+  // Get rescheduled by label
+  const getRescheduledByLabel = (type?: number) => {
+    if (type === 1) return 'Worker';
+    if (type === 2) return 'Customer';
+    return 'N/A';
+  };
+
   // Filter and sort bookings
   const getFilteredAndSortedBookings = () => {
     let filtered = [...bookings];
@@ -156,6 +187,14 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       
       // Keep only bookings with rejected booking_ids
       filtered = filtered.filter(booking => rejectedBookingIds.has(booking.booking_id));
+    } else if (statusFilter === 'cancel') {
+      // Cancel: Already filtered by backend (status = 5, payment_status = 1, with canceled bookings join)
+      // No additional filtering needed
+      filtered = filtered;
+    } else if (statusFilter === 'reschedule') {
+      // Reschedule: Already filtered by backend (status = 6, payment_status = 1, with rescheduled bookings join)
+      // No additional filtering needed
+      filtered = filtered;
     } else {
       // For all other filters, require payment_status = 1
       filtered = filtered.filter(booking => booking.payment_status === 1);
@@ -483,18 +522,62 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                 <Ionicons name="call" size={isDesktop ? 16 : 14} color="#ffffff" />
                 <Text style={styles.tableHeaderText}>Contact Number</Text>
               </View>
-              <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
-                <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
-                <Text style={styles.tableHeaderText}>Work Location</Text>
-              </View>
-              <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
-                <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
-                <Text style={styles.tableHeaderText}>Booking Date</Text>
-              </View>
-              <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 300 : isTablet ? 250 : 200 }]}>
-                <Ionicons name="document-text" size={isDesktop ? 16 : 14} color="#ffffff" />
-                <Text style={styles.tableHeaderText}>Description</Text>
-              </View>
+              {statusFilter !== 'cancel' && statusFilter !== 'reschedule' && (
+                <>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
+                    <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Work Location</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Booking Date</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 300 : isTablet ? 250 : 200 }]}>
+                    <Ionicons name="document-text" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Description</Text>
+                  </View>
+                </>
+              )}
+              {statusFilter === 'cancel' && (
+                <>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                    <Ionicons name="person-remove" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Canceled By</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                    <Ionicons name="person-remove" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Reason</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Booking Date</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="close-circle" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Canceled Date</Text>
+                  </View>
+                </>
+              )}
+              {statusFilter === 'reschedule' && (
+                <>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                    <Ionicons name="person-add" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Rescheduled By</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                    <Ionicons name="document-text" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Reason</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Booking Date</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Reschedule Date</Text>
+                  </View>
+                </>
+              )}
             </View>
 
             {/* Table Body */}
@@ -536,15 +619,51 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
                     <Text style={styles.tableCellText}>{booking.contact_number || 'N/A'}</Text>
                   </View>
-                  <View style={[styles.tableCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
-                    <Text style={styles.tableCellText}>{booking.work_location || 'N/A'}</Text>
-                  </View>
-                  <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
-                    <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
-                  </View>
-                  <View style={[styles.tableCell, { width: isDesktop ? 300 : isTablet ? 250 : 200 }]}>
-                    <Text style={styles.tableCellText}>{booking.description || 'N/A'}</Text>
-                  </View>
+                  {statusFilter !== 'cancel' && statusFilter !== 'reschedule' && (
+                    <>
+                      <View style={[styles.tableCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
+                        <Text style={styles.tableCellText}>{booking.work_location || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 300 : isTablet ? 250 : 200 }]}>
+                        <Text style={styles.tableCellText}>{booking.description || 'N/A'}</Text>
+                      </View>
+                    </>
+                  )}
+                  {statusFilter === 'cancel' && (
+                    <>
+                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                        <Text style={styles.tableCellText}>{getCanceledByLabel(booking.canceled_by)}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                        <Text style={styles.tableCellText}>{booking.cancel_reason || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{booking.canceled_date ? formatDate(booking.canceled_date) : 'N/A'}</Text>
+                      </View>
+                    </>
+                  )}
+                  {statusFilter === 'reschedule' && (
+                    <>
+                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                        <Text style={styles.tableCellText}>{getRescheduledByLabel(booking.rescheduled_by)}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                        <Text style={styles.tableCellText}>{booking.reschedule_reason || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{booking.reschedule_date ? formatDate(booking.reschedule_date) : 'N/A'}</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
               );
             })}
