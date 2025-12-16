@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Bookings from './bookings';
 import Customers from './customers';
 import Payments from './payments';
+import Workers from './workers';
 
 export default function AdminIndexScreen() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function AdminIndexScreen() {
     { id: 'bookings', icon: 'cart-outline', label: 'Bookings', color: '#f59e0b' },
     { id: 'payments', icon: 'cash-outline', label: 'Payments', color: '#8b5cf6' },
     { id: 'customers', icon: 'people-outline', label: 'Customers', color: '#06b6d4' },
-    { id: 'products', icon: 'cube-outline', label: 'Products', color: '#10b981' },
+    { id: 'workers', icon: 'construct-outline', label: 'Workers', color: '#10b981' },
     { id: 'reports', icon: 'document-text-outline', label: 'Reports', color: '#ef4444' },
     { id: 'messages', icon: 'mail-outline', label: 'Messages', color: '#ec4899' },
     { id: 'settings', icon: 'settings-outline', label: 'Settings', color: '#64748b' },
@@ -127,7 +128,7 @@ export default function AdminIndexScreen() {
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
@@ -138,12 +139,12 @@ export default function AdminIndexScreen() {
                 </View>
               </View>
               <View style={styles.topBarRight}>
-                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers') && (
+                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers') && (
                   <View style={styles.topBarSearchContainer}>
                     <Ionicons name="search-outline" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" style={styles.topBarSearchIcon} />
                     <TextInput
                       style={[styles.topBarSearchInput, { outlineWidth: 0, outlineStyle: 'none' } as any]}
-                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : "Search customers..."}
+                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : "Search workers..."}
                       placeholderTextColor="#94a3b8"
                       value={searchQuery}
                       onChangeText={setSearchQuery}
@@ -193,6 +194,13 @@ export default function AdminIndexScreen() {
           ) : activeMenu === 'customers' ? (
             <View style={styles.content}>
               <Customers 
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </View>
+          ) : activeMenu === 'workers' ? (
+            <View style={styles.content}>
+              <Workers 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
               />

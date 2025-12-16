@@ -87,6 +87,7 @@ export const API_ENDPOINTS = {
   ADMIN_BOOKINGS: `${getBaseUrl()}/admin/bookings`,
   ADMIN_PAYMENTS: `${getBaseUrl()}/admin/payments`,
   ADMIN_CUSTOMERS: `${getBaseUrl()}/admin/customers`,
+  ADMIN_WORKERS: `${getBaseUrl()}/admin/workers`,
 };
 
 export const API_BASE_URL = getBaseUrl();

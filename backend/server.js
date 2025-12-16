@@ -449,7 +449,7 @@ app.post('/api/register-professional', upload.fields([
 app.get('/api/workers', async (req, res) => {
   try {
     const [workers] = await pool.execute(
-      'SELECT id, name, mobile, email, price, skill_id, pincode, district, state, country, profile_image, created_at FROM tbl_workers ORDER BY created_at DESC'
+      'SELECT id, name, mobile, email, price, skill_id, pincode, district, state, country, profile_image, status, created_at FROM tbl_workers ORDER BY created_at DESC'
     );
 
     // Add full image URLs
@@ -540,12 +540,14 @@ app.put('/api/workers/:id', upload.fields([
       location,
       address,
       pincode,
+      mandal,
       district,
       state,
       country,
       latitude,
       longitude,
       areaName,
+      status,
       existingPersonalDocuments,
       existingProfessionalDocuments
     } = req.body;
@@ -676,7 +678,7 @@ app.put('/api/workers/:id', upload.fields([
       UPDATE tbl_workers SET
         name = ?, mobile = ?, email = ?, price = ?, skill_id = ?, pincode = ?, mandal = ?, city = ?,
         district = ?, state = ?, country = ?, latitude = ?, longitude = ?, address = ?,
-        profile_image = ?, document1 = ?, document2 = ?
+        profile_image = ?, document1 = ?, document2 = ?, status = ?
       WHERE id = ?
     `;
 
@@ -687,7 +689,7 @@ app.put('/api/workers/:id', upload.fields([
       price,
       skillsString,
       pincode || null,
-      null, // mandal
+      mandal || null,
       cityName,
       district || null,
       state || null,
@@ -698,6 +700,7 @@ app.put('/api/workers/:id', upload.fields([
       profileImagePath, // This should now properly contain the existing image if no new one uploaded
       personalDocumentsString,
       professionalDocumentsString,
+      status !== undefined ? status : existingWorker.status,
       id
     ];
 
@@ -4066,6 +4069,178 @@ app.get('/api/admin/customers', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch customers',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/admin/workers', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        id,
+        name,
+        mobile,
+        email,
+        pincode,
+        address,
+        district,
+        state,
+        country,
+        profile_image,
+        status,
+        created_at
+      FROM tbl_workers
+      ORDER BY id DESC
+    `;
+
+    const [workers] = await pool.query(query);
+
+    // Add full image URLs
+    const workersWithImages = workers.map(worker => ({
+      ...worker,
+      profile_image: worker.profile_image ? `/uploads/profiles/${worker.profile_image}` : null
+    }));
+
+    res.json({
+      success: true,
+      workers: workersWithImages
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching admin workers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch workers',
+      error: error.message
+    });
+  }
+});
+
+// Update worker status for admin
+app.patch('/api/admin/workers/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (status === undefined || (status !== 0 && status !== 1)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status must be 0 or 1'
+      });
+    }
+
+    const [result] = await pool.execute(
+      'UPDATE tbl_workers SET status = ? WHERE id = ?',
+      [status, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Worker status updated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating worker status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update worker status',
+      error: error.message
+    });
+  }
+});
+
+// Get single worker by ID for admin
+app.get('/api/admin/workers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const query = `
+      SELECT 
+        w.id,
+        w.name,
+        w.mobile,
+        w.email,
+        w.price,
+        w.skill_id,
+        w.pincode,
+        w.mandal,
+        w.city,
+        w.district,
+        w.state,
+        w.country,
+        w.latitude,
+        w.longitude,
+        w.address,
+        w.type,
+        w.status,
+        w.profile_image,
+        w.document1,
+        w.document2,
+        w.created_at
+      FROM tbl_workers w
+      WHERE w.id = ?
+    `;
+
+    const [workers] = await pool.query(query, [id]);
+
+    if (workers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+
+    // Add full image URLs
+    const worker = workers[0];
+    if (worker.profile_image) {
+      worker.profile_image = `/uploads/profiles/${worker.profile_image}`;
+    }
+    if (worker.document1) {
+      worker.document1 = `/uploads/documents/${worker.document1}`;
+    }
+    if (worker.document2) {
+      worker.document2 = `/uploads/documents/${worker.document2}`;
+    }
+
+    // Get category titles for multiple skill IDs
+    if (worker.skill_id) {
+      const skillIds = worker.skill_id.split(',').map(id => id.trim()).filter(id => id);
+      
+      if (skillIds.length > 0) {
+        const placeholders = skillIds.map(() => '?').join(',');
+        const categoryQuery = `
+          SELECT title 
+          FROM tbl_category 
+          WHERE id IN (${placeholders})
+        `;
+        
+        const [categories] = await pool.query(categoryQuery, skillIds);
+        worker.category_title = categories.map(cat => cat.title).join(', ');
+      } else {
+        worker.category_title = null;
+      }
+    } else {
+      worker.category_title = null;
+    }
+
+    res.json({
+      success: true,
+      worker: worker
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching worker details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch worker details',
       error: error.message
     });
   }

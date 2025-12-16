@@ -2,13 +2,58 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
+import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 
 import NotificationInitializer from '@/components/NotificationInitializer';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
+
+const toastConfig = {
+  success: (props: any) => (
+    <BaseToast
+      {...props}
+      style={[styles.toastContainer, styles.toastRight]}
+      contentContainerStyle={styles.toastContent}
+      text1Style={styles.toastText1}
+      text2Style={styles.toastText2}
+    />
+  ),
+  error: (props: any) => (
+    <ErrorToast
+      {...props}
+      style={[styles.toastContainer, styles.toastRight]}
+      contentContainerStyle={styles.toastContent}
+      text1Style={styles.toastText1}
+      text2Style={styles.toastText2}
+    />
+  ),
+};
+
+const styles = StyleSheet.create({
+  toastContainer: {
+    alignSelf: 'flex-end',
+    marginRight: 20,
+    borderLeftWidth: 0,
+    borderRightWidth: 4,
+  },
+  toastRight: {
+    transform: [{ translateX: 0 }],
+  },
+  toastContent: {
+    paddingHorizontal: 15,
+  },
+  toastText1: {
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  toastText2: {
+    fontSize: 13,
+  },
+});
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -51,6 +96,13 @@ export default function RootLayout() {
           </NotificationInitializer>
         </CartProvider>
       </AuthProvider>
+      <Toast 
+        config={toastConfig}
+        position="top"
+        autoHide={true}
+        visibilityTime={3000}
+        topOffset={60}
+      />
     </GestureHandlerRootView>
   );
 }

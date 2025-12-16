@@ -21,6 +21,7 @@ CREATE TABLE tbl_workers (
   longitude VARCHAR(30),
   address VARCHAR(100),
   type VARCHAR(30),
+  status TINYINT DEFAULT 0,
   profile_image VARCHAR(255),
   document1 VARCHAR(255),
   document2 VARCHAR(255),
