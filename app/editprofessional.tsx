@@ -1374,6 +1374,7 @@ export default function RegisterProfessionalScreen() {
             placeholder="Enter your full name"
             placeholderTextColor="#999"
             value={name}
+            editable={false}
             onChangeText={(text) => {
               setName(text);
               // Clear error immediately when user types
@@ -1402,6 +1403,7 @@ export default function RegisterProfessionalScreen() {
             placeholder="Enter your mobile number"
             placeholderTextColor="#999"
             value={mobile}
+            editable={false}
             onChangeText={(text) => {
               setMobile(text);
               // Clear error immediately when user types
@@ -1432,6 +1434,7 @@ export default function RegisterProfessionalScreen() {
             placeholder="Enter your email"
             placeholderTextColor="#999"
             value={email}
+            editable={false}
             onChangeText={(text) => {
               setEmail(text);
               // Clear error immediately when user types
@@ -1476,6 +1479,7 @@ export default function RegisterProfessionalScreen() {
             placeholder="Enter price per hour"
             placeholderTextColor="#999"
             value={price}
+            editable={false}
             onChangeText={(text) => {
               setPrice(text);
               // Clear error immediately when user types
@@ -1509,6 +1513,7 @@ export default function RegisterProfessionalScreen() {
               placeholder="Type to search location"
               placeholderTextColor="#999"
               value={location}
+              editable={false}
               onChangeText={(text) => {
                 handleLocationChange(text);
                 // Clear error immediately when user types
@@ -1576,6 +1581,7 @@ export default function RegisterProfessionalScreen() {
             placeholder="Enter your complete address"
             placeholderTextColor="#999"
             value={address}
+            editable={false}
             onChangeText={(text) => {
               setAddress(text);
               // Clear error immediately when user types
@@ -1603,6 +1609,7 @@ export default function RegisterProfessionalScreen() {
         </Text>
         <TouchableOpacity
           style={styles.skillsDropdown}
+          disabled={true}
           onPress={() => setShowSkillsDropdown(!showSkillsDropdown)}
         >
           <View style={styles.skillsDropdownHeader}>
@@ -1630,10 +1637,11 @@ export default function RegisterProfessionalScreen() {
                 <TouchableOpacity
                   key={id}
                   style={styles.selectedSkillTag}
+                  disabled={true}
                   onPress={() => toggleSkill(id)}
                 >
                   <Text style={styles.selectedSkillText}>{skill?.name}</Text>
-                  <Ionicons name="close-circle" size={moderateScale(16)} color="#e74c3c" />
+                  {/* <Ionicons name="close-circle" size={moderateScale(16)} color="#e74c3c" /> */}
                 </TouchableOpacity>
               );
             })}
