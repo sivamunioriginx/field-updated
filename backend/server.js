@@ -141,12 +141,17 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     // Allow images, videos, and documents
     const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|mp4|mov|avi|mkv|m4v|webm/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype) || file.mimetype.startsWith('video/') || file.mimetype.startsWith('image/');
+    const extname = allowedTypes.test(path.extname(file.originalname || '').toLowerCase());
+    // Protect against missing mimetype and accept image/video by prefix as well
+    const fileMimetype = file.mimetype || '';
+    const mimetype = allowedTypes.test(fileMimetype) || fileMimetype.startsWith('video/') || fileMimetype.startsWith('image/');
 
-    if (mimetype && extname) {
+    // Accept if either the filename extension or mimetype indicates an allowed type
+    if (extname || mimetype) {
       return cb(null, true);
     } else {
+      // Log rejected files to help debugging
+      console.log('[Upload Rejected] originalname:', file.originalname, 'mimetype:', file.mimetype);
       cb(new Error('Only images, videos, and documents are allowed'));
     }
   }
@@ -734,6 +739,237 @@ app.put('/api/workers/:id', upload.fields([
     res.status(500).json({
       success: false,
       message: 'Internal server error during update',
+      error: error.message
+    });
+  }
+});
+
+// Admin: Update worker endpoint (force type=1 and status=1)
+app.put('/api/admin/workers/:id', upload.fields([
+  { name: 'profilePhoto', maxCount: 1 },
+  { name: 'document1', maxCount: 10 }, // Allow up to 10 personal documents
+  { name: 'document2', maxCount: 10 }  // Allow up to 10 professional documents
+]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Check if worker exists
+    const [existingWorkers] = await pool.execute(
+      'SELECT * FROM tbl_workers WHERE id = ?',
+      [id]
+    );
+
+    if (existingWorkers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+
+    const existingWorker = existingWorkers[0];
+    const {
+      name,
+      mobile,
+      email,
+      price,
+      skills,
+      location,
+      address,
+      pincode,
+      mandal,
+      district,
+      state,
+      country,
+      latitude,
+      longitude,
+      areaName,
+      // ignore status from client - we will force it to 1
+      existingPersonalDocuments,
+      existingProfessionalDocuments
+    } = req.body;
+
+    // Validation
+    if (!name || !mobile || !email || !price) {
+      return res.status(400).json({
+        success: false,
+        message: 'Required fields are missing: name, mobile, email, price'
+      });
+    }
+
+    // Check if email/mobile conflicts with other workers (excluding current worker)
+    const [conflictingUsers] = await pool.execute(
+      'SELECT id FROM tbl_workers WHERE (email = ? OR mobile = ?) AND id != ?',
+      [email, mobile, id]
+    );
+
+    if (conflictingUsers.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Email or mobile number already exists with another worker'
+      });
+    }
+
+    // Process uploaded files
+    let profileImagePath = existingWorker.profile_image;
+    let personalDocumentsString = '';
+    let professionalDocumentsString = '';
+
+    if (req.files) {
+      // Profile photo - accept multiple possible field names for robustness
+      if (req.files.profilePhoto && req.files.profilePhoto[0]) {
+        profileImagePath = req.files.profilePhoto[0].filename;
+      } else if (req.files.profile_image && req.files.profile_image[0]) {
+        profileImagePath = req.files.profile_image[0].filename;
+      } else if (req.body && req.body.profilePhoto) {
+        // Client may send an existing filename as part of the body
+        profileImagePath = req.body.profilePhoto;
+      } else {
+        profileImagePath = existingWorker.profile_image;
+      }
+
+      // Personal documents
+      if (req.files.document1 && req.files.document1.length > 0) {
+        const newDocuments = req.files.document1.map(file => file.filename);
+        const existingDocs = existingPersonalDocuments ? JSON.parse(existingPersonalDocuments) : [];
+        const allDocs = [...existingDocs, ...newDocuments];
+        personalDocumentsString = allDocs.join(',');
+      } else if (existingPersonalDocuments) {
+        const existingDocs = JSON.parse(existingPersonalDocuments);
+        if (Array.isArray(existingDocs) && existingDocs.length > 0) {
+          personalDocumentsString = existingDocs.join(',');
+        } else {
+          personalDocumentsString = '';
+        }
+      } else {
+        personalDocumentsString = '';
+      }
+
+      // Professional documents
+      if (req.files.document2 && req.files.document2.length > 0) {
+        const newDocuments = req.files.document2.map(file => file.filename);
+        const existingDocs = existingProfessionalDocuments ? JSON.parse(existingProfessionalDocuments) : [];
+        const allDocs = [...existingDocs, ...newDocuments];
+        professionalDocumentsString = allDocs.join(',');
+      } else if (existingProfessionalDocuments) {
+        const existingDocs = JSON.parse(existingProfessionalDocuments);
+        if (Array.isArray(existingDocs) && existingDocs.length > 0) {
+          professionalDocumentsString = existingDocs.join(',');
+        } else {
+          professionalDocumentsString = '';
+        }
+      } else {
+        professionalDocumentsString = '';
+      }
+    } else {
+      // No files uploaded, keep existing values
+      profileImagePath = existingWorker.profile_image;
+
+      if (existingPersonalDocuments) {
+        const existingDocs = JSON.parse(existingPersonalDocuments);
+        if (Array.isArray(existingDocs) && existingDocs.length > 0) {
+          personalDocumentsString = existingDocs.join(',');
+        } else {
+          personalDocumentsString = '';
+        }
+      } else {
+        personalDocumentsString = '';
+      }
+
+      if (existingProfessionalDocuments) {
+        const existingDocs = JSON.parse(existingProfessionalDocuments);
+        if (Array.isArray(existingDocs) && existingDocs.length > 0) {
+          professionalDocumentsString = existingDocs.join(',');
+        } else {
+          professionalDocumentsString = '';
+        }
+      } else {
+        professionalDocumentsString = '';
+      }
+    }
+
+    // Convert skills array to comma-separated string
+    let skillsString = '';
+    if (skills) {
+      try {
+        const skillsArray = typeof skills === 'string' ? JSON.parse(skills) : skills;
+        skillsString = Array.isArray(skillsArray) ? skillsArray.join(', ') : skills;
+      } catch (error) {
+        skillsString = skills;
+      }
+    }
+
+    // Extract area name from location for city column
+    let cityName = null;
+    if (areaName) {
+      cityName = areaName.trim();
+    } else if (location) {
+      const locationParts = location.split(',');
+      cityName = locationParts[0]?.trim() || null;
+    }
+
+    // Update database - force type = 1 and status = 1
+    const updateQuery = `
+      UPDATE tbl_workers SET
+        name = ?, mobile = ?, email = ?, price = ?, skill_id = ?, pincode = ?, mandal = ?, city = ?,
+        district = ?, state = ?, country = ?, latitude = ?, longitude = ?, address = ?,
+        type = ?, profile_image = ?, document1 = ?, document2 = ?, status = ?
+      WHERE id = ?
+    `;
+
+    const updateValues = [
+      name,
+      mobile,
+      email,
+      price,
+      skillsString,
+      pincode || null,
+      mandal || null,
+      cityName,
+      district || null,
+      state || null,
+      country || null,
+      latitude || null,
+      longitude || null,
+      address || null,
+      1, // force type = 1
+      profileImagePath,
+      personalDocumentsString,
+      professionalDocumentsString,
+      1, // force status = 1
+      id
+    ];
+
+    await pool.execute(updateQuery, updateValues);
+
+    res.json({
+      success: true,
+      message: 'Worker updated successfully (type=1 & status=1)',
+      data: {
+        id,
+        name,
+        mobile,
+        email,
+        price,
+        skill_id: skillsString,
+        pincode,
+        city: cityName,
+        district,
+        state,
+        country,
+        latitude,
+        longitude,
+        address,
+        type: 1,
+        status: 1,
+        profile_image: profileImagePath,
+        document1: personalDocumentsString,
+        document2: professionalDocumentsString
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error during fixed update',
       error: error.message
     });
   }

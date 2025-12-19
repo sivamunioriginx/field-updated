@@ -16,19 +16,27 @@ const toastConfig = {
   success: (props: any) => (
     <BaseToast
       {...props}
-      style={[styles.toastContainer, styles.toastRight]}
+      style={[
+        styles.toastContainer,
+        styles.toastRight,
+        { backgroundColor: '#ecfdf5', borderRightColor: '#10b981' }, // light green background with green accent
+      ]}
       contentContainerStyle={styles.toastContent}
-      text1Style={styles.toastText1}
-      text2Style={styles.toastText2}
+      text1Style={[styles.toastText1, { color: '#065f46' }]}
+      text2Style={[styles.toastText2, { color: '#065f46' }]}
     />
   ),
   error: (props: any) => (
     <ErrorToast
       {...props}
-      style={[styles.toastContainer, styles.toastRight]}
+      style={[
+        styles.toastContainer,
+        styles.toastRight,
+        { backgroundColor: '#fff1f2', borderRightColor: '#ef4444' }, // light red background with red accent
+      ]}
       contentContainerStyle={styles.toastContent}
-      text1Style={styles.toastText1}
-      text2Style={styles.toastText2}
+      text1Style={[styles.toastText1, { color: '#7f1d1d' }]}
+      text2Style={[styles.toastText2, { color: '#7f1d1d' }]}
     />
   ),
 };
