@@ -4482,6 +4482,26 @@ app.get('/api/admin/workers/:id', async (req, res) => {
   }
 });
 
+// Get Quotes for admin
+app.get('/api/admin/quotes', async (req, res) => {
+try {
+const query = `SELECT q.*,s.name FROM tbl_requestquote AS q LEFT JOIN tbl_serviceseeker AS S ON q.customer_id = s.id ORDER BY q.id DESC`;
+const [quotes] = await pool.query(query);
+
+res.json({
+  success: true,
+  quotes: quotes
+});
+} catch (error) {
+   console.error('❌ Error fetching quotes:', error);
+   res.status(500).json({
+    success: false,
+    message: 'failed to fetch quotes',
+    error: error.message
+   });
+}
+});
+
 // 404 handler - THIS MUST BE LAST!
 app.use('*', (req, res) => {
   res.status(404).json({

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -13,6 +13,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_ENDPOINTS } from '../../constants/api';
 import Bookings from './bookings';
 import Customers from './customers';
 import Payments from './payments';
@@ -27,6 +28,26 @@ export default function AdminIndexScreen() {
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [newBookingsCount, setNewBookingsCount] = useState<number | null>(null);
+  const [requestedWorkersCount, setRequestedWorkersCount] = useState<number | null>(null);
+  const [quoteRequestsCount, setQuoteRequestsCount] = useState<number | null>(null);
+  const [rescheduledCount, setRescheduledCount] = useState<number | null>(null);
+
+  const quickCards = [
+    { id: 'total-bookings', label: 'Total Bookings', value: '1,234', icon: 'cart-outline', bg: '#fef3c7', iconBg: '#f59e0b', change: '+3.4%', changeColor: '#10b981' },
+    { id: 'active', label: 'Active Bookings', value: '12', icon: 'play-circle-outline', bg: '#fef9c3', iconBg: '#f59e0b', change: '-1.0%', changeColor: '#ef4444' },
+    { id: 'inprogress', label: 'In Progress Bookings', value: '567', icon: 'sync-outline', bg: '#dbeafe', iconBg: '#06b6d4', change: '+8.2%', changeColor: '#10b981' },
+    { id: 'complete', label: 'Completed Bookings', value: '1,234', icon: 'checkmark-done-outline', bg: '#ede9fe', iconBg: '#6366f1', change: '+12.5%', changeColor: '#10b981' },
+    { id: 'cancele', label: 'Canceled Bookings', value: '89%', icon: 'close-circle-outline', bg: '#d1fae5', iconBg: '#10b981', change: '+5.1%', changeColor: '#10b981' },
+    { id: 'reschedule', label: 'Rescheduled Bookings', value: '23', icon: 'calendar-outline', bg: '#fed7aa', iconBg: '#f59e0b', change: '-2.4%', changeColor: '#ef4444' },
+    { id: 'customer', label: 'Customers', value: '324', icon: 'person-add', bg: '#fee2e2', iconBg: '#ef4444', change: '+2.1%', changeColor: '#10b981' },
+    { id: 'active-workers', label: 'Active Workers', value: '89', icon: 'construct-outline', bg: '#e0f2fe', iconBg: '#0284c7', change: '+1.2%', changeColor: '#10b981' },
+    { id: 'revenue', label: 'Revenue', value: '$12.3k', icon: 'cash-outline', bg: '#ecfccb', iconBg: '#84cc16', change: '+7.8%', changeColor: '#10b981' },
+    { id: 'tickets', label: 'Support Tickets', value: '37', icon: 'chatbubbles-outline', bg: '#fde68a', iconBg: '#f59e0b', change: '+4.3%', changeColor: '#10b981' },
+    { id: 'avg-rating', label: 'Avg. Rating', value: '4.8', icon: 'star', bg: '#ede9fe', iconBg: '#7c3aed', change: '+0.2%', changeColor: '#10b981' },
+    { id: 'alerts', label: 'Alerts', value: '5', icon: 'alert-circle-outline', bg: '#fee2e2', iconBg: '#ef4444', change: '-0.5%', changeColor: '#ef4444' },
+  ];
+
   const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem('adminToken');
@@ -37,6 +58,123 @@ export default function AdminIndexScreen() {
       router.replace('/admin');
     }
   };
+
+  // Fetch today's accepted bookings (status = 1)
+  useEffect(() => {
+    let cancelled = false;
+
+    const isSameDay = (dateStr: string) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      const today = new Date();
+      return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+    };
+
+    const fetchTodayAcceptedBookings = async () => {
+      try {
+        const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.bookings)) {
+          const count = data.bookings.filter((b: any) => b.status === 1 && isSameDay(b.created_at)).length;
+          if (!cancelled) setNewBookingsCount(count);
+        } else {
+          if (!cancelled) setNewBookingsCount(0);
+        }
+      } catch (error) {
+        console.error('Error fetching admin bookings:', error);
+        if (!cancelled) setNewBookingsCount(0);
+      }
+    };
+
+    fetchTodayAcceptedBookings();
+
+    return () => { cancelled = true; };
+  }, []);
+
+ // Fetch new worker requests
+useEffect(() => {
+
+  const fetchNewWorkerRequests = async () => {
+  try {
+    const res = await fetch(API_ENDPOINTS.ADMIN_WORKERS);
+    const data = await res.json();
+    if(data && data.success && Array.isArray(data.workers)) {
+      const count = data.workers.filter((w: any) => w.status === 0).length;
+      setRequestedWorkersCount(count);
+    } else {
+      setRequestedWorkersCount(0);
+    }
+  } catch (error) {
+    console.error('Error fetching new worker requests:', error);
+    setRequestedWorkersCount(0);
+  }
+  };
+
+  fetchNewWorkerRequests();
+}, []);
+
+useEffect(() => {
+  let cancelled = false;
+
+  const isSameDay = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const today = new Date();
+    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  };
+
+  const fetchTodayQuotes = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_QUOTES);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.quotes)) {
+        const count = data.quotes.filter((q: any) => isSameDay(q.created_at)).length;
+        if (!cancelled) setQuoteRequestsCount(count);
+      } else {
+        if (!cancelled) setQuoteRequestsCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching new quotes requests today:', error);
+      if (!cancelled) setQuoteRequestsCount(0);
+    }
+  };
+
+  fetchTodayQuotes();
+
+  return () => { cancelled = true; };
+}, []);
+
+useEffect(() => {
+  let cancelled = false;
+
+  const isSameDay = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const today = new Date();
+    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  };
+
+  const fetchTodayRescheduled = async () => {
+    try {
+      const res = await fetch(`${API_ENDPOINTS.ADMIN_BOOKINGS}?rescheduled=true`);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        // server returns reschedule_date in joined rescheduled bookings
+        const count = data.bookings.filter((b: any) => isSameDay(b.reschedule_date)).length;
+        if (!cancelled) setRescheduledCount(count);
+      } else {
+        if (!cancelled) setRescheduledCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching rescheduled bookings:', error);
+      if (!cancelled) setRescheduledCount(0);
+    }
+  };
+
+  fetchTodayRescheduled();
+
+  return () => { cancelled = true; };
+}, []);
 
   const menuItems = [
     { id: 'dashboard', icon: 'grid-outline', label: 'Dashboard', color: '#6366f1' },
@@ -218,101 +356,72 @@ export default function AdminIndexScreen() {
                       <Text style={styles.welcomeText}>Welcome back! 👋</Text>
                       <Text style={styles.subtitleText}>Here's what's happening with your platform today.</Text>
                     </View>
-                    <TouchableOpacity style={styles.exportButton}>
-                      <Ionicons name="download-outline" size={18} color="#6366f1" />
-                      <Text style={styles.exportText}>Export</Text>
-                    </TouchableOpacity>
                   </View>
                   
                   {/* Stats Cards */}
                   <View style={styles.statsContainer}>
-                    <View style={[styles.statCard, { backgroundColor: '#ede9fe' }]}>
-                      <View style={[styles.statIconContainer, { backgroundColor: '#6366f1' }]}>
-                        <Ionicons name="people" size={24} color="#fff" />
+                    <View style={[styles.statCard, { backgroundColor: '#dbeafe' }]}>
+                      <View style={[styles.statIconContainer, { backgroundColor: '#06b6d4' }]}>
+                        <Ionicons name="cart-outline" size={24} color="#fff" />
                       </View>
                       <View style={styles.statInfo}>
-                        <Text style={styles.statLabel}>Total Users</Text>
-                        <Text style={styles.statValue}>1,234</Text>
-                        <View style={styles.statChange}>
-                          <Ionicons name="trending-up" size={14} color="#10b981" />
-                          <Text style={styles.statChangeText}>+12.5%</Text>
-                        </View>
+                        <Text style={styles.statLabel}>New Bookings</Text>
+                        <Text style={styles.statValue}>{newBookingsCount !== null ? newBookingsCount : '—'}</Text>
                       </View>
                     </View>
 
-                    <View style={[styles.statCard, { backgroundColor: '#dbeafe' }]}>
-                      <View style={[styles.statIconContainer, { backgroundColor: '#06b6d4' }]}>
-                        <Ionicons name="bar-chart" size={24} color="#fff" />
+                    <View style={[styles.statCard, { backgroundColor: '#ede9fe' }]}>
+                      <View style={[styles.statIconContainer, { backgroundColor: '#6366f1' }]}>
+                        <Ionicons name="people-outline" size={24} color="#fff" />
                       </View>
                       <View style={styles.statInfo}>
-                        <Text style={styles.statLabel}>Active Today</Text>
-                        <Text style={styles.statValue}>567</Text>
-                        <View style={styles.statChange}>
-                          <Ionicons name="trending-up" size={14} color="#10b981" />
-                          <Text style={styles.statChangeText}>+8.2%</Text>
-                        </View>
+                        <Text style={styles.statLabel}>New Worker Request</Text>
+                        <Text style={styles.statValue}>{requestedWorkersCount !== null ? requestedWorkersCount : '—'}</Text>
                       </View>
                     </View>
 
                     <View style={[styles.statCard, { backgroundColor: '#d1fae5' }]}>
                       <View style={[styles.statIconContainer, { backgroundColor: '#10b981' }]}>
-                        <Ionicons name="trending-up" size={24} color="#fff" />
+                        <Ionicons name="document-text-outline" size={24} color="#fff" />
                       </View>
                       <View style={styles.statInfo}>
-                        <Text style={styles.statLabel}>Growth Rate</Text>
-                        <Text style={styles.statValue}>89%</Text>
-                        <View style={styles.statChange}>
-                          <Ionicons name="trending-up" size={14} color="#10b981" />
-                          <Text style={styles.statChangeText}>+5.1%</Text>
-                        </View>
+                        <Text style={styles.statLabel}>New Work Quote</Text>
+                        <Text style={styles.statValue}>{quoteRequestsCount !== null ? quoteRequestsCount : '—'}</Text>
                       </View>
                     </View>
 
                     <View style={[styles.statCard, { backgroundColor: '#fed7aa' }]}>
                       <View style={[styles.statIconContainer, { backgroundColor: '#f59e0b' }]}>
-                        <Ionicons name="notifications" size={24} color="#fff" />
+                        <Ionicons name="calendar-outline" size={24} color="#fff" />
                       </View>
                       <View style={styles.statInfo}>
-                        <Text style={styles.statLabel}>New Alerts</Text>
-                        <Text style={styles.statValue}>23</Text>
-                        <View style={styles.statChange}>
-                          <Ionicons name="trending-down" size={14} color="#ef4444" />
-                          <Text style={[styles.statChangeText, { color: '#ef4444' }]}>-2.4%</Text>
-                        </View>
+                        <Text style={styles.statLabel}>Rescheduled Bookings</Text>
+                        <Text style={styles.statValue}>{rescheduledCount !== null ? rescheduledCount : '—'}</Text>
                       </View>
                     </View>
                   </View>
 
                   {/* Quick Actions */}
                   <View style={styles.quickActionsContainer}>
-                    <Text style={styles.sectionTitle}>Quick Actions</Text>
+                    <Text style={styles.sectionTitle}>Summary Report</Text>
                     <View style={styles.quickActions}>
-                      <TouchableOpacity style={styles.quickAction}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: '#ede9fe' }]}>
-                          <Ionicons name="person-add" size={20} color="#6366f1" />
-                        </View>
-                        <Text style={styles.quickActionText}>Add User</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.quickAction}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: '#dbeafe' }]}>
-                          <Ionicons name="create" size={20} color="#06b6d4" />
-                        </View>
-                        <Text style={styles.quickActionText}>New Report</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.quickAction}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: '#d1fae5' }]}>
-                          <Ionicons name="mail" size={20} color="#10b981" />
-                        </View>
-                        <Text style={styles.quickActionText}>Send Email</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.quickAction}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: '#fecaca' }]}>
-                          <Ionicons name="settings" size={20} color="#ef4444" />
-                        </View>
-                        <Text style={styles.quickActionText}>Settings</Text>
-                      </TouchableOpacity>
+                      {quickCards.map(card => (
+                        <TouchableOpacity
+                          key={card.id}
+                          style={[styles.quickAction, { backgroundColor: card.bg }]}
+                        >
+                          <View style={[styles.statIconContainer, { backgroundColor: card.iconBg }]}> 
+                            <Ionicons name={card.icon as any} size={24} color="#fff" />
+                          </View>
+
+                          <View style={styles.statInfo}>
+                            <Text style={styles.statLabel}>{card.label}</Text>
+                            <Text style={[styles.statValue, { fontSize: isDesktop ? 22 : isTablet ? 20 : 18 }]}>{card.value}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
                     </View>
-                  </View>
+                  </View> 
                 </View>
               </ScrollView>
             </View>
@@ -612,22 +721,6 @@ const createStyles = (width: number, height: number) => {
       color: '#64748b',
       lineHeight: isDesktop ? 22 : isTablet ? 20 : 18,
     },
-    exportButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      backgroundColor: '#ffffff',
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: '#e2e8f0',
-    },
-    exportText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: '#6366f1',
-    },
     statsContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -667,16 +760,6 @@ const createStyles = (width: number, height: number) => {
       color: '#0f172a',
       marginBottom: 6,
     },
-    statChange: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    statChangeText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: '#10b981',
-    },
     quickActionsContainer: {
       marginTop: 8,
     },
@@ -690,22 +773,24 @@ const createStyles = (width: number, height: number) => {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 12,
+      justifyContent: 'space-between',
     },
     quickAction: {
-      flex: 1,
-      minWidth: isDesktop ? 140 : 150,
-      backgroundColor: '#ffffff',
-      padding: 20,
-      borderRadius: 14,
+      width: isDesktop ? '23%' : isTablet ? '48%' : '100%',
+      padding: isDesktop ? 20 : 16,
+      borderRadius: 16,
+      flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
+      gap: 16,
       borderWidth: 1,
-      borderColor: '#e2e8f0',
+      borderColor: 'rgba(0,0,0,0.05)',
+      minWidth: isDesktop ? 240 : '100%',
+      paddingVertical: 20,
     },
     quickActionIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
+      width: 56,
+      height: 56,
+      borderRadius: 14,
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -713,6 +798,18 @@ const createStyles = (width: number, height: number) => {
       fontSize: 13,
       fontWeight: '600',
       color: '#0f172a',
+    },
+    quickActionValue: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#0f172a',
+      marginTop: 6,
+    },
+    quickActionChange: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 6,
     },
   });
 };

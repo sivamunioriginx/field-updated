@@ -87,7 +87,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
-  // Minimal location autocomplete (based on editprofessional.tsx)
   const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
   const [locationSuggestions, setLocationSuggestions] = useState<Array<{description: string; place_id?: string}>>([]);
   const debounceTimer = useRef<any>(null);
@@ -98,10 +97,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
       return;
     }
 
-    // If the app is running with the remote JS debugger (Chrome), fetch
-    // requests run from the browser and Google Places REST endpoint will
-    // block them due to CORS. Detect this situation and avoid calling the
-    // API from the browser — instead inform the developer.
     if (typeof document !== 'undefined') {
       setLocationSuggestions([]);
       return;
