@@ -32,6 +32,15 @@ export default function AdminIndexScreen() {
   const [requestedWorkersCount, setRequestedWorkersCount] = useState<number | null>(null);
   const [quoteRequestsCount, setQuoteRequestsCount] = useState<number | null>(null);
   const [rescheduledCount, setRescheduledCount] = useState<number | null>(null);
+  const [totalBookingsCount, setTotalBookingsCount] = useState<number | null>(null);
+  const [activeBookingsCount, setActiveBookingsCount] = useState<number | null>(null);
+  const [inprogressBookingsCount, setInprogressBookingCount] = useState<number | null>(null);
+  const [completedBookingsCount, setCompletedBookingsCount] = useState<number | null>(null);
+  const [canceledBookingsCount, setCanceledBookingsCount] = useState<number | null>(null);
+  const [rescheduledBookingsCount, setRescheduledBookingsCount] = useState<number | null>(null);
+  const [customersCount, setCustomersCount] = useState<number | null>(null);
+  const [activeWorkersCount, setActiveWorkersCount] = useState<number | null>(null);
+  const [totalPaymentAmount, setTotalPaymentAmount] = useState<number | null>(null);
 
   const quickCards = [
     { id: 'total-bookings', label: 'Total Bookings', value: '1,234', icon: 'cart-outline', bg: '#fef3c7', iconBg: '#f59e0b', change: '+3.4%', changeColor: '#10b981' },
@@ -176,7 +185,246 @@ useEffect(() => {
   return () => { cancelled = true; };
 }, []);
 
-  const menuItems = [
+// get total bookings count
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchTotalBookings = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        const ids = new Set(data.bookings.map((b: any) => b.booking_id ?? b.id ?? b.bookingId ?? b.bookingid));
+        if (!cancelled) setTotalBookingsCount(ids.size);
+      } else {
+        if (!cancelled) setTotalBookingsCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching total bookings count:', error);
+      if (!cancelled) setTotalBookingsCount(0);
+    }
+  };
+
+  fetchTotalBookings();
+
+  return () => { cancelled = true; };
+}, []);
+
+// get Active bookings count
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchActiveBookingsCount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        const count = data.bookings.filter((b: any) => b.status === 1).length;
+        if (!cancelled) setActiveBookingsCount(count);
+      } else {
+        if (!cancelled) setActiveBookingsCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching active bookings count:', error);
+      if (!cancelled) setActiveBookingsCount(0);
+    }
+  };
+
+  fetchActiveBookingsCount();
+
+  return () => { cancelled = true; };
+}, []);
+
+// get Inprogress bookings count
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchInprogressBookingsCount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        const count = data.bookings.filter((b: any) => b.status === 2).length;
+        if (!cancelled) setInprogressBookingCount(count);
+      } else {
+        if (!cancelled) setInprogressBookingCount(0);
+      }
+
+    } catch (error) {
+      console.error('Error fetching Inprogress bookings count:', error);
+      if (!cancelled) setInprogressBookingCount(0);
+    }
+  };
+  fetchInprogressBookingsCount();
+  return () => { cancelled = true; };
+});
+
+// get Completed bookings count
+useEffect(() => {
+let cancelled = false;
+
+const fetchCompletedBookingsCount = async () => {
+  try {
+    const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.bookings)) {
+      const count = data.bookings.filter((b: any) => b.status === 3).length;
+      if (!cancelled) setCompletedBookingsCount(count);
+    } else {
+      if (!cancelled) setCompletedBookingsCount(0);
+    }
+
+  } catch (error) {
+    console.error('Error fetching Completed bookings count:', error);
+    if (!cancelled) setCompletedBookingsCount(0);
+  }
+
+};
+fetchCompletedBookingsCount();
+return () => { cancelled = true; };
+});
+
+// get Completed bookings count
+useEffect( () => {
+let cancelled = false;
+const fetchCanceledBookingsCount = async () => {
+  try {
+    const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.bookings)) {
+      const count = data.bookings.filter((b: any) => b.status === 5).length;
+      if (!cancelled) setCanceledBookingsCount(count);
+    } else {
+      if (!cancelled) setCanceledBookingsCount(0);
+    }
+  } catch (error) {
+    console.error('Error fetching Canceled bookings count:', error);
+    if (!cancelled) setCanceledBookingsCount(0);
+  }
+};
+fetchCanceledBookingsCount();
+return () => { cancelled = true; };
+});
+
+// get Rescheduled bookings count
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchRescheduledBookingsCount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        const count = data.bookings.filter((b: any) => b.status === 6).length;
+        if (!cancelled) setRescheduledBookingsCount(count);
+      } else {
+        if (!cancelled) setRescheduledBookingsCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching Rescheduled bookings count:', error);
+      if (!cancelled) setRescheduledBookingsCount(0);
+    }
+  };
+  fetchRescheduledBookingsCount();
+  return () => { cancelled = true; };
+});
+
+// get Customers count
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchCustomersCount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_CUSTOMERS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.customers)) {
+        const count = data.customers.length;
+        if (!cancelled) setCustomersCount(count);
+      } else {
+        if (!cancelled) setCustomersCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching Customers count:', error);
+      if (!cancelled) setCustomersCount(0);
+    }
+  };
+  fetchCustomersCount();
+  return () => { cancelled = true; };
+});
+
+// get Active Workers count
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchActiveWorkersCount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_WORKERS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.workers)) {
+        const count = data.workers.filter((w: any) => w.status === 1).length;
+        if (!cancelled) setActiveWorkersCount(count);
+      } else {
+        if (!cancelled) setActiveWorkersCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching Active Workers count:', error);
+      if (!cancelled) setActiveWorkersCount(0);
+    }
+  };
+  fetchActiveWorkersCount();
+  return () => { cancelled = true; };
+});
+
+// get Total paymentamount
+useEffect(() => {
+  let cancelled = false;
+
+  // parse amount safely (strip currency symbols and commas)
+  const parseAmount = (raw: any) => {
+    if (raw == null) return 0;
+    if (typeof raw === 'number') return raw;
+    const s = String(raw).replace(/[^0-9.\-]/g, '');
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const fetchTotalPaymentAmount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_PAYMENTS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.payments)) {
+        const total = data.payments.reduce((sum: number, p: any) => sum + parseAmount(p.amount ?? p), 0);
+        if (!cancelled) setTotalPaymentAmount(total);
+      } else {
+        if (!cancelled) setTotalPaymentAmount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching Total payment amount:', error);
+      if (!cancelled) setTotalPaymentAmount(0);
+    }
+  };
+  fetchTotalPaymentAmount();
+  return () => { cancelled = true; };
+}, []);
+
+// Format amount in INR (uses Intl when available) — omit trailing .00 when possible
+const formatINR = (amount: number | null) => {
+  if (amount === null) return '—';
+  const absCents = Math.round(Math.abs(amount) * 100);
+  const hasFraction = absCents % 100 !== 0;
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: hasFraction ? 2 : 0,
+      maximumFractionDigits: hasFraction ? 2 : 0,
+    }).format(amount);
+  } catch (e) {
+    return hasFraction ? `₹${amount.toFixed(2)}` : `₹${Math.round(amount)}`;
+  }
+};
+
+const menuItems = [
     { id: 'dashboard', icon: 'grid-outline', label: 'Dashboard', color: '#6366f1' },
     { id: 'bookings', icon: 'cart-outline', label: 'Bookings', color: '#f59e0b' },
     { id: 'payments', icon: 'cash-outline', label: 'Payments', color: '#8b5cf6' },
@@ -416,7 +664,9 @@ useEffect(() => {
 
                           <View style={styles.statInfo}>
                             <Text style={styles.statLabel}>{card.label}</Text>
-                            <Text style={[styles.statValue, { fontSize: isDesktop ? 22 : isTablet ? 20 : 18 }]}>{card.value}</Text>
+                            <Text style={[styles.statValue, { fontSize: isDesktop ? 22 : isTablet ? 20 : 18 }]}> 
+                              {card.id === 'total-bookings' ? (totalBookingsCount !== null ? totalBookingsCount.toString() : '—') : card.id === 'active' ? (activeBookingsCount !== null ? activeBookingsCount.toString() : '—') : card.id === 'inprogress' ? (inprogressBookingsCount !== null ? inprogressBookingsCount.toString() : '—') : card.id === 'complete' ? (completedBookingsCount !== null ? completedBookingsCount.toString() : '—') : card.id === 'cancele' ? (canceledBookingsCount !== null ? canceledBookingsCount.toString() : '—') : card.id === 'reschedule' ? (rescheduledBookingsCount !== null ? rescheduledBookingsCount.toString() : '—') : card.id === 'customer' ? (customersCount !== null ? customersCount.toString() : '—') : card.id === 'active-workers' ? (activeWorkersCount !== null ? activeWorkersCount.toString() : '—') : card.id === 'revenue' ? formatINR(totalPaymentAmount) : card.value}
+                            </Text>
                           </View>
                         </TouchableOpacity>
                       ))}
