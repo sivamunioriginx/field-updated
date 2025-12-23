@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  useWindowDimensions
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+    useWindowDimensions
 } from 'react-native';
 import { API_ENDPOINTS } from '../../constants/api';
 
@@ -39,9 +39,11 @@ interface Booking {
 interface BookingsProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  // optional initial status to show when component mounts or when changed by parent
+  initialStatus?: string;
 }
 
-export default function Bookings({ searchQuery: externalSearchQuery, onSearchChange }: BookingsProps) {
+export default function Bookings({ searchQuery: externalSearchQuery, onSearchChange, initialStatus }: BookingsProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -63,6 +65,15 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  // If parent provides an initial status, keep local filter in sync
+  useEffect(() => {
+    if (initialStatus !== undefined && initialStatus !== statusFilter) {
+      setStatusFilter(initialStatus);
+      setCurrentPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialStatus]);
 
   const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false) => {
     try {

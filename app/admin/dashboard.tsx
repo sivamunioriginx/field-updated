@@ -17,6 +17,7 @@ import { API_ENDPOINTS } from '../../constants/api';
 import Bookings from './bookings';
 import Customers from './customers';
 import Payments from './payments';
+import Quote from './quote';
 import Workers from './workers';
 
 export default function AdminIndexScreen() {
@@ -41,6 +42,8 @@ export default function AdminIndexScreen() {
   const [customersCount, setCustomersCount] = useState<number | null>(null);
   const [activeWorkersCount, setActiveWorkersCount] = useState<number | null>(null);
   const [totalPaymentAmount, setTotalPaymentAmount] = useState<number | null>(null);
+  // Which booking status should be shown when opening Bookings from summary cards
+  const [bookingsStatus, setBookingsStatus] = useState<string>('all');
 
   const quickCards = [
     { id: 'total-bookings', label: 'Total Bookings', value: '1,234', icon: 'cart-outline', bg: '#fef3c7', iconBg: '#f59e0b', change: '+3.4%', changeColor: '#10b981' },
@@ -430,13 +433,53 @@ const menuItems = [
     { id: 'payments', icon: 'cash-outline', label: 'Payments', color: '#8b5cf6' },
     { id: 'customers', icon: 'people-outline', label: 'Customers', color: '#06b6d4' },
     { id: 'workers', icon: 'construct-outline', label: 'Workers', color: '#10b981' },
-    { id: 'reports', icon: 'document-text-outline', label: 'Reports', color: '#ef4444' },
+    { id: 'quote', icon: 'document-text-outline', label: 'Quotes', color: '#ef4444' },
     { id: 'messages', icon: 'mail-outline', label: 'Messages', color: '#ec4899' },
     { id: 'settings', icon: 'settings-outline', label: 'Settings', color: '#64748b' },
     { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', color: '#f97316' },
     { id: 'help', icon: 'help-circle-outline', label: 'Help & Support', color: '#14b8a6' },
   ];
 
+  // Handle quick action card presses -> navigate and optionally apply filters
+  const handleQuickActionPress = (id: string) => {
+    const bookingsMap: Record<string, string> = {
+      'total-bookings': 'all',
+      'active': 'active', // Accepted
+      'inprogress': 'inprogress',
+      'complete': 'completed',
+      'cancele': 'cancel', // note: id in quickCards is 'cancele'
+      'reschedule': 'reschedule',
+    };
+
+    if (id === 'customer') {
+      setActiveMenu('customers');
+      setSearchQuery('');
+      return;
+    }
+
+    if (id === 'active-workers') {
+      setActiveMenu('workers');
+      setSearchQuery('');
+      return;
+    }
+
+    if (id === 'revenue') {
+      setActiveMenu('payments');
+      setSearchQuery('');
+      return;
+    }
+
+    // If it's a bookings-related card, open bookings and set the status filter
+    if (bookingsMap[id]) {
+      setBookingsStatus(bookingsMap[id]);
+      setActiveMenu('bookings');
+      setSearchQuery('');
+      return;
+    }
+
+    // Default action: open dashboard
+    setActiveMenu('dashboard');
+  };
 
   const styles = createStyles(width, height);
 
@@ -514,7 +557,7 @@ const menuItems = [
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
@@ -525,12 +568,12 @@ const menuItems = [
                 </View>
               </View>
               <View style={styles.topBarRight}>
-                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers') && (
+                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers' || activeMenu === 'quote') && (
                   <View style={styles.topBarSearchContainer}>
                     <Ionicons name="search-outline" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" style={styles.topBarSearchIcon} />
                     <TextInput
                       style={[styles.topBarSearchInput, { outlineWidth: 0, outlineStyle: 'none' } as any]}
-                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : "Search workers..."}
+                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search quotes..." : "Search quotes..."}
                       placeholderTextColor="#94a3b8"
                       value={searchQuery}
                       onChangeText={setSearchQuery}
@@ -568,6 +611,7 @@ const menuItems = [
               <Bookings 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                initialStatus={bookingsStatus}
               />
             </View>
           ) : activeMenu === 'payments' ? (
@@ -587,6 +631,13 @@ const menuItems = [
           ) : activeMenu === 'workers' ? (
             <View style={styles.content}>
               <Workers 
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </View>
+          ) : activeMenu === 'quote' ? (
+            <View style={styles.content}>
+              <Quote 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
               />
@@ -657,6 +708,7 @@ const menuItems = [
                         <TouchableOpacity
                           key={card.id}
                           style={[styles.quickAction, { backgroundColor: card.bg }]}
+                          onPress={() => handleQuickActionPress(card.id)}
                         >
                           <View style={[styles.statIconContainer, { backgroundColor: card.iconBg }]}> 
                             <Ionicons name={card.icon as any} size={24} color="#fff" />
