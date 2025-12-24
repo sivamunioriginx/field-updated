@@ -110,7 +110,6 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(Categorie => 
         Categorie.title.toLowerCase().includes(query) ||
-        Categorie.mobile.includes(query) ||
         (Categorie.image && Categorie.image.toLowerCase().includes(query)) ||
         (Categorie.created_at && Categorie.created_at.toLowerCase().includes(query))
       );
