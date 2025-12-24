@@ -4502,6 +4502,48 @@ res.json({
 }
 });
 
+//get Categories for admin
+app.get( '/api/admin/categories', async ( req, res ) => {
+try {
+  const query = `SELECT * FROM tbl_category ORDER BY id DESC`;
+  const [categories] = await pool.query(query);
+
+  res.json({
+    success: true,
+    categories: categories
+  })
+
+} catch ( error) {
+console.error( '❌ Error fetching categories:', error );
+res.status( 500 ).json({
+success: false,
+message: 'failed to fetch categories',
+error: error.message
+});
+}
+});
+
+//get SubCategories for admin
+app.get('/api/admin/subcategories', async (req, res) => {
+  try {
+const query = `SELECT s.*,c.title FROM tbl_subcategory AS s LEFT JOIN tbl_category AS c ON s.category_id = c.id ORDER BY s.id DESC`;
+const [subcategories] = await pool.query(query);
+
+  res.json({
+  success : true,
+  subcategories : subcategories
+  })
+
+  } catch (error) {
+    console.error('❌ Error fetching subcategories:', error);
+    res.status(500).json({
+      success: false,
+      message: 'failed to fetch subcategories',
+      error: error.message
+    });
+  }
+});
+
 // 404 handler - THIS MUST BE LAST!
 app.use('*', (req, res) => {
   res.status(404).json({

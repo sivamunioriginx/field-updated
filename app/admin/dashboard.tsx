@@ -15,9 +15,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_ENDPOINTS } from '../../constants/api';
 import Bookings from './bookings';
+import Categories from './categories';
 import Customers from './customers';
 import Payments from './payments';
 import Quote from './quote';
+import Subcategories from './subcategories';
 import Workers from './workers';
 
 export default function AdminIndexScreen() {
@@ -433,9 +435,9 @@ const menuItems = [
     { id: 'payments', icon: 'cash-outline', label: 'Payments', color: '#8b5cf6' },
     { id: 'customers', icon: 'people-outline', label: 'Customers', color: '#06b6d4' },
     { id: 'workers', icon: 'construct-outline', label: 'Workers', color: '#10b981' },
+    { id: 'categories', icon: 'list-outline', label: 'Categories', color: '#ec4899' },
+    { id: 'subcategories', icon: 'layers-outline', label: 'Subcategories', color: '#64748b' },
     { id: 'quote', icon: 'document-text-outline', label: 'Quotes', color: '#ef4444' },
-    { id: 'messages', icon: 'mail-outline', label: 'Messages', color: '#ec4899' },
-    { id: 'settings', icon: 'settings-outline', label: 'Settings', color: '#64748b' },
     { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', color: '#f97316' },
     { id: 'help', icon: 'help-circle-outline', label: 'Help & Support', color: '#14b8a6' },
   ];
@@ -557,7 +559,7 @@ const menuItems = [
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
@@ -573,7 +575,7 @@ const menuItems = [
                     <Ionicons name="search-outline" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" style={styles.topBarSearchIcon} />
                     <TextInput
                       style={[styles.topBarSearchInput, { outlineWidth: 0, outlineStyle: 'none' } as any]}
-                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search quotes..." : "Search quotes..."}
+                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search Quotes..." : activeMenu === 'categories' ? "Search categories" : activeMenu === 'subcategories' ? "Search Subcategories..." : "Search quotes..."}
                       placeholderTextColor="#94a3b8"
                       value={searchQuery}
                       onChangeText={setSearchQuery}
@@ -631,6 +633,20 @@ const menuItems = [
           ) : activeMenu === 'workers' ? (
             <View style={styles.content}>
               <Workers 
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </View>
+          ) : activeMenu === 'categories' ? (
+            <View style={styles.content}>
+              <Categories
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </View>
+          ) : activeMenu === 'subcategories' ? (
+            <View style={styles.content}>
+              <Subcategories
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
               />

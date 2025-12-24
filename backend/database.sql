@@ -69,6 +69,7 @@ CREATE TABLE tbl_subcategory (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(90) NOT NULL,
   category_id VARCHAR(50),
+  status TINYINT NOT NULL DEFAULT 1,
   image varchar(255) NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -77,6 +78,7 @@ CREATE TABLE tbl_subcategory (
 CREATE TABLE tbl_category (
   id INT AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(90) NOT NULL,
+  status TINYINT NOT NULL DEFAULT 1,
   image varchar(255) NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -90,6 +92,7 @@ CREATE TABLE tbl_services (
   rating DECIMAL(3,2) DEFAULT 0,
   is_top_service TINYINT DEFAULT 0,
   instant_service TINYINT DEFAULT 0,
+  status TINYINT NOT NULL DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
