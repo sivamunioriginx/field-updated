@@ -4544,6 +4544,27 @@ const [subcategories] = await pool.query(query);
   }
 });
 
+//get Services for admin
+app.get('/api/admin/services', async (req, res) => {
+  try {
+    const query = `SELECT sv.*, ts.name as subcaregory_name, tc.title as category_name FROM tbl_services AS sv LEFT JOIN tbl_subcategory AS ts ON sv.subcategory_id = ts.id LEFT JOIN tbl_category AS tc ON ts.category_id = tc.id ORDER BY sv.id DESC`;
+    const [services] =  await pool.query(query);
+
+    res.json({
+      success : true,
+      services : services
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching services:', error);
+    res.status(500).json({
+      success : false,
+      message : 'failed to fetch services',
+      error : error.message
+    });
+  }
+});
+
 // 404 handler - THIS MUST BE LAST!
 app.use('*', (req, res) => {
   res.status(404).json({

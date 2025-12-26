@@ -91,6 +91,7 @@ export const API_ENDPOINTS = {
   ADMIN_QUOTES: `${getBaseUrl()}/admin/quotes`,
   ADMIN_CATEGORIES: `${getBaseUrl()}/admin/categories`,
   ADMIN_SUBCATEGORIES: `${getBaseUrl()}/admin/subcategories`,
+  ADMIN_SERVICES: `${getBaseUrl()}/admin/services`,
 };
 
 export const API_BASE_URL = getBaseUrl();
