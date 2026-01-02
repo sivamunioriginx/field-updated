@@ -189,6 +189,7 @@ CREATE TABLE tbl_canceledbookings (
   bookingid VARCHAR(50) NOT NULL,
   cancel_reason TEXT NOT NULL,
   type TINYINT(1) NOT NULL COMMENT '1 or 2',
+  status TINYINT NOT NULL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -199,5 +200,6 @@ CREATE TABLE tbl_rescheduledbookings (
   reschedule_reason TEXT NOT NULL,
   reschedule_date DATETIME NOT NULL,
   type TINYINT(1) NOT NULL COMMENT '1 or 2',
+  status TINYINT NOT NULL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

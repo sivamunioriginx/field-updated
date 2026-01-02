@@ -40,6 +40,7 @@ interface Booking {
   user_id: number;
   booking_time: string;
   status: number;
+  payment_status?: number;
   created_at: string;
   user_name?: string;
   user_mobile?: string;
@@ -49,6 +50,10 @@ interface Booking {
   work_documents?: string;
   reschedule_date?: string;
   canceled_at?: string;
+  canceled_status?: number;
+  canceled_type?: number;
+  rescheduled_status?: number;
+  rescheduled_type?: number;
 }
 
 export default function Index() {
@@ -710,11 +715,12 @@ export default function Index() {
       // Ensure workerId is converted to string for the API call
       const workerIdString = String(workerId);
       
-      // For notifications tab, fetch status 1, 2, and 6
+      // For notifications tab, fetch status 1, 2, 5, and 6
+      // Status 5 and 6 will be treated as Cancel/Reschedule Request based on type = 1
       // For other tabs, use selectedStatus
       let statusParam = '';
       if (activeTab === 'notifications') {
-        statusParam = '?status=1,2,6';
+        statusParam = '?status=1,2,5,6';
       } else {
         statusParam = selectedStatus === 'all' ? '' : `?status=${selectedStatus}`;
       }
@@ -725,7 +731,71 @@ export default function Index() {
       const result = await response.json();
       
       if (result.success && result.data) {
-        setBookings(result.data);
+        // Remove duplicates based on id to prevent duplicate key errors
+        const uniqueBookings = result.data.filter((booking: Booking, index: number, self: Booking[]) => 
+          index === self.findIndex((b: Booking) => b.id === booking.id)
+        );
+        
+        // Filter bookings for notifications tab
+        const filteredBookings = uniqueBookings.filter((booking: Booking) => {
+          // Status 1 (Accepted) - show as is
+          if (booking.status === 1) {
+            return true;
+          }
+          
+          // Status 2 (In Progress) - show as is
+          if (booking.status === 2) {
+            return true;
+          }
+          
+          // Status 5: Show if cancel_type != 1 AND canceled_status != 1 (customer cancel requests, not yet processed)
+          // Exclude status 5 bookings where canceled_status = 1 (these are Canceled, not Active)
+          // These should be shown as Active with buttons
+          if (booking.status === 5) {
+            const cancelStatus = booking.canceled_status !== undefined ? Number(booking.canceled_status) : null;
+            // Exclude canceled bookings (canceled_status = 1) - these should not show in notifications
+            if (cancelStatus === 1) {
+              return false;
+            }
+            const cancelType = booking.canceled_type !== undefined ? Number(booking.canceled_type) : null;
+            // Show customer cancel requests (type = 2) with status != 1 - these should show as Active
+            if (cancelType === 2 && cancelStatus !== 1) {
+              return true;
+            }
+            // Also show worker cancel requests (type = 1) with status = 0
+            if (cancelStatus === 0 && cancelType === 1) {
+              return true;
+            }
+            return false;
+          }
+          
+          // Status 6: Show if reschedule_type != 1 AND rescheduled_status != 1 (customer reschedule requests, not yet processed)
+          // OR if rescheduled_status = 2 (rescheduled - admin accepted)
+          // These should be shown as Active with buttons OR as Rescheduled
+          if (booking.status === 6) {
+            const rescheduleType = booking.rescheduled_type !== undefined ? Number(booking.rescheduled_type) : null;
+            const rescheduleStatus = booking.rescheduled_status !== undefined ? Number(booking.rescheduled_status) : null;
+            const paymentStatus = booking.payment_status !== undefined ? Number(booking.payment_status) : null;
+            // Show rescheduled bookings (status = 2) with payment_status = 1
+            if (rescheduleStatus === 2 && paymentStatus === 1) {
+              return true;
+            }
+            // Show customer reschedule requests (type = 2) with status != 1 - these should show as Active
+            if (rescheduleType === 2 && rescheduleStatus !== 1) {
+              return true;
+            }
+            // Also show worker reschedule requests (type = 1) with status = 0
+            if (rescheduleStatus === 0 && rescheduleType === 1) {
+              return true;
+            }
+            return false;
+          }
+          
+          // For all other statuses, don't show in notifications
+          return false;
+        });
+        
+        setBookings(filteredBookings);
         setLastRefreshed(new Date());
       } else {
         setBookings([]);
@@ -742,6 +812,64 @@ export default function Index() {
 
   const handleRefreshBookings = () => {
     fetchBookings();
+  };
+
+  // Helper function to determine if booking is a Cancel Request (worker-initiated)
+  const isCancelRequest = (booking: Booking): boolean => {
+    return booking.status === 5 && booking.canceled_status === 0 && booking.canceled_type === 1;
+  };
+
+  // Helper function to determine if booking is a Reschedule Request (worker-initiated)
+  const isRescheduleRequest = (booking: Booking): boolean => {
+    return booking.status === 6 && booking.rescheduled_status === 0 && booking.rescheduled_type === 1;
+  };
+
+  // Helper function to get the effective status for display
+  const getEffectiveStatus = (booking: Booking): number => {
+    // Status 1 (Accepted) - show as Active
+    if (booking.status === 1) {
+      return 1; // Active
+    }
+    
+    // Status 5: Check canceled_status first (priority)
+    if (booking.status === 5) {
+      const cancelStatus = booking.canceled_status !== undefined ? Number(booking.canceled_status) : null;
+      // If canceled_status = 1, show as "CANCELED" (status 5) - highest priority
+      if (cancelStatus === 1) {
+        return 5; // Return 5 to display as "Canceled"
+      }
+      // If canceled_status != 1, check cancel_type
+      const cancelType = booking.canceled_type !== undefined ? Number(booking.canceled_type) : null;
+      if (cancelType === 2) {
+        return 1; // Show as Active (customer cancel request - worker can still act on it)
+      }
+      // Check for Cancel Request (status 5 with canceled_status = 0 and canceled_type = 1) - worker-initiated
+      if (isCancelRequest(booking)) {
+        return 7; // Return 7 to display as "Cancel Request"
+      }
+    }
+    
+    // Status 6 with reschedule_type != 1 (i.e., reschedule_type = 2, customer reschedule requests) - show as Active
+    // OR if rescheduled_status = 2 (rescheduled - admin accepted) - show as Rescheduled
+    if (booking.status === 6) {
+      const rescheduleType = booking.rescheduled_type !== undefined ? Number(booking.rescheduled_type) : null;
+      const rescheduleStatus = booking.rescheduled_status !== undefined ? Number(booking.rescheduled_status) : null;
+      const paymentStatus = booking.payment_status !== undefined ? Number(booking.payment_status) : null;
+      // If rescheduled_status = 2 and payment_status = 1, show as "RESCHEDULED" (status 6)
+      if (rescheduleStatus === 2 && paymentStatus === 1) {
+        return 6; // Return 6 to display as "Rescheduled"
+      }
+      if (rescheduleType === 2) {
+        return 1; // Show as Active (customer reschedule request - worker can still act on it)
+      }
+      // Check for Reschedule Request (status 6 with rescheduled_status = 0 and rescheduled_type = 1) - worker-initiated
+      if (isRescheduleRequest(booking)) {
+        return 8; // Return 8 to display as "Reschedule Request"
+      }
+    }
+    
+    // Return original status for all other cases
+    return booking.status;
   };
 
   const showRejectPopup = (bookingId: number) => {
@@ -815,7 +943,7 @@ export default function Index() {
     setCancelSuccess(false);
 
     try {
-      // Update booking status to 5 (Canceled) with cancellation reason
+      // Update booking status to 5 (Cancel Request) with cancellation reason
       const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(cancellingBooking.id), {
         method: 'PUT',
         headers: {
@@ -823,7 +951,8 @@ export default function Index() {
         },
         body: JSON.stringify({ 
           status: 5,
-          cancel_reason: cancelReason.trim()
+          cancel_reason: cancelReason.trim(),
+          cancel_type: 1
         }),
       });
 
@@ -973,7 +1102,7 @@ export default function Index() {
       
       const rescheduleDateISO = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
-      // Update booking status to 6 (Rescheduled) and save reschedule data
+      // Update booking status to 6 (Reschedule Request) and save reschedule data
       const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(reschedulingBooking.id), {
         method: 'PUT',
         headers: {
@@ -982,7 +1111,8 @@ export default function Index() {
         body: JSON.stringify({ 
           status: 6,
           reschedule_date: rescheduleDateISO,
-          reschedule_reason: rescheduleReason.trim()
+          reschedule_reason: rescheduleReason.trim(),
+          reschedule_type: 1
         }),
       });
 
@@ -1229,7 +1359,31 @@ export default function Index() {
       const result = await response.json();
       
       if (result.success && result.data) {
-        setBookings(result.data);
+        // Remove duplicates based on id to prevent duplicate key errors
+        const uniqueBookings = result.data.filter((booking: Booking, index: number, self: Booking[]) => 
+          index === self.findIndex((b: Booking) => b.id === booking.id)
+        );
+        
+        // Filter bookings for Total Bookings tab
+        const filteredBookings = uniqueBookings.filter((booking: Booking) => {
+          // Include status 5 bookings where canceled_status = 1 (considered as Canceled)
+          if (booking.status === 5) {
+            const cancelStatus = booking.canceled_status !== undefined ? Number(booking.canceled_status) : null;
+            if (cancelStatus === 1) {
+              return true; // Show as Canceled
+            }
+            // Exclude status 5 bookings where canceled_status = 0 (pending cancel requests)
+            return false;
+          }
+          // Exclude status 6 bookings where rescheduled_status = 0 (pending reschedule requests)
+          if (booking.status === 6 && booking.rescheduled_status === 0) {
+            return false;
+          }
+          // Show all other bookings (status 3, 4)
+          return true;
+        });
+        
+        setBookings(filteredBookings);
       } else {
         setBookings([]);
       }
@@ -1563,40 +1717,51 @@ export default function Index() {
                   </View>
                 ) : bookings.length > 0 ? (
                   <View style={styles.bookingsList}>
-                    {bookings.map((booking) => (
-                      <View key={booking.id} style={styles.bookingCard}>
+                    {bookings.map((booking, index) => (
+                      <View key={`${booking.id}-${booking.booking_id}-${index}`} style={styles.bookingCard}>
                         <View style={styles.bookingHeader}>
                           <Text style={styles.bookingId}>#{booking.booking_id}</Text>
-                                                      <View style={[
-                              styles.statusBadge,
-                              booking.status === 0 && styles.statusBadgePending,
-                              booking.status === 1 && styles.statusBadgeActive,
-                              booking.status === 2 && styles.statusBadgeCompleted,
-                              booking.status === 3 && styles.statusBadgeCompleted,
-                              booking.status === 4 && styles.statusBadgeCancelled,
-                              booking.status === 5 && styles.statusBadgeCancelled,
-                              booking.status === 6 && styles.statusBadgeActive
-                            ]}>
-                              <Text style={[
-                                styles.statusText,
-                                booking.status === 0 && styles.statusTextPending,
-                                booking.status === 1 && styles.statusTextActive,
-                                booking.status === 2 && styles.statusTextCompleted,
-                                booking.status === 3 && styles.statusTextCompleted,
-                                booking.status === 4 && styles.statusTextCancelled,
-                                booking.status === 5 && styles.statusTextCancelled,
-                                booking.status === 6 && styles.statusTextActive
+                          {(() => {
+                            const effectiveStatus = getEffectiveStatus(booking);
+                            return (
+                              <View style={[
+                                styles.statusBadge,
+                                effectiveStatus === 0 && styles.statusBadgePending,
+                                effectiveStatus === 1 && styles.statusBadgeActive,
+                                effectiveStatus === 2 && styles.statusBadgeCompleted,
+                                effectiveStatus === 3 && styles.statusBadgeCompleted,
+                                effectiveStatus === 4 && styles.statusBadgeCancelled,
+                                effectiveStatus === 5 && styles.statusBadgeCancelled,
+                                effectiveStatus === 6 && styles.statusBadgeActive,
+                                effectiveStatus === 7 && styles.statusBadgePending,
+                                effectiveStatus === 8 && styles.statusBadgePending
                               ]}>
-                                                                 {booking.status === 0 ? 'Pending' : 
-                                  booking.status === 1 ? 'Active' : 
-                                  booking.status === 2 ? 'Inprogress' : 
-                                  booking.status === 3 ? 'Completed' : 
-                                  booking.status === 4 ? 'Rejected' : 
-                                  booking.status === 5 ? 'Canceled' : 
-                                  booking.status === 6 ? 'Rescheduled' : 
-                                  `Status ${booking.status}`}
-                              </Text>
-                            </View>
+                                <Text style={[
+                                  styles.statusText,
+                                  effectiveStatus === 0 && styles.statusTextPending,
+                                  effectiveStatus === 1 && styles.statusTextActive,
+                                  effectiveStatus === 2 && styles.statusTextCompleted,
+                                  effectiveStatus === 3 && styles.statusTextCompleted,
+                                  effectiveStatus === 4 && styles.statusTextCancelled,
+                                  effectiveStatus === 5 && styles.statusTextCancelled,
+                                  effectiveStatus === 6 && styles.statusTextActive,
+                                  effectiveStatus === 7 && styles.statusTextPending,
+                                  effectiveStatus === 8 && styles.statusTextPending
+                                ]}>
+                                  {effectiveStatus === 0 ? 'Pending' : 
+                                   effectiveStatus === 1 ? 'Active' : 
+                                   effectiveStatus === 2 ? 'Inprogress' : 
+                                   effectiveStatus === 3 ? 'Completed' : 
+                                   effectiveStatus === 4 ? 'Rejected' : 
+                                   effectiveStatus === 5 ? 'Canceled' : 
+                                   effectiveStatus === 6 ? 'Rescheduled' : 
+                                   effectiveStatus === 7 ? 'Cancel Request' : 
+                                   effectiveStatus === 8 ? 'Reschedule Request' : 
+                                   `Status ${effectiveStatus}`}
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                         
                         <View style={styles.bookingDetails}>
@@ -1687,94 +1852,118 @@ export default function Index() {
                           
                           {/* Dynamic Action Buttons */}
                           <View style={styles.bookingActions}>
-                            {booking.status === 0 ? (
-                              // Show Accept/Reject for pending bookings
-                              <>
-                                <TouchableOpacity 
-                                  style={[styles.actionButton, styles.acceptButton]}
-                                  onPress={() => handleBookingAction(booking.id, 'accept')}
-                                >
-                                  <Ionicons name="checkmark" size={moderateScale(16)} color="#ffffff" />
-                                  <Text style={styles.actionButtonText}>Accept</Text>
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                  style={[styles.actionButton, styles.rejectButton]}
-                                  onPress={() => showRejectPopup(booking.id)}
-                                >
-                                  <Ionicons name="close" size={moderateScale(16)} color="#ffffff" />
-                                  <Text style={styles.actionButtonText}>Reject</Text>
-                                </TouchableOpacity>
-                              </>
-                            ) : booking.status === 1 ? (
-                              // Show Start, Cancel, and Reschedule buttons for active bookings
-                              <>
-                                <TouchableOpacity 
-                                  style={[styles.actionButton, styles.completeButton]}
-                                  onPress={() => handleBookingAction(booking.id, 'start')}
-                                >
-                                  <Ionicons name="checkmark-circle" size={moderateScale(14)} color="#ffffff" />
-                                  <Text style={styles.actionButtonText} numberOfLines={1}>Start</Text>
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                  style={[styles.actionButton, styles.cancelActionButton]}
-                                  onPress={() => showCancelPopup(booking)}
-                                >
-                                  <Ionicons name="close-circle" size={moderateScale(14)} color="#ffffff" />
-                                  <Text style={styles.actionButtonText} numberOfLines={1}>Cancel</Text>
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                  style={[styles.actionButton, styles.rescheduleButton]}
-                                  onPress={() => showReschedulePopup(booking)}
-                                >
-                                  <Ionicons name="calendar-outline" size={moderateScale(14)} color="#ffffff" />
-                                  <Text style={styles.actionButtonText} numberOfLines={1} ellipsizeMode="tail">Reschedule</Text>
-                                </TouchableOpacity>
-                              </>
-                            ) : booking.status === 2 ? (
-                              // Show only Complete Job button for status 2
-                              <TouchableOpacity 
-                                style={[styles.actionButton, styles.completeButton, styles.completeButtonFull]}
-                                onPress={() => handleBookingAction(booking.id, 'complete')}
-                              >
-                                <Ionicons name="checkmark-circle" size={moderateScale(18)} color="#ffffff" />
-                                <Text style={styles.actionButtonText}>Complete Job</Text>
-                              </TouchableOpacity>
-                            ) : (
-                              // Show status info for other statuses
-                              <View style={styles.statusInfoContainer}>
-                                <Text style={styles.statusInfoText}>
-                                  {booking.status === 5 ? (booking.canceled_at ? (() => {
-                                    const canceledDate = new Date(booking.canceled_at);
-                                    const formattedDate = canceledDate.toLocaleString("en-GB", {
-                                      day: '2-digit',
-                                      month: '2-digit',
-                                      year: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      hour12: true
-                                    });
-                                    return `Canceled on ${formattedDate}`;
-                                  })() : 'Booking was cancelled') : 
-                                   booking.status === 4 ? 'You missed this booking - someone else accepted it' : 
-                                   booking.status === 6 ? (booking.reschedule_date ? (() => {
-                                     const rescheduleDate = new Date(booking.reschedule_date);
-                                     const formattedDate = rescheduleDate.toLocaleString("en-GB", {
-                                       day: '2-digit',
-                                       month: '2-digit',
-                                       year: 'numeric',
-                                       hour: '2-digit',
-                                       minute: '2-digit',
-                                       hour12: true
-                                     });
-                                     return `Rescheduled For ${formattedDate}`;
-                                   })() : 'Rescheduled') : 
-                                   'Job Completed'}
-                                </Text>
-                              </View>
-                            )}
+                            {(() => {
+                              const effectiveStatus = getEffectiveStatus(booking);
+                              if (effectiveStatus === 0) {
+                                // Show Accept/Reject for pending bookings
+                                return (
+                                  <>
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.acceptButton]}
+                                      onPress={() => handleBookingAction(booking.id, 'accept')}
+                                    >
+                                      <Ionicons name="checkmark" size={moderateScale(16)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText}>Accept</Text>
+                                    </TouchableOpacity>
+                                    
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.rejectButton]}
+                                      onPress={() => showRejectPopup(booking.id)}
+                                    >
+                                      <Ionicons name="close" size={moderateScale(16)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText}>Reject</Text>
+                                    </TouchableOpacity>
+                                  </>
+                                );
+                              } else if (effectiveStatus === 1) {
+                                // Show Start, Cancel, and Reschedule buttons for active bookings
+                                return (
+                                  <>
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.completeButton]}
+                                      onPress={() => handleBookingAction(booking.id, 'start')}
+                                    >
+                                      <Ionicons name="checkmark-circle" size={moderateScale(14)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText} numberOfLines={1}>Start</Text>
+                                    </TouchableOpacity>
+                                    
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.cancelActionButton]}
+                                      onPress={() => showCancelPopup(booking)}
+                                    >
+                                      <Ionicons name="close-circle" size={moderateScale(14)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText} numberOfLines={1}>Cancel</Text>
+                                    </TouchableOpacity>
+                                    
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.rescheduleButton]}
+                                      onPress={() => showReschedulePopup(booking)}
+                                    >
+                                      <Ionicons name="calendar-outline" size={moderateScale(14)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText} numberOfLines={1} ellipsizeMode="tail">Reschedule</Text>
+                                    </TouchableOpacity>
+                                  </>
+                                );
+                              } else if (effectiveStatus === 2) {
+                                // Show only Complete Job button for status 2
+                                return (
+                                  <TouchableOpacity 
+                                    style={[styles.actionButton, styles.completeButton, styles.completeButtonFull]}
+                                    onPress={() => handleBookingAction(booking.id, 'complete')}
+                                  >
+                                    <Ionicons name="checkmark-circle" size={moderateScale(18)} color="#ffffff" />
+                                    <Text style={styles.actionButtonText}>Complete Job</Text>
+                                  </TouchableOpacity>
+                                );
+                              } else {
+                                // Show status info for other statuses
+                                return (
+                                  <View style={styles.statusInfoContainer}>
+                                    <Text style={styles.statusInfoText}>
+                                      {effectiveStatus === 5 ? (booking.canceled_at ? (() => {
+                                        const canceledDate = new Date(booking.canceled_at);
+                                        const formattedDate = canceledDate.toLocaleString("en-GB", {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          year: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          hour12: true
+                                        });
+                                        return `Canceled on ${formattedDate}`;
+                                      })() : 'Booking was cancelled') : 
+                                       effectiveStatus === 4 ? 'You missed this booking - someone else accepted it' : 
+                                       effectiveStatus === 6 ? (booking.reschedule_date ? (() => {
+                                         const rescheduleDate = new Date(booking.reschedule_date);
+                                         const formattedDate = rescheduleDate.toLocaleString("en-GB", {
+                                           day: '2-digit',
+                                           month: '2-digit',
+                                           year: 'numeric',
+                                           hour: '2-digit',
+                                           minute: '2-digit',
+                                           hour12: true
+                                         });
+                                         return `Rescheduled For ${formattedDate}`;
+                                       })() : 'Rescheduled') : 
+                                       effectiveStatus === 7 ? 'Cancel request submitted - waiting for admin approval' : 
+                                       effectiveStatus === 8 ? (booking.reschedule_date ? (() => {
+                                         const rescheduleDate = new Date(booking.reschedule_date);
+                                         const formattedDate = rescheduleDate.toLocaleString("en-GB", {
+                                           day: '2-digit',
+                                           month: '2-digit',
+                                           year: 'numeric',
+                                           hour: '2-digit',
+                                           minute: '2-digit',
+                                           hour12: true
+                                         });
+                                         return `Reschedule request submitted for ${formattedDate} - waiting for admin approval`;
+                                       })() : 'Reschedule request submitted - waiting for admin approval') : 
+                                       'Job Completed'}
+                                    </Text>
+                                  </View>
+                                );
+                              }
+                            })()}
                           </View>
                         </View>
                       </View>
@@ -2140,7 +2329,7 @@ export default function Index() {
                   {rescheduleSuccess ? (
                     <View style={styles.successContainer}>
                       <Ionicons name="checkmark-circle" size={moderateScale(24)} color="#4CAF50" />
-                      <Text style={styles.successText}>Booking Rescheduled Successfully</Text>
+                      <Text style={styles.successText}>Request Submitted Successfully</Text>
                     </View>
                   ) : null}
                 </View>
@@ -2213,7 +2402,7 @@ export default function Index() {
                   {cancelSuccess ? (
                     <View style={styles.successContainer}>
                       <Ionicons name="checkmark-circle" size={moderateScale(24)} color="#4CAF50" />
-                      <Text style={styles.successText}>Booking Canceled Successfully</Text>
+                      <Text style={styles.successText}>Request Submitted Successfully</Text>
                     </View>
                   ) : null}
                 </View>

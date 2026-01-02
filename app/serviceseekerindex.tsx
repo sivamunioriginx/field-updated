@@ -32,10 +32,19 @@ interface Booking {
   user_id: number;
   booking_time: string;
   status: number;
+  payment_status?: number;
   created_at: string;
   worker_name?: string;
   worker_mobile?: string;
   reject_reason?: string;
+  cancel_status?: number;
+  cancel_type?: number;
+  cancel_reason?: string;
+  canceled_date?: string;
+  reschedule_status?: number;
+  reschedule_type?: number;
+  reschedule_reason?: string;
+  reschedule_date?: string;
 }
 
 interface Payment {
@@ -461,17 +470,59 @@ export default function Index() {
     
     try {
       setBookingsLoading(true);
-      // Fetch only status 1, 2, 6 for Notifications tab
-      const apiUrl = `${API_ENDPOINTS.BOOKINGS_BY_USER(userId).split('?')[0]}?status=1,2,6`;
+      // Fetch status 1, 2, 5, 6 for Notifications tab
+      const apiUrl = `${API_ENDPOINTS.BOOKINGS_BY_USER(userId).split('?')[0]}?status=1,2,5,6`;
       
       const response = await fetch(apiUrl);
       const result = await response.json();
       
       if (result.success && result.data) {
-        // Filter to only include status 1, 2, or 6
+        // Filter bookings based on status and additional conditions
         const filteredBookings = result.data.filter((booking: Booking) => {
           const status = Number(booking.status);
-          return status === 1 || status === 2 || status === 6;
+          const paymentStatus = Number(booking.payment_status);
+          
+          // Status 1 (Accepted) - show with buttons
+          if (status === 1) {
+            return paymentStatus === 1;
+          }
+          
+          // Status 2 (In Progress) - show as is
+          if (status === 2) {
+            return paymentStatus === 1;
+          }
+          
+          // Status 5: Show if cancel_type != 2 AND cancel_status = 0 (Worker cancel requests, not customer)
+          if (status === 5) {
+            const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+            const cancelType = booking.cancel_type !== undefined ? Number(booking.cancel_type) : null;
+            // Show worker-initiated cancel requests (type != 2) with status = 0
+            if (cancelStatus === 0 && cancelType !== 2) {
+              return paymentStatus === 1;
+            }
+            // Also show customer cancel requests (type = 2) with status = 0
+            if (cancelStatus === 0 && cancelType === 2) {
+              return paymentStatus === 1;
+            }
+            return false;
+          }
+          
+          // Status 6: Show if reschedule_type != 2 AND reschedule_status = 0 (Worker reschedule requests, not customer)
+          if (status === 6) {
+            const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+            const rescheduleType = booking.reschedule_type !== undefined ? Number(booking.reschedule_type) : null;
+            // Show worker-initiated reschedule requests (type != 2) with status = 0
+            if (rescheduleStatus === 0 && rescheduleType !== 2) {
+              return paymentStatus === 1;
+            }
+            // Also show customer reschedule requests (type = 2) with status = 0
+            if (rescheduleStatus === 0 && rescheduleType === 2) {
+              return paymentStatus === 1;
+            }
+            return false;
+          }
+          
+          return false;
         });
         
         // Remove duplicates by booking_id, keeping the latest status
@@ -813,10 +864,29 @@ export default function Index() {
           }
         });
         
-        // Filter to only show status 3, 4, or 5 in Total Bookings tab
+        // Filter to show status 3, 4, 5 (with conditions), or 6 (with conditions) in Total Bookings tab
         const finalBookings = distinctTotalBookings.filter((booking: Booking) => {
           const status = Number(booking.status);
-          return status === 3 || status === 4 || status === 5;
+          const paymentStatus = Number(booking.payment_status);
+          
+          // Status 3 (Completed) or 4 (Rejected) - show as is
+          if (status === 3 || status === 4) {
+            return true;
+          }
+          
+          // Status 5 (Canceled): payment_status = 1, cancel_status = 1
+          if (status === 5) {
+            const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+            return paymentStatus === 1 && cancelStatus === 1;
+          }
+          
+          // Status 6 (Rescheduled): payment_status = 1, reschedule_status = 1
+          if (status === 6) {
+            const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+            return paymentStatus === 1 && rescheduleStatus === 1;
+          }
+          
+          return false;
         });
         
         setBookings(finalBookings);
@@ -832,12 +902,11 @@ export default function Index() {
   };
 
   // Add function to get status change message
-  const getStatusChangeMessage = (status: number, previousStatus?: number) => {
+  const getStatusChangeMessage = (status: number, booking?: Booking) => {
     const statusNum = Number(status);
-    const prevStatusNum = previousStatus !== undefined ? Number(previousStatus) : undefined;
     
-    if (prevStatusNum !== undefined && prevStatusNum !== statusNum) {
-      // Status changed
+    if (!booking) {
+      // Fallback if no booking data
       switch (statusNum) {
         case 1:
           return 'Worker accepted your booking!';
@@ -854,33 +923,116 @@ export default function Index() {
         default:
           return 'Status updated';
       }
-    } else {
-      // Initial status
-      switch (statusNum) {
-        case 1:
-          return 'Worker accepted your booking';
-        case 2:
-          return 'Work is in progress';
-        case 3:
-          return 'Work completed successfully!';
-        case 4:
-          return 'Booking was rejected By Worker';
-        case 5:
-          return 'Booking was cancelled';
-        case 6:
-          return 'Booking was rescheduled';
-        default:
-          return 'Status updated';
+    }
+    
+    // Check if it's a Cancel Request (status 5)
+    if (statusNum === 5) {
+      const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+      const cancelType = booking.cancel_type !== undefined ? Number(booking.cancel_type) : null;
+      // Worker cancel request (type != 2) - show as Accepted
+      if (cancelStatus === 0 && cancelType !== 2) {
+        return 'Worker accepted your booking!';
       }
+      // Customer cancel request (type = 2) - show as cancel request
+      if (cancelStatus === 0 && cancelType === 2) {
+        return 'Cancel request submitted - waiting for admin approval';
+      }
+      // Check if it's Canceled (status 5 with cancel_status = 1) - for Total Bookings tab
+      if (cancelStatus === 1) {
+        // Get canceled date from canceled_date or created_at
+        const canceledDate = booking.canceled_date ? new Date(booking.canceled_date) : new Date(booking.created_at);
+        return `Booking Was Canceled On ${canceledDate.toLocaleString("en-GB", {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        })}`;
+      }
+    }
+    
+    // Check if it's a Reschedule Request (status 6)
+    if (statusNum === 6) {
+      const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+      const rescheduleType = booking.reschedule_type !== undefined ? Number(booking.reschedule_type) : null;
+      // Worker reschedule request (type != 2) - show as Accepted
+      if (rescheduleStatus === 0 && rescheduleType !== 2) {
+        return 'Worker accepted your booking!';
+      }
+      // Customer reschedule request (type = 2) - show as reschedule request
+      if (rescheduleStatus === 0 && rescheduleType === 2) {
+        return 'Reschedule request submitted - waiting for admin approval';
+      }
+      // Check if it's Rescheduled (status 6 with reschedule_status = 1) - for Total Bookings tab
+      if (rescheduleStatus === 1 && booking.reschedule_date) {
+        const rescheduleDate = new Date(booking.reschedule_date);
+        return `Booking Was Rescheduled For ${rescheduleDate.toLocaleString("en-GB", {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        })}`;
+      }
+    }
+    
+    // Regular status messages
+    switch (statusNum) {
+      case 1:
+        return 'Worker accepted your booking!';
+      case 2:
+        return 'Work is in progress';
+      case 3:
+        return 'Work completed successfully!';
+      case 4:
+        return 'Booking was rejected By Worker';
+      case 5:
+        return 'Booking was cancelled';
+      case 6:
+        return 'Booking was rescheduled';
+      default:
+        return 'Status updated';
     }
   };
 
   // Add function to get status icon
-  const getStatusIcon = (status: number) => {
+  const getStatusIcon = (status: number, booking?: Booking) => {
     const statusNum = Number(status);
+    
+    // Status 1 - Accepted
+    if (statusNum === 1) {
+      return 'checkmark-circle-outline'; // Accepted
+    }
+    
+    // Status 5: Show as Accepted icon if cancel_type != 2 and cancel_status = 0 (Worker cancel request)
+    if (statusNum === 5 && booking) {
+      const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+      const cancelType = booking.cancel_type !== undefined ? Number(booking.cancel_type) : null;
+      if (cancelStatus === 0 && cancelType !== 2) {
+        return 'checkmark-circle-outline'; // Worker cancel request - show as Accepted
+      }
+      if (cancelStatus === 0 && cancelType === 2) {
+        return 'time-outline'; // Customer cancel request
+      }
+    }
+    
+    // Status 6: Show as Accepted icon if reschedule_type != 2 and reschedule_status = 0 (Worker reschedule request)
+    if (statusNum === 6 && booking) {
+      const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+      const rescheduleType = booking.reschedule_type !== undefined ? Number(booking.reschedule_type) : null;
+      if (rescheduleStatus === 0 && rescheduleType !== 2) {
+        return 'checkmark-circle-outline'; // Worker reschedule request - show as Accepted
+      }
+      if (rescheduleStatus === 0 && rescheduleType === 2) {
+        return 'time-outline'; // Customer reschedule request
+      }
+    }
+    
     switch (statusNum) {
-      case 1:
-        return 'checkmark-circle-outline'; // Accepted
       case 2:
         return 'hourglass-outline'; // In Progress
       case 3:
@@ -897,11 +1049,39 @@ export default function Index() {
   };
 
   // Add function to get status color
-  const getStatusColor = (status: number) => {
+  const getStatusColor = (status: number, booking?: Booking) => {
     const statusNum = Number(status);
+    
+    // Status 1 - Accepted
+    if (statusNum === 1) {
+      return '#3b82f6'; // Blue (Accepted)
+    }
+    
+    // Status 5: Show as Accepted color if cancel_type != 2 and cancel_status = 0 (Worker cancel request)
+    if (statusNum === 5 && booking) {
+      const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+      const cancelType = booking.cancel_type !== undefined ? Number(booking.cancel_type) : null;
+      if (cancelStatus === 0 && cancelType !== 2) {
+        return '#3b82f6'; // Blue (Worker cancel request - show as Accepted)
+      }
+      if (cancelStatus === 0 && cancelType === 2) {
+        return '#f59e0b'; // Amber (Customer cancel request)
+      }
+    }
+    
+    // Status 6: Show as Accepted color if reschedule_type != 2 and reschedule_status = 0 (Worker reschedule request)
+    if (statusNum === 6 && booking) {
+      const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+      const rescheduleType = booking.reschedule_type !== undefined ? Number(booking.reschedule_type) : null;
+      if (rescheduleStatus === 0 && rescheduleType !== 2) {
+        return '#3b82f6'; // Blue (Worker reschedule request - show as Accepted)
+      }
+      if (rescheduleStatus === 0 && rescheduleType === 2) {
+        return '#f59e0b'; // Amber (Customer reschedule request)
+      }
+    }
+    
     switch (statusNum) {
-      case 1:
-        return '#3b82f6'; // Blue (Accepted)
       case 2:
         return '#f59e0b'; // Amber (In Progress)
       case 3:
@@ -1166,9 +1346,9 @@ export default function Index() {
                         <View style={styles.bookingHeader}>
                           <View style={styles.bookingIdContainer}>
                             <Ionicons 
-                              name={getStatusIcon(booking.status)} 
+                              name={getStatusIcon(booking.status, booking)} 
                               size={styles.statusIconSize} 
-                              color={getStatusColor(booking.status)} 
+                              color={getStatusColor(booking.status, booking)} 
                             />
                             <Text style={styles.bookingId}>#{booking.booking_id}</Text>
                           </View>
@@ -1179,17 +1359,45 @@ export default function Index() {
                           ]}>
                             <Text style={[
                               styles.statusText,
-                              { color: getStatusColor(booking.status) }
+                              { color: getStatusColor(booking.status, booking) }
                             ]}>
                               {(() => {
                                 const statusNum = Number(booking.status);
-                                // Ensure status 3 shows as Completed, not Rejected
-                                if (statusNum === 1) return 'Accepted';
+                                
+                                // Status 1 - Accepted
+                                if (statusNum === 1) {
+                                  return 'Accepted';
+                                }
+                                
+                                // Status 5: Show as "Accepted" if cancel_type != 2 and cancel_status = 0 (Worker cancel request)
+                                if (statusNum === 5) {
+                                  const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+                                  const cancelType = booking.cancel_type !== undefined ? Number(booking.cancel_type) : null;
+                                  if (cancelStatus === 0 && cancelType !== 2) {
+                                    return 'Accepted'; // Worker cancel request - show as Accepted
+                                  }
+                                  if (cancelStatus === 0 && cancelType === 2) {
+                                    return 'Cancel Request'; // Customer cancel request
+                                  }
+                                  return 'Canceled';
+                                }
+                                
+                                // Status 6: Show as "Accepted" if reschedule_type != 2 and reschedule_status = 0 (Worker reschedule request)
+                                if (statusNum === 6) {
+                                  const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+                                  const rescheduleType = booking.reschedule_type !== undefined ? Number(booking.reschedule_type) : null;
+                                  if (rescheduleStatus === 0 && rescheduleType !== 2) {
+                                    return 'Accepted'; // Worker reschedule request - show as Accepted
+                                  }
+                                  if (rescheduleStatus === 0 && rescheduleType === 2) {
+                                    return 'Reschedule Request'; // Customer reschedule request
+                                  }
+                                  return 'Rescheduled';
+                                }
+                                
                                 if (statusNum === 2) return 'In Progress';
                                 if (statusNum === 3) return 'Completed';
                                 if (statusNum === 4) return 'Rejected';
-                                if (statusNum === 5) return 'Canceled';
-                                if (statusNum === 6) return 'Rescheduled';
                                 return `Status ${booking.status}`;
                               })()}
                             </Text>
@@ -1197,9 +1405,25 @@ export default function Index() {
                         </View>
                         
                         {/* Conditional Content Based on Status */}
-                        {Number(booking.status) === 1 ? (
-                          // For Accepted bookings (status = 1) - show full details with Reschedule and Cancel buttons
-                          <View style={styles.bookingDetails}>
+                        {(() => {
+                          const statusNum = Number(booking.status);
+                          const cancelStatus = booking.cancel_status !== undefined ? Number(booking.cancel_status) : null;
+                          const cancelType = booking.cancel_type !== undefined ? Number(booking.cancel_type) : null;
+                          const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
+                          const rescheduleType = booking.reschedule_type !== undefined ? Number(booking.reschedule_type) : null;
+                          
+                          // Show as Accepted (with buttons) if:
+                          // - Status 1, OR
+                          // - Status 5 with cancel_type != 2 and cancel_status = 0, OR
+                          // - Status 6 with reschedule_type != 2 and reschedule_status = 0
+                          const showAsAccepted = statusNum === 1 || 
+                            (statusNum === 5 && cancelStatus === 0 && cancelType !== 2) ||
+                            (statusNum === 6 && rescheduleStatus === 0 && rescheduleType !== 2);
+                          
+                          if (showAsAccepted) {
+                            // For Accepted bookings (status = 1) or Worker cancel/reschedule requests - show full details with Reschedule and Cancel buttons
+                            return (
+                              <View style={styles.bookingDetails}>
                             <View style={styles.bookingRow}>
                               <Ionicons name="person" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Worker: </Text>
@@ -1235,7 +1459,7 @@ export default function Index() {
                             {/* Status Change Message */}
                             <View style={styles.statusInfoContainer}>
                               <Text style={styles.statusInfoText}>
-                                {getStatusChangeMessage(booking.status)}
+                                {getStatusChangeMessage(booking.status, booking)}
                               </Text>
                             </View>
                             
@@ -1258,171 +1482,255 @@ export default function Index() {
                               </TouchableOpacity>
                             </View>
                           </View>
-                        ) : Number(booking.status) === 2 ? (
-                          // For In Progress bookings (status = 2) - show full details
-                          <View style={styles.bookingDetails}>
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Worker: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_name || `Worker #${booking.worker_id}`}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Contact: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_mobile || 'N/A'}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Booking For: </Text>
-                              <Text style={styles.bookingValue}>
-                                {new Date(booking.created_at).toLocaleString("en-GB", {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: true
-                                })}
-                              </Text>
-                            </View>
-                            
-                            {/* Status Change Message */}
-                            <View style={styles.statusInfoContainer}>
-                              <Text style={styles.statusInfoText}>
-                                {getStatusChangeMessage(booking.status)}
-                              </Text>
-                            </View>
-                          </View>
-                        ) : Number(booking.status) === 6 ? (
-                          // For Rescheduled bookings (status = 6) - show full details and reschedule time
-                          <View style={styles.bookingDetails}>
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Worker: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_name || `Worker #${booking.worker_id}`}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Contact: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_mobile || 'N/A'}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Booking For: </Text>
-                              <Text style={styles.bookingValue}>
-                                {new Date(booking.created_at).toLocaleString("en-GB", {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: true
-                                })}
-                              </Text>
-                            </View>
-                            
-                            {/* Status Change Message with reschedule timestamp */}
-                            <View style={styles.statusInfoContainer}>
-                              <Text style={styles.statusInfoText}>
-                                {`Booking was rescheduled For ${new Date(booking.created_at).toLocaleString("en-GB", {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: true
-                                })}`}
-                              </Text>
-                            </View>
-                          </View>
-                        ) : Number(booking.status) === 4 || Number(booking.status) === 5 ? (
-                          // For rejected/cancelled bookings (status = 4 or 5) - show worker and reject reason only
-                          <View style={styles.rejectedBookingContent}>
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Worker: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_name || `Worker #${booking.worker_id}`}
-                              </Text>
-                            </View>
-                            
-                            {/* Reject Reason */}
-                            {booking.reject_reason && (
-                              <View style={styles.rejectReasonContainer}>
+                            );
+                          }
+                          
+                          // Status 2 - In Progress
+                          if (statusNum === 2) {
+                            return (
+                              <View style={styles.bookingDetails}>
                                 <View style={styles.bookingRow}>
-                                  <Ionicons name="close-circle" size={styles.smallIconSize} color="#ef4444" />
-                                  <Text style={styles.bookingLabel}>Reject Reason: </Text>
-                                  <Text style={styles.rejectReasonText}>
-                                    {booking.reject_reason}
+                                  <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Worker: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_name || `Worker #${booking.worker_id}`}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Contact: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_mobile || 'N/A'}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Booking For: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {new Date(booking.created_at).toLocaleString("en-GB", {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      hour12: true
+                                    })}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.statusInfoContainer}>
+                                  <Text style={styles.statusInfoText}>
+                                    {getStatusChangeMessage(booking.status, booking)}
                                   </Text>
                                 </View>
                               </View>
-                            )}
-                            
-                            <View style={styles.statusInfoContainer}>
-                              <Text style={styles.statusInfoText}>
-                                {getStatusChangeMessage(booking.status)}
-                              </Text>
+                            );
+                          }
+                          
+                          // Status 6 - Rescheduled (but not worker-initiated requests that should show as Accepted)
+                          if (statusNum === 6) {
+                            // Check if it's a customer reschedule request (type = 2) - show different UI
+                            if (rescheduleStatus === 0 && rescheduleType === 2) {
+                              // Customer reschedule request - show as reschedule request
+                              return (
+                                <View style={styles.bookingDetails}>
+                                  <View style={styles.bookingRow}>
+                                    <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                    <Text style={styles.bookingLabel}>Worker: </Text>
+                                    <Text style={styles.bookingValue}>
+                                      {booking.worker_name || `Worker #${booking.worker_id}`}
+                                    </Text>
+                                  </View>
+                                  
+                                  <View style={styles.bookingRow}>
+                                    <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                                    <Text style={styles.bookingLabel}>Contact: </Text>
+                                    <Text style={styles.bookingValue}>
+                                      {booking.worker_mobile || 'N/A'}
+                                    </Text>
+                                  </View>
+                                  
+                                  <View style={styles.bookingRow}>
+                                    <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                                    <Text style={styles.bookingLabel}>Booking For: </Text>
+                                    <Text style={styles.bookingValue}>
+                                      {new Date(booking.created_at).toLocaleString("en-GB", {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        hour12: true
+                                      })}
+                                    </Text>
+                                  </View>
+                                  
+                                  <View style={styles.statusInfoContainer}>
+                                    <Text style={styles.statusInfoText}>
+                                      {getStatusChangeMessage(booking.status, booking)}
+                                    </Text>
+                                  </View>
+                                </View>
+                              );
+                            }
+                            // Regular rescheduled booking
+                            return (
+                              <View style={styles.bookingDetails}>
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Worker: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_name || `Worker #${booking.worker_id}`}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Contact: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_mobile || 'N/A'}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Booking For: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {new Date(booking.created_at).toLocaleString("en-GB", {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      hour12: true
+                                    })}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.statusInfoContainer}>
+                                  <Text style={styles.statusInfoText}>
+                                    {getStatusChangeMessage(booking.status, booking)}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          }
+                          
+                          // Status 4 or 5 - Rejected/Canceled
+                          if (statusNum === 4 || statusNum === 5) {
+                            // Check if status 5 is a customer cancel request (type = 2) - show different UI
+                            if (statusNum === 5 && cancelStatus === 0 && cancelType === 2) {
+                              // Customer cancel request - show as cancel request
+                              return (
+                                <View style={styles.rejectedBookingContent}>
+                                  <View style={styles.bookingRow}>
+                                    <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                    <Text style={styles.bookingLabel}>Worker: </Text>
+                                    <Text style={styles.bookingValue}>
+                                      {booking.worker_name || `Worker #${booking.worker_id}`}
+                                    </Text>
+                                  </View>
+                                  
+                                  {booking.reject_reason && (
+                                    <View style={styles.rejectReasonContainer}>
+                                      <View style={styles.bookingRow}>
+                                        <Ionicons name="close-circle" size={styles.smallIconSize} color="#ef4444" />
+                                        <Text style={styles.bookingLabel}>Reject Reason: </Text>
+                                        <Text style={styles.rejectReasonText}>
+                                          {booking.reject_reason}
+                                        </Text>
+                                      </View>
+                                    </View>
+                                  )}
+                                  
+                                  <View style={styles.statusInfoContainer}>
+                                    <Text style={styles.statusInfoText}>
+                                      {getStatusChangeMessage(booking.status, booking)}
+                                    </Text>
+                                  </View>
+                                </View>
+                              );
+                            }
+                            // Regular rejected/canceled booking
+                            return (
+                              <View style={styles.rejectedBookingContent}>
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Worker: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_name || `Worker #${booking.worker_id}`}
+                                  </Text>
+                                </View>
+                                
+                                {booking.reject_reason && (
+                                  <View style={styles.rejectReasonContainer}>
+                                    <View style={styles.bookingRow}>
+                                      <Ionicons name="close-circle" size={styles.smallIconSize} color="#ef4444" />
+                                      <Text style={styles.bookingLabel}>Reject Reason: </Text>
+                                      <Text style={styles.rejectReasonText}>
+                                        {booking.reject_reason}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                )}
+                                
+                                <View style={styles.statusInfoContainer}>
+                                  <Text style={styles.statusInfoText}>
+                                    {getStatusChangeMessage(booking.status, booking)}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          }
+                          
+                          // Default fallback
+                          return (
+                            <View style={styles.bookingDetails}>
+                              <View style={styles.bookingRow}>
+                                <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                <Text style={styles.bookingLabel}>Worker: </Text>
+                                <Text style={styles.bookingValue}>
+                                  {booking.worker_name || `Worker #${booking.worker_id}`}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.bookingRow}>
+                                <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                                <Text style={styles.bookingLabel}>Contact: </Text>
+                                <Text style={styles.bookingValue}>
+                                  {booking.worker_mobile || 'N/A'}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.bookingRow}>
+                                <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                                <Text style={styles.bookingLabel}>Booking For: </Text>
+                                <Text style={styles.bookingValue}>
+                                  {new Date(booking.created_at).toLocaleString("en-GB", {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: true
+                                  })}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.statusInfoContainer}>
+                                <Text style={styles.statusInfoText}>
+                                  {getStatusChangeMessage(booking.status, booking)}
+                                </Text>
+                              </View>
                             </View>
-                          </View>
-                        ) : (
-                          // For all other statuses (1, 2) - show full details
-                          <View style={styles.bookingDetails}>
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="person" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Worker: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_name || `Worker #${booking.worker_id}`}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="call" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Contact: </Text>
-                              <Text style={styles.bookingValue}>
-                                {booking.worker_mobile || 'N/A'}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.bookingRow}>
-                              <Ionicons name="time" size={styles.smallIconSize} color="#666" />
-                              <Text style={styles.bookingLabel}>Booking For: </Text>
-                              <Text style={styles.bookingValue}>
-                                {new Date(booking.created_at).toLocaleString("en-GB", {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: true
-                                })}
-                              </Text>
-                            </View>
-                            
-                            {/* Status Change Message */}
-                            <View style={styles.statusInfoContainer}>
-                              <Text style={styles.statusInfoText}>
-                                {getStatusChangeMessage(booking.status)}
-                              </Text>
-                            </View>
-                          </View>
-                        )}
+                          );
+                        })()}
                       </View>
                     ))}
                   </View>
@@ -1746,7 +2054,7 @@ export default function Index() {
                   {rescheduleSuccess ? (
                     <View style={styles.successContainer}>
                       <Ionicons name="checkmark-circle" size={styles.iconSize} color="#4CAF50" />
-                      <Text style={styles.successText}>Booking Rescheduled Successfully</Text>
+                      <Text style={styles.successText}>Request Submitted Successfully</Text>
                     </View>
                   ) : null}
                 </View>
@@ -1811,7 +2119,7 @@ export default function Index() {
                   {cancelSuccess ? (
                     <View style={styles.successContainer}>
                       <Ionicons name="checkmark-circle" size={styles.iconSize} color="#4CAF50" />
-                      <Text style={styles.successText}>Booking Canceled Successfully</Text>
+                      <Text style={styles.successText}>Request Submitted Successfully</Text>
                     </View>
                   ) : null}
                 </View>

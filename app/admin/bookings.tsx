@@ -1,15 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    useWindowDimensions
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+  useWindowDimensions
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { API_ENDPOINTS } from '../../constants/api';
 
 interface Booking {
@@ -31,9 +34,11 @@ interface Booking {
   canceled_by?: number; // 1 = Worker, 2 = Customer
   cancel_reason?: string;
   canceled_date?: string;
+  cancel_status?: number; // Status from tbl_canceledbookings
   rescheduled_by?: number; // 1 = Worker, 2 = Customer
   reschedule_reason?: string;
   reschedule_date?: string;
+  reschedule_status?: number; // Status from tbl_rescheduledbookings
 }
 
 interface BookingsProps {
@@ -58,6 +63,19 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Polling popup state
+  const [showPollingPopup, setShowPollingPopup] = useState(false);
+  const [pollingMessage, setPollingMessage] = useState('Waiting for worker to accept...');
+  const [pollingStatus, setPollingStatus] = useState<'pending' | 'success' | 'failed'>('pending');
+  const [acceptedWorkerName, setAcceptedWorkerName] = useState('');
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentBookingIdRef = useRef<string>('');
+  const currentRecordIdRef = useRef<number>(0); // Store the clicked record's id
+  const currentRequestTypeRef = useRef<'cancel' | 'reschedule'>('cancel');
+  const currentRescheduleDateRef = useRef<string>('');
 
   // Sync external search query if provided
   useEffect(() => {
@@ -75,12 +93,16 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialStatus]);
 
-  const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false) => {
+  const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false, isCancelReq: boolean = false, isRescheduleReq: boolean = false) => {
     try {
       setLoading(true);
       
       let url = API_ENDPOINTS.ADMIN_BOOKINGS;
-      if (isCanceled) {
+      if (isCancelReq) {
+        url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?cancelreq=true`;
+      } else if (isRescheduleReq) {
+        url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?reschedulereq=true`;
+      } else if (isCanceled) {
         url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?canceled=true`;
       } else if (isRescheduled) {
         url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?rescheduled=true`;
@@ -109,14 +131,18 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     setRefreshing(true);
     const isCanceled = statusFilter === 'cancel';
     const isRescheduled = statusFilter === 'reschedule';
-    await fetchBookings(isCanceled, isRescheduled);
+    const isCancelReq = statusFilter === 'cancelreq';
+    const isRescheduleReq = statusFilter === 'reschedulereq';
+    await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
     setRefreshing(false);
   };
 
   useEffect(() => {
     const isCanceled = statusFilter === 'cancel';
     const isRescheduled = statusFilter === 'reschedule';
-    fetchBookings(isCanceled, isRescheduled);
+    const isCancelReq = statusFilter === 'cancelreq';
+    const isRescheduleReq = statusFilter === 'reschedulereq';
+    fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
   }, [statusFilter]);
 
   const formatDate = (dateString: string) => {
@@ -139,6 +165,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       case 4: return 'Reject';
       case 5: return 'Canceled';
       case 6: return 'Rescheduled';
+      case 7: return 'Cancel Request';
+      case 8: return 'Reschedule Request';
       default: return 'Unknown';
     }
   };
@@ -152,6 +180,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       case 4: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; // Red for Reject
       case 5: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; // Red for Canceled
       case 6: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; // Yellow for Rescheduled
+      case 7: return { bg: '#fed7aa', border: '#fdba74', text: '#ea580c' }; // Orange for Cancel Request
+      case 8: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; // Yellow for Reschedule Request
       default: return { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' };
     }
   };
@@ -199,11 +229,19 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       // Keep only bookings with rejected booking_ids
       filtered = filtered.filter(booking => rejectedBookingIds.has(booking.booking_id));
     } else if (statusFilter === 'cancel') {
-      // Cancel: Already filtered by backend (status = 5, payment_status = 1, with canceled bookings join)
+      // Cancel: Backend already filters b.status = 5 AND b.payment_status = 1 AND c.status = 1 AND b.id = c.bookingid
+      // Client-side filter by status = 5 for additional safety
+      filtered = filtered.filter(booking => booking.status === 5);
+    } else if (statusFilter === 'reschedule') {
+      // Reschedule: Backend already filters b.status = 6 AND b.payment_status = 1 AND r.status = 1 AND b.id = r.bookingid
+      // Client-side filter by status = 6 for additional safety
+      filtered = filtered.filter(booking => booking.status === 6);
+    } else if (statusFilter === 'cancelreq') {
+      // Cancel Requests: Backend already filters b.status = 5 AND b.payment_status = 1 AND c.status = 0 AND b.id = c.bookingid
       // No additional filtering needed
       filtered = filtered;
-    } else if (statusFilter === 'reschedule') {
-      // Reschedule: Already filtered by backend (status = 6, payment_status = 1, with rescheduled bookings join)
+    } else if (statusFilter === 'reschedulereq') {
+      // Reschedule Requests: Backend already filters b.status = 6 AND b.payment_status = 1 AND r.status = 0 AND b.id = r.bookingid
       // No additional filtering needed
       filtered = filtered;
     } else {
@@ -211,13 +249,15 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       filtered = filtered.filter(booking => booking.payment_status === 1);
       
       if (statusFilter === 'all') {
-        // All: status = 1, 2, 3, 5, 6 AND payment_status = 1
+        // All: status = 1, 2, 3, 5, 6, 7, 8 AND payment_status = 1
         filtered = filtered.filter(booking => 
           booking.status === 1 || 
           booking.status === 2 || 
           booking.status === 3 || 
           booking.status === 5 || 
-          booking.status === 6
+          booking.status === 6 || 
+          booking.status === 7 || 
+          booking.status === 8
         );
       } else if (statusFilter === 'active') {
         // Active: status = 1 AND payment_status = 1
@@ -300,6 +340,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     { value: 'reject', label: 'Reject' },
     { value: 'cancel', label: 'Cancel' },
     { value: 'reschedule', label: 'Reschedule' },
+    { value: 'cancelreq', label: 'Cancel Requests' },
+    { value: 'reschedulereq', label: 'Reschedule Requests' },
   ];
 
   const sortOptions = [
@@ -317,6 +359,318 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
+  // Polling function to check booking status
+  const checkBookingStatus = async (bookingId: string) => {
+    try {
+      const response = await fetch(API_ENDPOINTS.CHECK_BOOKING_STATUS(bookingId));
+      const data = await response.json();
+      
+      if (data.success) {
+        const { hasPending, acceptedBooking, allBusy } = data.data;
+        
+        // If a worker accepted the booking
+        if (acceptedBooking) {
+          // Stop polling
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          setPollingStatus('success');
+          setAcceptedWorkerName(acceptedBooking.worker_name || 'A worker');
+          setPollingMessage(`${acceptedBooking.worker_name || 'Worker'} accepted your booking request!`);
+          
+          // Refresh bookings
+          const isCanceled = statusFilter === 'cancel';
+          const isRescheduled = statusFilter === 'reschedule';
+          const isCancelReq = statusFilter === 'cancelreq';
+          const isRescheduleReq = statusFilter === 'reschedulereq';
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+          
+          return;
+        }
+        
+        // If all workers are busy (no pending, no accepted)
+        if (allBusy && !hasPending) {
+          // Stop polling
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          // Update the clicked record based on request type
+          try {
+            const requestBody: any = { requestType: currentRequestTypeRef.current };
+            if (currentRequestTypeRef.current === 'reschedule' && currentRescheduleDateRef.current) {
+              requestBody.reschedule_date = currentRescheduleDateRef.current;
+            }
+            
+            const revertResponse = await fetch(API_ENDPOINTS.REVERT_TO_CANCEL_REQUEST(currentRecordIdRef.current), {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            });
+            
+            const revertData = await revertResponse.json();
+            if (revertData.success) {
+              const requestTypeLabel = currentRequestTypeRef.current === 'reschedule' ? 'reschedule request' : 'cancel request';
+              console.log(`✅ Booking reverted to ${requestTypeLabel} status`);
+            }
+          } catch (error) {
+            console.error('❌ Error reverting booking:', error);
+          }
+          
+          setPollingStatus('failed');
+          setPollingMessage('All workers are busy right now. Please try again later.');
+          
+          // Refresh bookings
+          const isCanceled = statusFilter === 'cancel';
+          const isRescheduled = statusFilter === 'reschedule';
+          const isCancelReq = statusFilter === 'cancelreq';
+          const isRescheduleReq = statusFilter === 'reschedulereq';
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+          
+          return;
+        }
+        
+        // Still pending, continue polling
+        console.log('⏳ Still waiting for worker response...');
+      }
+    } catch (error) {
+      console.error('❌ Error checking booking status:', error);
+    }
+  };
+
+  // Start polling after assigning to other worker
+  const startPolling = (bookingId: string, recordId: number, requestType: 'cancel' | 'reschedule' = 'cancel', rescheduleDate?: string) => {
+    currentBookingIdRef.current = bookingId;
+    currentRecordIdRef.current = recordId;
+    currentRequestTypeRef.current = requestType;
+    currentRescheduleDateRef.current = rescheduleDate || '';
+    
+    // Show popup
+    setShowPollingPopup(true);
+    setPollingStatus('pending');
+    setPollingMessage('Waiting for worker to accept...');
+    setAcceptedWorkerName('');
+    
+    // Initial check
+    checkBookingStatus(bookingId);
+    
+    // Start polling every 3 seconds
+    pollingIntervalRef.current = setInterval(() => {
+      checkBookingStatus(bookingId);
+    }, 3000);
+  };
+
+  // Stop polling when component unmounts or popup closes
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const handleAssignWorker = async (booking: Booking) => {
+    try {
+      setOpenMenuId(null);
+      setMenuPosition(null);
+      
+      // Determine request type based on status filter
+      const requestType = statusFilter === 'reschedulereq' ? 'reschedule' : 'cancel';
+      
+      console.log('🔄 Assigning to other worker:', booking, 'Type:', requestType);
+      
+      // Prepare request body
+      const requestBody: any = { requestType };
+      if (requestType === 'reschedule' && booking.reschedule_date) {
+        requestBody.reschedule_date = booking.reschedule_date;
+      }
+      
+      const response = await fetch(API_ENDPOINTS.ASSIGN_TO_OTHER_WORKER(booking.id), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ Successfully assigned to other worker');
+        // Start polling to check if any worker accepts
+        startPolling(booking.booking_id, booking.id, requestType, booking.reschedule_date);
+      } else {
+        console.error('❌ Failed to assign to other worker:', data.message);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: data.message || 'Failed to assign worker',
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error assigning to other worker:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'An error occurred while assigning to other worker',
+      });
+    }
+  };
+
+  const closePollingPopup = () => {
+    // Stop polling
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    
+    setShowPollingPopup(false);
+    setPollingStatus('pending');
+    setPollingMessage('Waiting for worker to accept...');
+    setAcceptedWorkerName('');
+  };
+
+  const handleAccept = async (booking: Booking) => {
+    try {
+      setOpenMenuId(null);
+      setMenuPosition(null);
+      
+      console.log('✅ Accepting cancel request:', booking);
+      
+      const response = await fetch(API_ENDPOINTS.ACCEPT_CANCEL_REQUEST(booking.id), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ Cancel request accepted successfully');
+        Toast.show({
+          type: 'success',
+          text1: 'Success',
+          text2: 'Cancel Booking Request Accepted Successfully',
+        });
+        
+        // Refresh the bookings list
+        const isCanceled = statusFilter === 'cancel';
+        const isRescheduled = statusFilter === 'reschedule';
+        const isCancelReq = statusFilter === 'cancelreq';
+        const isRescheduleReq = statusFilter === 'reschedulereq';
+        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+      } else {
+        console.error('❌ Failed to accept cancel request:', data.message);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: data.message || 'Failed to accept cancel request',
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error accepting cancel request:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'An error occurred while accepting cancel request',
+      });
+    }
+  };
+
+  const handleReject = async (booking: Booking) => {
+    try {
+      setOpenMenuId(null);
+      setMenuPosition(null);
+      
+      // Check if it's a reschedule request or cancel request
+      const isRescheduleReq = statusFilter === 'reschedulereq';
+      
+      if (isRescheduleReq) {
+        console.log('❌ Rejecting reschedule request:', booking);
+        
+        const response = await fetch(API_ENDPOINTS.REJECT_RESCHEDULE_REQUEST(booking.id), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          console.log('✅ Reschedule request rejected successfully');
+          Toast.show({
+            type: 'success',
+            text1: 'Success',
+            text2: 'Reschedule Request Rejected Successfully',
+          });
+          
+          // Refresh the bookings list
+          const isCanceled = false;
+          const isRescheduled = false;
+          const isCancelReq = false;
+          const isRescheduleReqRefresh = true;
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReqRefresh);
+        } else {
+          console.error('❌ Failed to reject reschedule request:', data.message);
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: data.message || 'Failed to reject reschedule request',
+          });
+        }
+      } else {
+        console.log('❌ Rejecting cancel request:', booking);
+        
+        const response = await fetch(API_ENDPOINTS.REJECT_CANCEL_REQUEST(booking.id), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          console.log('✅ Cancel request rejected successfully');
+          Toast.show({
+            type: 'success',
+            text1: 'Success',
+            text2: 'Cancel Booking Request Rejected Successfully',
+          });
+          
+          // Refresh the bookings list
+          const isCanceled = statusFilter === 'cancel';
+          const isRescheduled = statusFilter === 'reschedule';
+          const isCancelReq = statusFilter === 'cancelreq';
+          const isRescheduleReq = statusFilter === 'reschedulereq';
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+        } else {
+          console.error('❌ Failed to reject cancel request:', data.message);
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: data.message || 'Failed to reject cancel request',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error rejecting request:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'An error occurred while rejecting request',
+      });
+    }
+  };
+
+
   const styles = createStyles(width, height);
 
   if (loading) {
@@ -328,7 +682,13 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     );
   }
 
-  if (bookings.length === 0) {
+  // For Cancel, Reschedule, Cancel Requests, and Reschedule Requests, show empty table instead of message
+  const showEmptyTable = statusFilter === 'cancel' || 
+                         statusFilter === 'reschedule' || 
+                         statusFilter === 'cancelreq' || 
+                         statusFilter === 'reschedulereq';
+
+  if (bookings.length === 0 && !showEmptyTable) {
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconContainer}>
@@ -354,9 +714,18 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#f59e0b']} />
       }
+        onScroll={() => {
+          setOpenMenuId(null);
+          setMenuPosition(null);
+        }}
+      scrollEventThrottle={16}
     >
-      <View style={styles.bookingsContainer}>
-        <View style={styles.bookingsHeader}>
+      <TouchableWithoutFeedback onPress={() => {
+        setOpenMenuId(null);
+        setMenuPosition(null);
+      }}>
+        <View style={styles.bookingsContainer}>
+          <View style={styles.bookingsHeader}>
           <View style={styles.controlsRow}>
             {/* Left side - Title */}
             <Text style={styles.bookingsTitle}>
@@ -505,14 +874,24 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
             style={styles.tableScrollView}
             persistentScrollbar={true}
             nestedScrollEnabled={true}
+            onScrollBeginDrag={() => {
+              setOpenMenuId(null);
+              setMenuPosition(null);
+            }}
+            contentContainerStyle={{ overflow: 'visible' }}
           >
             <View style={styles.tableContainer}>
             {/* Table Header */}
             <View style={styles.tableHeader}>
-              <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 80 : isTablet ? 70 : 60 }]}>
-                <Ionicons name="list" size={isDesktop ? 16 : 14} color="#ffffff" />
-                <Text style={styles.tableHeaderText}>S NO</Text>
-              </View>
+              {(statusFilter === 'cancelreq' || statusFilter === 'reschedulereq') ? (
+                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 60 : isTablet ? 50 : 40 }]}>
+                </View>
+              ) : (
+                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 80 : isTablet ? 70 : 60 }]}>
+                  <Ionicons name="list" size={isDesktop ? 16 : 14} color="#ffffff" />
+                  <Text style={styles.tableHeaderText}>S NO</Text>
+                </View>
+              )}
               <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 140 : isTablet ? 120 : 100 }]}>
                 <Ionicons name="bookmark" size={isDesktop ? 16 : 14} color="#ffffff" />
                 <Text style={styles.tableHeaderText}>Booking ID</Text>
@@ -533,7 +912,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                 <Ionicons name="call" size={isDesktop ? 16 : 14} color="#ffffff" />
                 <Text style={styles.tableHeaderText}>Contact Number</Text>
               </View>
-              {statusFilter !== 'cancel' && statusFilter !== 'reschedule' && (
+              {statusFilter !== 'cancel' && statusFilter !== 'reschedule' && statusFilter !== 'cancelreq' && statusFilter !== 'reschedulereq' && (
                 <>
                   <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
                     <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
@@ -549,13 +928,13 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   </View>
                 </>
               )}
-              {statusFilter === 'cancel' && (
+              {(statusFilter === 'cancel' || statusFilter === 'cancelreq') && (
                 <>
-                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 140 : isTablet ? 100 : 90 }]}>
                     <Ionicons name="person-remove" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Canceled By</Text>
                   </View>
-                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 330 : isTablet ? 100 : 90 }]}>
                     <Ionicons name="person-remove" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Reason</Text>
                   </View>
@@ -569,13 +948,13 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   </View>
                 </>
               )}
-              {statusFilter === 'reschedule' && (
+              {(statusFilter === 'reschedule' || statusFilter === 'reschedulereq') && (
                 <>
-                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 100 : 90 }]}>
                     <Ionicons name="person-add" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Rescheduled By</Text>
                   </View>
-                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 330 : isTablet ? 100 : 90 }]}>
                     <Ionicons name="document-text" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Reason</Text>
                   </View>
@@ -593,21 +972,116 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
             {/* Table Body */}
             {paginatedBookings.map((booking, index) => {
-              const statusColors = getStatusColor(booking.status);
+              const statusColors = statusFilter === 'cancelreq' 
+                ? getStatusColor(7) // Orange for Cancel Request
+                : statusFilter === 'reschedulereq'
+                ? getStatusColor(8) // Yellow for Reschedule Request
+                : getStatusColor(booking.status);
               const serialNumber = recordsPerPage === 'ALL' 
                 ? index + 1 
                 : (currentPage - 1) * recordsPerPage + index + 1;
+              const isMenuOpen = openMenuId === booking.id;
+              const shouldOpenUpward = index >= paginatedBookings.length - 2;
               return (
                 <View 
                   key={booking.id} 
                   style={[
                     styles.tableRow,
-                    index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd
+                    index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                    isMenuOpen && styles.tableRowActive
                   ]}
                 >
-                  <View style={[styles.tableCell, { width: isDesktop ? 80 : isTablet ? 70 : 60 }]}>
-                    <Text style={styles.tableCellText}>{serialNumber}</Text>
-                  </View>
+                  {(statusFilter === 'cancelreq' || statusFilter === 'reschedulereq') ? (
+                    <View style={[styles.tableCell, styles.menuCell, { width: isDesktop ? 60 : isTablet ? 50 : 40 }]}>
+                      <TouchableOpacity
+                        ref={(ref) => {
+                          if (ref && isMenuOpen && !menuPosition) {
+                            ref.measureInWindow((x, y, width, height) => {
+                              setMenuPosition({ x: x + width + 8, y: y });
+                            });
+                          }
+                        }}
+                        style={styles.menuIconButton}
+                        onPress={(e) => {
+                          if (!isMenuOpen) {
+                            const target = e.currentTarget as any;
+                            if (target?.measureInWindow) {
+                              target.measureInWindow((x: number, y: number, width: number, height: number) => {
+                                setMenuPosition({ x: x + width + 8, y: y });
+                                setOpenMenuId(booking.id);
+                              });
+                            } else {
+                              setOpenMenuId(booking.id);
+                            }
+                          } else {
+                            setOpenMenuId(null);
+                            setMenuPosition(null);
+                          }
+                        }}
+                      >
+                        <Ionicons name="menu" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" />
+                      </TouchableOpacity>
+                      <Modal
+                        visible={isMenuOpen}
+                        transparent={true}
+                        animationType="fade"
+                        onRequestClose={() => {
+                          setOpenMenuId(null);
+                          setMenuPosition(null);
+                        }}
+                      >
+                        <TouchableWithoutFeedback onPress={() => {
+                          setOpenMenuId(null);
+                          setMenuPosition(null);
+                        }}>
+                          <View style={styles.menuOverlay}>
+                            <TouchableWithoutFeedback>
+                              <View style={[
+                                styles.menuDropdown,
+                                menuPosition && {
+                                  position: 'absolute',
+                                  left: menuPosition.x,
+                                  top: menuPosition.y,
+                                }
+                              ]}>
+                                {/* Show "Assign to other worker" for reschedule requests OR when canceled by Worker */}
+                                {(statusFilter === 'reschedulereq' || booking.canceled_by === 1) && (
+                                  <TouchableOpacity
+                                    style={styles.menuItem}
+                                    onPress={() => handleAssignWorker(booking)}
+                                  >
+                                    <Ionicons name="person-add-outline" size={isDesktop ? 16 : 14} color="#06b6d4" />
+                                    <Text style={styles.menuItemText}>Assign to other worker</Text>
+                                  </TouchableOpacity>
+                                )}
+                                {/* Don't show Accept option for Reschedule Requests */}
+                                {statusFilter !== 'reschedulereq' && (
+                                  <TouchableOpacity
+                                    style={styles.menuItem}
+                                    onPress={() => handleAccept(booking)}
+                                  >
+                                    <Ionicons name="checkmark-circle-outline" size={isDesktop ? 16 : 14} color="#10b981" />
+                                    <Text style={styles.menuItemText}>Accept</Text>
+                                  </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                  style={[styles.menuItem, styles.menuItemLast]}
+                                  onPress={() => handleReject(booking)}
+                                >
+                                  <Ionicons name="close-circle-outline" size={isDesktop ? 16 : 14} color="#dc2626" />
+                                  <Text style={styles.menuItemText}>Reject</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </TouchableWithoutFeedback>
+                          </View>
+                        </TouchableWithoutFeedback>
+                      </Modal>
+                    </View>
+                  ) : (
+                    <View style={[styles.tableCell, { width: isDesktop ? 80 : isTablet ? 70 : 60 }]}>
+                      <Text style={styles.tableCellText}>{serialNumber}</Text>
+                    </View>
+                  )}
                   <View style={[styles.tableCell, { width: isDesktop ? 140 : isTablet ? 120 : 100 }]}>
                     <Text style={styles.tableCellText}>#{booking.booking_id}</Text>
                   </View>
@@ -617,7 +1091,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                       borderColor: statusColors.border
                     }]}>
                       <Text style={[styles.tableStatusText, { color: statusColors.text }]}>
-                        {getStatusLabel(booking.status)}
+                        {statusFilter === 'cancelreq' ? 'Cancel Requested' : 
+                         statusFilter === 'reschedulereq' ? 'Reschedule Requested' : 
+                         getStatusLabel(booking.status)}
                       </Text>
                     </View>
                   </View>
@@ -630,7 +1106,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
                     <Text style={styles.tableCellText}>{booking.contact_number || 'N/A'}</Text>
                   </View>
-                  {statusFilter !== 'cancel' && statusFilter !== 'reschedule' && (
+                  {statusFilter !== 'cancel' && statusFilter !== 'reschedule' && statusFilter !== 'cancelreq' && statusFilter !== 'reschedulereq' && (
                     <>
                       <View style={[styles.tableCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
                         <Text style={styles.tableCellText}>{booking.work_location || 'N/A'}</Text>
@@ -643,13 +1119,15 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                       </View>
                     </>
                   )}
-                  {statusFilter === 'cancel' && (
+                  {(statusFilter === 'cancel' || statusFilter === 'cancelreq') && (
                     <>
-                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 100 : 90 }]}>
                         <Text style={styles.tableCellText}>{getCanceledByLabel(booking.canceled_by)}</Text>
                       </View>
-                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
-                        <Text style={styles.tableCellText}>{booking.cancel_reason || 'N/A'}</Text>
+                      <View style={[styles.tableCell, { width: isDesktop ? 300 : isTablet ? 100 : 90, flexWrap: 'wrap', alignItems: 'flex-start' }]}>
+                        <Text style={[styles.tableCellText, { flexWrap: 'wrap', width: '100%' }]} numberOfLines={undefined}>
+                          {booking.cancel_reason || 'N/A'}
+                        </Text>
                       </View>
                       <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                         <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
@@ -659,13 +1137,15 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                       </View>
                     </>
                   )}
-                  {statusFilter === 'reschedule' && (
+                  {(statusFilter === 'reschedule' || statusFilter === 'reschedulereq') && (
                     <>
-                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 100 : 90 }]}>
                         <Text style={styles.tableCellText}>{getRescheduledByLabel(booking.rescheduled_by)}</Text>
                       </View>
-                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
-                        <Text style={styles.tableCellText}>{booking.reschedule_reason || 'N/A'}</Text>
+                      <View style={[styles.tableCell, { width: isDesktop ? 330 : isTablet ? 100 : 90, flexWrap: 'wrap', alignItems: 'flex-start' }]}>
+                        <Text style={[styles.tableCellText, { flexWrap: 'wrap', width: '100%' }]} numberOfLines={undefined}>
+                          {booking.reschedule_reason || 'N/A'}
+                        </Text>
                       </View>
                       <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                         <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
@@ -734,7 +1214,60 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+        </View>
+      </TouchableWithoutFeedback>
+
+      {/* Polling Popup Modal */}
+      <Modal
+        visible={showPollingPopup}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closePollingPopup}
+      >
+        <View style={styles.pollingModalOverlay}>
+          <View style={styles.pollingModalContent}>
+            {pollingStatus === 'pending' && (
+              <>
+                <ActivityIndicator size="large" color="#06b6d4" />
+                <Text style={styles.pollingTitle}>{pollingMessage}</Text>
+                <Text style={styles.pollingSubtext}>Please wait while we find an available worker...</Text>
+              </>
+            )}
+            
+            {pollingStatus === 'success' && (
+              <>
+                <View style={styles.pollingIconSuccess}>
+                  <Ionicons name="checkmark-circle" size={isDesktop ? 64 : 48} color="#10b981" />
+                </View>
+                <Text style={styles.pollingTitleSuccess}>Booking Accepted!</Text>
+                <Text style={styles.pollingMessage}>{pollingMessage}</Text>
+                <TouchableOpacity 
+                  style={styles.pollingButtonSuccess}
+                  onPress={closePollingPopup}
+                >
+                  <Text style={styles.pollingButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            
+            {pollingStatus === 'failed' && (
+              <>
+                <View style={styles.pollingIconFailed}>
+                  <Ionicons name="close-circle" size={isDesktop ? 64 : 48} color="#ef4444" />
+                </View>
+                <Text style={styles.pollingTitleFailed}>No Workers Available</Text>
+                <Text style={styles.pollingMessage}>{pollingMessage}</Text>
+                <TouchableOpacity 
+                  style={styles.pollingButtonFailed}
+                  onPress={closePollingPopup}
+                >
+                  <Text style={styles.pollingButtonText}>Close</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -747,10 +1280,12 @@ const createStyles = (width: number, height: number) => {
   return StyleSheet.create({
     container: {
       flex: 1,
+      overflow: 'visible',
     },
     contentContainer: {
       padding: isDesktop ? 32 : isTablet ? 24 : 16,
       paddingBottom: isDesktop ? 40 : isTablet ? 32 : 24,
+      overflow: 'visible',
     },
     loadingContainer: {
       flex: 1,
@@ -796,6 +1331,7 @@ const createStyles = (width: number, height: number) => {
     },
     bookingsContainer: {
       width: '100%',
+      overflow: 'visible',
     },
     bookingsHeader: {
       marginBottom: 12,
@@ -976,9 +1512,11 @@ const createStyles = (width: number, height: number) => {
     // Table Styles
     tableWrapper: {
       marginBottom: 12,
+      overflow: 'visible',
     },
     tableScrollView: {
       width: '100%',
+      overflow: 'visible',
     },
     tableContainer: {
       backgroundColor: '#ffffff',
@@ -990,13 +1528,15 @@ const createStyles = (width: number, height: number) => {
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.05,
       shadowRadius: 8,
-      elevation: 2,
+      elevation: 1,
     },
     tableHeader: {
       flexDirection: 'row',
       backgroundColor: '#6366f1',
       borderBottomWidth: 2,
       borderBottomColor: '#4f46e5',
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
     },
     tableHeaderCell: {
       paddingVertical: 16,
@@ -1016,6 +1556,7 @@ const createStyles = (width: number, height: number) => {
       flexDirection: 'row',
       borderBottomWidth: 1,
       borderBottomColor: '#f1f5f9',
+      overflow: 'visible',
     },
     tableRowEven: {
       backgroundColor: '#ffffff',
@@ -1023,10 +1564,68 @@ const createStyles = (width: number, height: number) => {
     tableRowOdd: {
       backgroundColor: '#fafafa',
     },
+    tableRowActive: {
+      zIndex: 10000,
+      overflow: 'visible',
+      elevation: 10000,
+    },
     tableCell: {
       paddingVertical: isDesktop ? 14 : isTablet ? 12 : 10,
       paddingHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
       justifyContent: 'center',
+      alignItems: 'center',
+    },
+    menuCell: {
+      position: 'relative',
+      justifyContent: 'center',
+      alignItems: 'center',
+      overflow: 'visible',
+      zIndex: 10001,
+      elevation: 10001,
+    },
+    menuIconButton: {
+      padding: isDesktop ? 8 : isTablet ? 7 : 6,
+      borderRadius: 8,
+      backgroundColor: 'transparent',
+    },
+    menuOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    },
+    menuDropdown: {
+      backgroundColor: '#ffffff',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 20,
+      minWidth: isDesktop ? 240 : isTablet ? 220 : 200,
+      maxWidth: isDesktop ? 300 : isTablet ? 280 : 260,
+    },
+    menuDropdownUp: {
+      // Not needed with Modal - menu is centered
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: isDesktop ? 16 : isTablet ? 14 : 12,
+      paddingVertical: isDesktop ? 14 : isTablet ? 12 : 10,
+      gap: isDesktop ? 12 : isTablet ? 10 : 8,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+      minHeight: isDesktop ? 48 : isTablet ? 44 : 40,
+    },
+    menuItemLast: {
+      borderBottomWidth: 0,
+    },
+    menuItemText: {
+      fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
+      fontWeight: '500',
+      color: '#0f172a',
+      flex: 1,
     },
     tableCellText: {
       fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
@@ -1086,6 +1685,86 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '600',
       color: '#0f172a',
       marginHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
+    },
+    // Polling Popup Styles
+    pollingModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    pollingModalContent: {
+      backgroundColor: '#ffffff',
+      borderRadius: isDesktop ? 16 : 12,
+      padding: isDesktop ? 32 : isTablet ? 28 : 24,
+      width: isDesktop ? 400 : isTablet ? 350 : '85%',
+      maxWidth: 400,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    pollingTitle: {
+      fontSize: isDesktop ? 18 : isTablet ? 16 : 15,
+      fontWeight: '600',
+      color: '#0f172a',
+      marginTop: isDesktop ? 20 : 16,
+      textAlign: 'center',
+    },
+    pollingSubtext: {
+      fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
+      color: '#64748b',
+      marginTop: 8,
+      textAlign: 'center',
+    },
+    pollingIconSuccess: {
+      marginBottom: isDesktop ? 16 : 12,
+    },
+    pollingIconFailed: {
+      marginBottom: isDesktop ? 16 : 12,
+    },
+    pollingTitleSuccess: {
+      fontSize: isDesktop ? 20 : isTablet ? 18 : 16,
+      fontWeight: '700',
+      color: '#10b981',
+      marginBottom: 12,
+      textAlign: 'center',
+    },
+    pollingTitleFailed: {
+      fontSize: isDesktop ? 20 : isTablet ? 18 : 16,
+      fontWeight: '700',
+      color: '#ef4444',
+      marginBottom: 12,
+      textAlign: 'center',
+    },
+    pollingMessage: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      color: '#475569',
+      textAlign: 'center',
+      marginBottom: isDesktop ? 24 : 20,
+      lineHeight: isDesktop ? 22 : 20,
+    },
+    pollingButtonSuccess: {
+      backgroundColor: '#10b981',
+      paddingVertical: isDesktop ? 12 : 10,
+      paddingHorizontal: isDesktop ? 32 : 24,
+      borderRadius: 8,
+      minWidth: 120,
+    },
+    pollingButtonFailed: {
+      backgroundColor: '#ef4444',
+      paddingVertical: isDesktop ? 12 : 10,
+      paddingHorizontal: isDesktop ? 32 : 24,
+      borderRadius: 8,
+      minWidth: 120,
+    },
+    pollingButtonText: {
+      color: '#ffffff',
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      textAlign: 'center',
     },
   });
 };

@@ -35,6 +35,7 @@ export default function AdminIndexScreen() {
   const [newBookingsCount, setNewBookingsCount] = useState<number | null>(null);
   const [requestedWorkersCount, setRequestedWorkersCount] = useState<number | null>(null);
   const [quoteRequestsCount, setQuoteRequestsCount] = useState<number | null>(null);
+  const [cancelRequestsCount, setCancelRequestsCount] = useState<number | null>(null);
   const [rescheduledCount, setRescheduledCount] = useState<number | null>(null);
   const [totalBookingsCount, setTotalBookingsCount] = useState<number | null>(null);
   const [activeBookingsCount, setActiveBookingsCount] = useState<number | null>(null);
@@ -90,7 +91,7 @@ export default function AdminIndexScreen() {
         const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
         const data = await res.json();
         if (data && data.success && Array.isArray(data.bookings)) {
-          const count = data.bookings.filter((b: any) => b.status === 1 && isSameDay(b.created_at)).length;
+          const count = data.bookings.filter((b: any) => b.status === 1 && b.payment_status === 1 && isSameDay(b.created_at)).length;
           if (!cancelled) setNewBookingsCount(count);
         } else {
           if (!cancelled) setNewBookingsCount(0);
@@ -162,31 +163,47 @@ useEffect(() => {
 useEffect(() => {
   let cancelled = false;
 
-  const isSameDay = (dateStr: string) => {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
-    const today = new Date();
-    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-  };
-
-  const fetchTodayRescheduled = async () => {
+  const fetchCancelRequests = async () => {
     try {
-      const res = await fetch(`${API_ENDPOINTS.ADMIN_BOOKINGS}?rescheduled=true`);
+      const res = await fetch(`${API_ENDPOINTS.ADMIN_BOOKINGS}?cancelreq=true`);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        // server returns reschedule_date in joined rescheduled bookings
-        const count = data.bookings.filter((b: any) => isSameDay(b.reschedule_date)).length;
+        const count = data.bookings.length;
+        if (!cancelled) setCancelRequestsCount(count);
+      } else {
+        if (!cancelled) setCancelRequestsCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching cancel requests:', error);
+      if (!cancelled) setCancelRequestsCount(0);
+    }
+  };
+
+  fetchCancelRequests();
+
+  return () => { cancelled = true; };
+}, []);
+
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchRescheduleRequests = async () => {
+    try {
+      const res = await fetch(`${API_ENDPOINTS.ADMIN_BOOKINGS}?reschedulereq=true`);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        const count = data.bookings.length;
         if (!cancelled) setRescheduledCount(count);
       } else {
         if (!cancelled) setRescheduledCount(0);
       }
     } catch (error) {
-      console.error('Error fetching rescheduled bookings:', error);
+      console.error('Error fetching reschedule requests:', error);
       if (!cancelled) setRescheduledCount(0);
     }
   };
 
-  fetchTodayRescheduled();
+  fetchRescheduleRequests();
 
   return () => { cancelled = true; };
 }, []);
@@ -440,7 +457,7 @@ const menuItems = [
     { id: 'subcategories', icon: 'layers-outline', label: 'Subcategories', color: '#64748b' },
     { id: 'services', icon: 'cog-outline', label: 'Services', color: '#14b8a6' },
     { id: 'quote', icon: 'document-text-outline', label: 'Quotes', color: '#ef4444' },
-    { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', color: '#f97316' },
+    { id: 'fags', icon: 'help-circle-outline', label: 'FAQS', color: '#f97316' },
     { id: 'help', icon: 'help-circle-outline', label: 'Help & Support', color: '#14b8a6' },
   ];
 
@@ -453,6 +470,8 @@ const menuItems = [
       'complete': 'completed',
       'cancele': 'cancel', // note: id in quickCards is 'cancele'
       'reschedule': 'reschedule',
+      'cancelreq': 'cancelreq',
+      'reschedulereq': 'reschedulereq',
     };
 
     if (id === 'customer') {
@@ -714,15 +733,31 @@ const menuItems = [
                       </View>
                     </View>
 
-                    <View style={[styles.statCard, { backgroundColor: '#fed7aa' }]}>
+                    <TouchableOpacity 
+                      style={[styles.statCard, { backgroundColor: '#fed7aa' }]}
+                      onPress={() => handleQuickActionPress('reschedulereq')}
+                    >
                       <View style={[styles.statIconContainer, { backgroundColor: '#f59e0b' }]}>
                         <Ionicons name="calendar-outline" size={24} color="#fff" />
                       </View>
                       <View style={styles.statInfo}>
-                        <Text style={styles.statLabel}>Rescheduled Bookings</Text>
+                        <Text style={styles.statLabel}>Reschedule Requests</Text>
                         <Text style={styles.statValue}>{rescheduledCount !== null ? rescheduledCount : '—'}</Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.statCard, { backgroundColor: '#fee2e2' }]}
+                      onPress={() => handleQuickActionPress('cancelreq')}
+                    >
+                      <View style={[styles.statIconContainer, { backgroundColor: '#ef4444' }]}>
+                        <Ionicons name="close-circle-outline" size={24} color="#fff" />
+                      </View>
+                      <View style={styles.statInfo}>
+                        <Text style={styles.statLabel}>Cancel Requests</Text>
+                        <Text style={styles.statValue}>{cancelRequestsCount !== null ? cancelRequestsCount : '—'}</Text>
+                      </View>
+                    </TouchableOpacity>
                   </View>
 
                   {/* Quick Actions */}
@@ -1057,6 +1092,7 @@ const createStyles = (width: number, height: number) => {
     statCard: {
       flex: 1,
       minWidth: isDesktop ? 240 : '100%',
+      maxWidth: isDesktop ? '24%' : '100%',
       padding: 20,
       borderRadius: 16,
       flexDirection: 'row',

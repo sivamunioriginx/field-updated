@@ -1234,17 +1234,22 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
         b.work_location,
         b.booking_time,
         b.status,
+        b.payment_status,
         b.created_at,
         b.description,
         b.work_documents,
         s.name as user_name,
         s.mobile as user_mobile,
         r.reschedule_date,
-        c.created_at as canceled_at
+        r.status as rescheduled_status,
+        r.type as rescheduled_type,
+        c.created_at as canceled_at,
+        c.status as canceled_status,
+        c.type as canceled_type
       FROM tbl_bookings b
       LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
-      LEFT JOIN tbl_rescheduledbookings r ON b.id = r.bookingid
-      LEFT JOIN tbl_canceledbookings c ON b.id = c.bookingid
+      LEFT JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
+      LEFT JOIN tbl_canceledbookings c ON b.id = CAST(TRIM(c.bookingid) AS UNSIGNED)
       WHERE b.worker_id = ?
     `;
     
@@ -1318,7 +1323,7 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
     }
 
     // Validate status values
-    const validStatuses = [0, 1, 2, 3, 4, 5, 6]; // 0=Pending, 1=Active, 2=Completed, 3=Cancelled, 4=Missed, 5=Canceled, 6=Rescheduled
+    const validStatuses = [0, 1, 2, 3, 4, 5, 6]; // 0=Pending, 1=Accepted, 2=In Progress, 3=Completed, 4=Rejected, 5=Cancel Request/Canceled, 6=Reschedule Request/Rescheduled
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -1381,17 +1386,20 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
        const [result] = await pool.execute(query, params);
 
       if (result.affectedRows > 0) {
-        // If status is 5 (canceled), insert into tbl_canceledbookings
+        // If status is 5 (cancel request), insert into tbl_canceledbookings with status = 0
         if (status === 5 && cancel_reason) {
           const cancelType = cancel_type !== undefined ? cancel_type : 1;
-          const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type) VALUES (?, ?, ?)';
+          const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type, status) VALUES (?, ?, ?, 0)';
           await pool.execute(insertCancelQuery, [bookingId, cancel_reason, cancelType]);
+          console.log(`✅ Inserted cancel request into tbl_canceledbookings with status = 0 for bookingid: ${bookingId}`);
         }
         
+        // If status is 6 (reschedule request), insert into tbl_rescheduledbookings with status = 0
         if (status === 6 && reschedule_date && reschedule_reason) {
           const rescheduleType = reschedule_type !== undefined ? reschedule_type : 1;
-          const insertRescheduleQuery = 'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_date, reschedule_reason, type) VALUES (?, ?, ?, ?)';
+          const insertRescheduleQuery = 'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_date, reschedule_reason, type, status) VALUES (?, ?, ?, ?, 0)';
           await pool.execute(insertRescheduleQuery, [bookingId, reschedule_date, reschedule_reason, rescheduleType]);
+          console.log(`✅ Inserted reschedule request into tbl_rescheduledbookings with status = 0 for bookingid: ${bookingId}`);
         }
         
         res.json({
@@ -1408,6 +1416,411 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
     }
   } catch (error) {
     console.error('❌ Error updating booking status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Assign to other worker endpoint (for cancel and reschedule requests)
+app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { requestType, reschedule_date } = req.body; // requestType: 'cancel' or 'reschedule'
+    
+    console.log(`🔄 Assigning booking ${bookingId} to other worker (type: ${requestType})`);
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required'
+      });
+    }
+
+    // First, get the current booking to find the booking_id
+    const getBookingQuery = 'SELECT booking_id FROM tbl_bookings WHERE id = ?';
+    const [bookingResult] = await pool.execute(getBookingQuery, [bookingId]);
+    
+    if (bookingResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+    
+    const currentBooking = bookingResult[0];
+    const currentBookingId = currentBooking.booking_id;
+    
+    // Determine status and update query based on request type
+    let updateCurrentQuery;
+    let statusValue;
+    
+    let rescheduleType = null;
+    let rescheduleDate = null;
+    
+    if (requestType === 'reschedule') {
+      // For reschedule requests: Check if rescheduled by customer (type=2) or worker (type=1)
+      // First, get the reschedule type from tbl_rescheduledbookings
+      const getRescheduleQuery = 'SELECT type, reschedule_date FROM tbl_rescheduledbookings WHERE bookingid = ?';
+      const [rescheduleResult] = await pool.execute(getRescheduleQuery, [bookingId]);
+      
+      if (rescheduleResult.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Reschedule request not found'
+        });
+      }
+      
+      const rescheduleData = rescheduleResult[0];
+      rescheduleType = rescheduleData.type; // 1 = Worker, 2 = Customer
+      rescheduleDate = rescheduleData.reschedule_date;
+      
+      statusValue = 6;
+      
+      if (rescheduleType === 2) {
+        // Rescheduled by Customer: Update booking_time to reschedule_date
+        updateCurrentQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?';
+        var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [rescheduleDate, bookingId]);
+      } else {
+        // Rescheduled by Worker: Don't update booking_time
+        updateCurrentQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1 WHERE id = ?';
+        var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [bookingId]);
+      }
+    } else {
+      // For cancel requests: status = 5
+      statusValue = 5;
+      updateCurrentQuery = 'UPDATE tbl_bookings SET status = 5, payment_status = 0 WHERE id = ?';
+      var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [bookingId]);
+    }
+    
+    if (updateCurrentResult.affectedRows > 0) {
+      // Update all other workers with the same booking_id to status = 0 and payment_status = 1
+      // For reschedule requests by customer (type=2), also update booking_time to reschedule_date
+      let updateOthersQuery;
+      let updateOthersParams;
+      
+      if (requestType === 'reschedule' && rescheduleType === 2 && rescheduleDate) {
+        // Rescheduled by Customer: Update other workers' booking_time too
+        updateOthersQuery = 'UPDATE tbl_bookings SET status = 0, payment_status = 1, booking_time = ? WHERE booking_id = ? AND id != ?';
+        updateOthersParams = [rescheduleDate, currentBookingId, bookingId];
+      } else {
+        // Rescheduled by Worker or Cancel request: Don't update booking_time for other workers
+        updateOthersQuery = 'UPDATE tbl_bookings SET status = 0, payment_status = 1 WHERE booking_id = ? AND id != ?';
+        updateOthersParams = [currentBookingId, bookingId];
+      }
+      
+      const [updateOthersResult] = await pool.execute(updateOthersQuery, updateOthersParams);
+      
+      console.log(`📝 Updated ${updateOthersResult.affectedRows} other workers for reassignment`);
+      
+      // For cancel requests, update status in tbl_canceledbookings to 1
+      // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID), not booking_id
+      if (requestType === 'cancel') {
+        const updateCancelStatusQuery = 'UPDATE tbl_canceledbookings SET status = 1 WHERE bookingid = ?';
+        const [updateCancelStatusResult] = await pool.execute(updateCancelStatusQuery, [bookingId]);
+        console.log(`✅ Updated tbl_canceledbookings status to 1 for bookingid (tbl_bookings.id): ${bookingId}`);
+      }
+      
+      // For reschedule requests, update status in tbl_rescheduledbookings to 1
+      // Note: tbl_rescheduledbookings.bookingid refers to tbl_bookings.id (record ID), not booking_id
+      if (requestType === 'reschedule') {
+        const updateRescheduleStatusQuery = 'UPDATE tbl_rescheduledbookings SET status = 1 WHERE bookingid = ?';
+        const [updateRescheduleStatusResult] = await pool.execute(updateRescheduleStatusQuery, [bookingId]);
+        console.log(`✅ Updated tbl_rescheduledbookings status to 1 for bookingid (tbl_bookings.id): ${bookingId}`);
+      }
+      
+      const message = requestType === 'reschedule' 
+        ? 'Booking reassigned successfully. Worker marked as reschedule request, others reset for reassignment.'
+        : 'Booking reassigned successfully. Worker marked as canceled, others reset for reassignment.';
+      
+      res.json({
+        success: true,
+        message: message,
+        data: { 
+          bookingId, 
+          otherWorkersUpdated: updateOthersResult.affectedRows
+        }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Failed to update booking'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error assigning to other worker:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Check booking status by booking_id (for polling)
+app.get('/api/bookings/check-status/:bookingId', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required'
+      });
+    }
+
+    // Get all bookings with this booking_id
+    const query = `
+      SELECT 
+        b.id,
+        b.booking_id,
+        b.status,
+        b.payment_status,
+        w.name as worker_name
+      FROM tbl_bookings b
+      LEFT JOIN tbl_workers w ON b.worker_id = w.id
+      WHERE b.booking_id = ?
+    `;
+    
+    const [bookings] = await pool.execute(query, [bookingId]);
+    
+    if (bookings.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No bookings found with this booking_id'
+      });
+    }
+
+    // Check if any booking has status = 0 (still pending)
+    const hasPending = bookings.some(b => b.status === 0);
+    
+    // Check if any booking has status = 1 (accepted)
+    const acceptedBooking = bookings.find(b => b.status === 1 && b.payment_status === 1);
+    
+    // Check if all bookings have status != 0 and status != 1 (all busy/rejected)
+    const allBusy = bookings.every(b => b.status !== 0 && b.status !== 1);
+
+    res.json({
+      success: true,
+      data: {
+        bookings,
+        hasPending,
+        acceptedBooking: acceptedBooking || null,
+        allBusy
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error checking booking status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Update booking to cancel/reschedule request when all workers are busy
+app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { requestType, reschedule_date } = req.body; // requestType: 'cancel' or 'reschedule'
+    
+    console.log(`🔄 Reverting booking ${bookingId} to ${requestType} request (all workers busy)`);
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required'
+      });
+    }
+
+    // Determine status based on request type
+    let updateQuery;
+    let statusValue;
+    
+    if (requestType === 'reschedule') {
+      // For reschedule requests: status = 6, update booking_time to reschedule_date
+      statusValue = 6;
+      if (reschedule_date) {
+        updateQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?';
+        var [result] = await pool.execute(updateQuery, [reschedule_date, bookingId]);
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Reschedule date is required for reschedule requests'
+        });
+      }
+    } else {
+      // For cancel requests when no workers available: status = 1, payment_status = 1
+      // and tbl_canceledbookings.status = 0
+      statusValue = 1;
+      updateQuery = 'UPDATE tbl_bookings SET status = 1, payment_status = 1 WHERE id = ?';
+      var [result] = await pool.execute(updateQuery, [bookingId]);
+    }
+    
+    if (result.affectedRows > 0) {
+      // For cancel requests, also update tbl_canceledbookings.status = 0
+      // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID)
+      if (requestType === 'cancel') {
+        const updateCancelStatusQuery = 'UPDATE tbl_canceledbookings SET status = 0 WHERE bookingid = ?';
+        const [updateCancelStatusResult] = await pool.execute(updateCancelStatusQuery, [bookingId]);
+        console.log(`✅ Updated tbl_canceledbookings status to 0 for bookingid (tbl_bookings.id): ${bookingId}`);
+      }
+      
+      const requestTypeLabel = requestType === 'reschedule' ? 'reschedule request' : 'cancel request';
+      console.log(`✅ Booking ${bookingId} reverted to ${requestTypeLabel} status`);
+      
+      res.json({
+        success: true,
+        message: `Booking reverted to ${requestTypeLabel} status`,
+        data: { bookingId }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error reverting booking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Accept cancel request (update status to 5 - Canceled)
+app.put('/api/bookings/:bookingId/accept-cancel-request', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    
+    console.log(`✅ Accepting cancel request for booking ${bookingId}`);
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required'
+      });
+    }
+
+    // Update the booking to canceled (status = 5)
+    const updateQuery = 'UPDATE tbl_bookings SET status = 5 WHERE id = ?';
+    const [result] = await pool.execute(updateQuery, [bookingId]);
+    
+    if (result.affectedRows > 0) {
+      // Update tbl_canceledbookings.status = 1
+      // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID)
+      const updateCancelStatusQuery = 'UPDATE tbl_canceledbookings SET status = 1 WHERE bookingid = ?';
+      await pool.execute(updateCancelStatusQuery, [bookingId]);
+      console.log(`✅ Updated tbl_canceledbookings status to 1 for bookingid (tbl_bookings.id): ${bookingId}`);
+      
+      console.log(`✅ Cancel request accepted for booking ${bookingId}`);
+      
+      res.json({
+        success: true,
+        message: 'Cancel request accepted successfully',
+        data: { bookingId }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error accepting cancel request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Reject cancel request endpoint
+app.put('/api/bookings/:bookingId/reject-cancel-request', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    
+    console.log(`❌ Rejecting cancel request for booking ${bookingId}`);
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required'
+      });
+    }
+
+    // Update the booking to accepted (status = 1) and payment_status = 1
+    const updateQuery = 'UPDATE tbl_bookings SET status = 1, payment_status = 1 WHERE id = ?';
+    const [result] = await pool.execute(updateQuery, [bookingId]);
+    
+    if (result.affectedRows > 0) {
+      // Update tbl_canceledbookings.status = 2
+      // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID)
+      const updateCancelStatusQuery = 'UPDATE tbl_canceledbookings SET status = 2 WHERE bookingid = ?';
+      await pool.execute(updateCancelStatusQuery, [bookingId]);
+      console.log(`✅ Updated tbl_canceledbookings status to 2 for bookingid (tbl_bookings.id): ${bookingId}`);
+      
+      console.log(`✅ Cancel request rejected for booking ${bookingId}`);
+      
+      res.json({
+        success: true,
+        message: 'Cancel request rejected successfully',
+        data: { bookingId }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error rejecting cancel request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Reject reschedule request endpoint
+app.put('/api/bookings/:bookingId/reject-reschedule-request', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    
+    console.log(`❌ Rejecting reschedule request for booking ${bookingId}`);
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required'
+      });
+    }
+
+    // Update tbl_bookings.status = 1 (Accepted) and payment_status = 1
+    const updateBookingQuery = 'UPDATE tbl_bookings SET status = 1, payment_status = 1 WHERE id = ?';
+    const [bookingResult] = await pool.execute(updateBookingQuery, [bookingId]);
+    
+    if (bookingResult.affectedRows > 0) {
+      // Update tbl_rescheduledbookings.status = 2
+      // Note: tbl_rescheduledbookings.bookingid refers to tbl_bookings.id (record ID)
+      const updateRescheduleStatusQuery = 'UPDATE tbl_rescheduledbookings SET status = 2 WHERE bookingid = ?';
+      await pool.execute(updateRescheduleStatusQuery, [bookingId]);
+      console.log(`✅ Updated tbl_bookings status to 1 and tbl_rescheduledbookings status to 2 for bookingid (tbl_bookings.id): ${bookingId}`);
+      
+      res.json({
+        success: true,
+        message: 'Reschedule request rejected successfully',
+        data: { bookingId }
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error rejecting reschedule request:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -2884,10 +3297,24 @@ app.post('/api/send-otp', async (req, res) => {
     });
   }
 
+  if(userType === 'professional') {
+    const [ActiveWorker] = await pool.execute(
+      'SELECT id FROM tbl_workers WHERE mobile = ? AND status = ? LIMIT 1',
+      [mobile, 1]
+    );
+    if (ActiveWorker.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Worker is inactive wait for admin approval'
+      });
+    }
+  }
+  
   try {
     // Generate OTP
     const otp = generateOTP();
     const message = `OTP: ${otp}`;
+    console.log('Siva Muni' + otp);
     
     // Store OTP with timestamp (10 minutes expiry)
     otpStore.set(mobile, {
@@ -3249,13 +3676,24 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
         b.work_location,
         b.booking_time,
         b.status,
+        b.payment_status,
         b.created_at,
         b.description,
         b.work_documents,
         w.name as worker_name,
-        w.mobile as worker_mobile
+        w.mobile as worker_mobile,
+        c.status as cancel_status,
+        c.type as cancel_type,
+        c.cancel_reason,
+        c.created_at as canceled_date,
+        r.status as reschedule_status,
+        r.type as reschedule_type,
+        r.reschedule_reason,
+        r.reschedule_date
       FROM tbl_bookings b
       LEFT JOIN tbl_workers w ON b.worker_id = w.id
+      LEFT JOIN tbl_canceledbookings c ON b.id = CAST(TRIM(c.bookingid) AS UNSIGNED)
+      LEFT JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
       WHERE b.user_id = ?
     `;
     
@@ -4095,25 +4533,79 @@ app.post('/api/send-manual-alert', async (req, res) => {
 
 app.get('/api/admin/bookings', async (req, res) => {
   try {
-    const { canceled, rescheduled } = req.query;
+    const { canceled, rescheduled, cancelreq, reschedulereq } = req.query;
 
     let query;
     
-    if (canceled === 'true') {
-      // First, check how many records match the criteria
-      const [statusCheck] = await pool.execute(
-        'SELECT COUNT(*) as count FROM tbl_bookings WHERE status = 5 AND payment_status = 1'
-      );
-      console.log('📊 Bookings with status=5 and payment_status=1:', statusCheck[0]?.count || 0);
+    if (cancelreq === 'true') {
+      // Cancel Requests: b.status = 5 AND c.status = 0 AND b.payment_status = 1 AND b.id = c.bookingid
+      query = `
+        SELECT 
+          b.id,
+          b.booking_id,
+          b.worker_id,
+          b.user_id,
+          b.contact_number,
+          b.work_location,
+          b.booking_time,
+          b.status,
+          b.payment_status,
+          b.created_at,
+          b.description,
+          w.name as worker_name,
+          w.mobile as worker_mobile,
+          s.name as customer_name,
+          s.mobile as customer_mobile,
+          c.type as canceled_by,
+          c.cancel_reason,
+          c.created_at as canceled_date,
+          c.status as cancel_status
+        FROM tbl_bookings b
+        LEFT JOIN tbl_workers w ON b.worker_id = w.id
+        LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        INNER JOIN tbl_canceledbookings c ON (
+          b.id = CAST(TRIM(c.bookingid) AS UNSIGNED) 
+          OR b.booking_id = c.bookingid
+        )
+        WHERE b.status = 5 AND c.status = 0 AND b.payment_status = 1
+        ORDER BY b.id DESC
+      `;
       
-      const [canceledCheck] = await pool.execute(
-        'SELECT COUNT(*) as count FROM tbl_canceledbookings'
-      );
-      console.log('📊 Total canceled bookings records:', canceledCheck[0]?.count || 0);
+      console.log('🔍 Fetching cancel requests (b.status=5 AND c.status=0 AND b.payment_status=1)');
+    } else if (reschedulereq === 'true') {
+      // Reschedule Requests: b.status = 6 AND r.status = 0 AND b.payment_status = 1 AND b.id = r.bookingid
+      query = `
+        SELECT 
+          b.id,
+          b.booking_id,
+          b.worker_id,
+          b.user_id,
+          b.contact_number,
+          b.work_location,
+          b.booking_time,
+          b.status,
+          b.payment_status,
+          b.created_at,
+          b.description,
+          w.name as worker_name,
+          w.mobile as worker_mobile,
+          s.name as customer_name,
+          s.mobile as customer_mobile,
+          r.type as rescheduled_by,
+          r.reschedule_reason,
+          r.created_at as reschedule_date,
+          r.status as reschedule_status
+        FROM tbl_bookings b
+        LEFT JOIN tbl_workers w ON b.worker_id = w.id
+        LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        INNER JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
+        WHERE b.status = 6 AND r.status = 0 AND b.payment_status = 1
+        ORDER BY b.id DESC
+      `;
       
-      // Fetch canceled bookings with join to tbl_canceledbookings
-      // Match on bookingid which should be tbl_bookings.id stored as VARCHAR
-      // Try multiple approaches to handle different data formats
+      console.log('🔍 Fetching reschedule requests (b.status=6 AND r.status=0 AND b.payment_status=1 AND b.id=r.bookingid)');
+    } else if (canceled === 'true') {
+      // Fetch canceled bookings: b.status = 5 AND b.payment_status = 1 AND c.status = 1 AND b.id = c.bookingid
       query = `
         SELECT 
           b.id,
@@ -4141,24 +4633,13 @@ app.get('/api/admin/bookings', async (req, res) => {
           b.id = CAST(TRIM(c.bookingid) AS UNSIGNED) 
           OR b.booking_id = c.bookingid
         )
-        WHERE b.status = 5 AND b.payment_status = 1
+        WHERE b.status = 5 AND b.payment_status = 1 AND c.status = 1
         ORDER BY b.id DESC
       `;
       
-      console.log('🔍 Fetching canceled bookings with query');
+      console.log('🔍 Fetching canceled bookings (b.status=5 AND b.payment_status=1 AND c.status=1 AND b.id=c.bookingid)');
     } else if (rescheduled === 'true') {
-      // First, check how many records match the criteria
-      const [statusCheck] = await pool.execute(
-        'SELECT COUNT(*) as count FROM tbl_bookings WHERE status = 6 AND payment_status = 1'
-      );
-      console.log('📊 Bookings with status=6 and payment_status=1:', statusCheck[0]?.count || 0);
-      
-      const [rescheduledCheck] = await pool.execute(
-        'SELECT COUNT(*) as count FROM tbl_rescheduledbookings'
-      );
-      console.log('📊 Total rescheduled bookings records:', rescheduledCheck[0]?.count || 0);
-      
-      // Fetch rescheduled bookings with join to tbl_rescheduledbookings
+      // Fetch rescheduled bookings: b.status = 6 AND b.payment_status = 1 AND r.status = 1 AND b.id = r.bookingid
       query = `
         SELECT 
           b.id,
@@ -4186,11 +4667,11 @@ app.get('/api/admin/bookings', async (req, res) => {
           b.id = CAST(TRIM(r.bookingid) AS UNSIGNED) 
           OR b.booking_id = r.bookingid
         )
-        WHERE b.status = 6 AND b.payment_status = 1
+        WHERE b.status = 6 AND b.payment_status = 1 AND r.status = 1
         ORDER BY b.id DESC
       `;
       
-      console.log('🔍 Fetching rescheduled bookings with query');
+      console.log('🔍 Fetching rescheduled bookings (b.status=6 AND b.payment_status=1 AND r.status=1 AND b.id=r.bookingid)');
     } else {
       // Regular bookings query
       query = `
@@ -4219,7 +4700,11 @@ app.get('/api/admin/bookings', async (req, res) => {
 
     const [bookings] = await pool.query(query);
     
-    if (canceled === 'true') {
+    if (cancelreq === 'true') {
+      console.log(`✅ Found ${bookings.length} cancel requests`);
+    } else if (reschedulereq === 'true') {
+      console.log(`✅ Found ${bookings.length} reschedule requests`);
+    } else if (canceled === 'true') {
       console.log(`✅ Found ${bookings.length} canceled bookings`);
     } else if (rescheduled === 'true') {
       console.log(`✅ Found ${bookings.length} rescheduled bookings`);

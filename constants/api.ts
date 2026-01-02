@@ -53,6 +53,12 @@ export const API_ENDPOINTS = {
   TOTAL_BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=2,3`,
   UPDATE_BOOKING_STATUS: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/status`,
   UPDATE_BOOKING_PAYMENT: (bookingId: string) => `${getBaseUrl()}/bookings/${bookingId}/payment`,
+  ASSIGN_TO_OTHER_WORKER: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/assign-other-worker`,
+  CHECK_BOOKING_STATUS: (bookingId: string) => `${getBaseUrl()}/bookings/check-status/${bookingId}`,
+  REVERT_TO_CANCEL_REQUEST: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/revert-to-cancel-request`,
+  ACCEPT_CANCEL_REQUEST: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/accept-cancel-request`,
+  REJECT_CANCEL_REQUEST: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/reject-cancel-request`,
+  REJECT_RESCHEDULE_REQUEST: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/reject-reschedule-request`,
   CHECK_USER_EXISTS: (mobile?: string, email?: string, userType?: string) => {
     const params = new URLSearchParams();
     if (mobile) params.append('mobile', mobile);

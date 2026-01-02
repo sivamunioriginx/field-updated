@@ -1609,7 +1609,6 @@ export default function RegisterProfessionalScreen() {
         </Text>
         <TouchableOpacity
           style={styles.skillsDropdown}
-          disabled={true}
           onPress={() => setShowSkillsDropdown(!showSkillsDropdown)}
         >
           <View style={styles.skillsDropdownHeader}>
@@ -1637,11 +1636,10 @@ export default function RegisterProfessionalScreen() {
                 <TouchableOpacity
                   key={id}
                   style={styles.selectedSkillTag}
-                  disabled={true}
                   onPress={() => toggleSkill(id)}
                 >
                   <Text style={styles.selectedSkillText}>{skill?.name}</Text>
-                  {/* <Ionicons name="close-circle" size={moderateScale(16)} color="#e74c3c" /> */}
+                  <Ionicons name="close-circle" size={moderateScale(16)} color="#e74c3c" />
                 </TouchableOpacity>
               );
             })}
