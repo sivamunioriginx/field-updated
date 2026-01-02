@@ -1,15 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { API_ENDPOINTS } from '../../constants/api';
 
 interface Categorie {
@@ -17,6 +24,8 @@ interface Categorie {
   title: string;
   image: string;
   created_at: string;
+  visibility?: boolean | number;
+  status?: number;
 }
 
 interface CategoriesProps {
@@ -38,6 +47,22 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [visibilityStates, setVisibilityStates] = useState<Record<number, boolean>>({});
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [categoryImage, setCategoryImage] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<number>(1);
+  const [showVisibilityDropdown, setShowVisibilityDropdown] = useState(false);
+  const [originalValues, setOriginalValues] = useState<{
+    title: string;
+    image: string | null;
+    visibility: number;
+  } | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<{ id: number; title: string } | null>(null);
+  const [showActivateModal, setShowActivateModal] = useState(false);
+  const [categoryToActivate, setCategoryToActivate] = useState<{ id: number; title: string } | null>(null);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -78,6 +103,15 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
         const categoriesData = data.categories || data.data || [];
         console.log('✅ Categories fetched:', categoriesData.length, 'records');
         setCategories(categoriesData);
+        // Initialize visibility states (default to true if not provided)
+        const initialVisibility: Record<number, boolean> = {};
+        categoriesData.forEach((cat: Categorie) => {
+          const visValue = cat.visibility !== undefined 
+            ? (typeof cat.visibility === 'boolean' ? cat.visibility : cat.visibility === 1)
+            : true;
+          initialVisibility[cat.id] = visValue;
+        });
+        setVisibilityStates(initialVisibility);
         setCurrentPage(1);
       } else {
         console.error('❌ Failed to fetch categories:', data.message);
@@ -161,6 +195,417 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
     }
   };
 
+  const handleVisibilityToggle = async (categoryId: number, value: boolean) => {
+    try {
+      const category = categories.find(cat => cat.id === categoryId);
+      if (!category) {
+        Alert.alert('Error', 'Category not found');
+        return;
+      }
+
+      // Update local state optimistically
+      setVisibilityStates(prev => ({
+        ...prev,
+        [categoryId]: value
+      }));
+
+      const formData = new FormData();
+      formData.append('title', category.title);
+      const visibilityValue = value ? 1 : 0;
+      formData.append('status', visibilityValue.toString());
+      formData.append('visibility', visibilityValue.toString());
+
+      const response = await fetch(`${API_ENDPOINTS.ADMIN_CATEGORIES}/${categoryId}`, {
+        method: 'PUT',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Success',
+          text2: value ? 'Visibility On Successfully' : 'Visibility Off Successfully',
+        });
+        await fetchCategories();
+      } else {
+        // Revert local state on error
+        setVisibilityStates(prev => ({
+          ...prev,
+          [categoryId]: !value
+        }));
+        Alert.alert('Error', data.message || 'Failed to update visibility');
+      }
+    } catch (error) {
+      console.error('❌ Error updating visibility:', error);
+      // Revert local state on error
+      setVisibilityStates(prev => ({
+        ...prev,
+        [categoryId]: !value
+      }));
+      Alert.alert('Error', 'Failed to update visibility. Please try again.');
+    }
+  };
+
+  const handleEdit = (categoryId: number) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    if (category) {
+      setEditingCategoryId(categoryId);
+      setCategoryName(category.title);
+      // Construct image URL - check if it's already a full URL or just filename
+      let imageUrl = category.image;
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        // If it's just a filename, construct full URL
+        imageUrl = `http://192.168.31.84:3001/uploads/categorys/${imageUrl}`;
+      }
+      const finalImageUrl = imageUrl || null;
+      setCategoryImage(finalImageUrl);
+      // Set visibility - check both status and visibility fields
+      const visValue = category.visibility !== undefined 
+        ? (category.visibility ? 1 : 0) 
+        : (category.status !== undefined ? category.status : 1);
+      setVisibility(visValue);
+      // Store original values for comparison
+      setOriginalValues({
+        title: category.title,
+        image: finalImageUrl,
+        visibility: visValue
+      });
+      setShowAddModal(true);
+    }
+  };
+
+  // Check if form has changes (for edit mode)
+  const hasChanges = () => {
+    if (!editingCategoryId || !originalValues) return true; // Always enable for create mode
+    
+    const titleChanged = categoryName.trim() !== originalValues.title.trim();
+    const visibilityChanged = visibility !== originalValues.visibility;
+    
+    // For image, check if it's a new upload (blob/data/file URLs indicate new upload)
+    const imageChanged = categoryImage !== originalValues.image && 
+      categoryImage && 
+      (categoryImage.startsWith('blob:') || 
+       categoryImage.startsWith('data:') || 
+       categoryImage.startsWith('file://'));
+    
+    return titleChanged || visibilityChanged || imageChanged;
+  };
+
+  // Check if form is valid
+  const isFormValid = () => {
+    if (!categoryName.trim()) return false;
+    if (!editingCategoryId && !categoryImage) return false; // Image required for new categories
+    return true;
+  };
+
+  const handleDelete = (categoryId: number) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    if (category) {
+      setCategoryToDelete({ id: categoryId, title: category.title });
+      setShowDeleteModal(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!categoryToDelete) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_ENDPOINTS.ADMIN_CATEGORIES}/${categoryToDelete.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Success',
+          text2: 'Category Deleted Successfully',
+        });
+        await fetchCategories();
+        setShowDeleteModal(false);
+        setCategoryToDelete(null);
+      } else {
+        Alert.alert('Error', data.message || 'Failed to delete category');
+      }
+    } catch (error) {
+      console.error('❌ Error deleting category:', error);
+      Alert.alert('Error', 'Failed to delete category. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setCategoryToDelete(null);
+  };
+
+  const handleActivate = (categoryId: number) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    if (category) {
+      setCategoryToActivate({ id: categoryId, title: category.title });
+      setShowActivateModal(true);
+    }
+  };
+
+  const handleConfirmActivate = async () => {
+    if (!categoryToActivate) return;
+
+    try {
+      setLoading(true);
+      const category = categories.find(cat => cat.id === categoryToActivate.id);
+      if (!category) {
+        Alert.alert('Error', 'Category not found');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('title', category.title);
+      formData.append('status', '1');
+      formData.append('visibility', '1');
+
+      const response = await fetch(`${API_ENDPOINTS.ADMIN_CATEGORIES}/${categoryToActivate.id}`, {
+        method: 'PUT',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Success',
+          text2: 'Category Activated Successfully',
+        });
+        await fetchCategories();
+        setShowActivateModal(false);
+        setCategoryToActivate(null);
+      } else {
+        Alert.alert('Error', data.message || 'Failed to activate category');
+      }
+    } catch (error) {
+      console.error('❌ Error activating category:', error);
+      Alert.alert('Error', 'Failed to activate category. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelActivate = () => {
+    setShowActivateModal(false);
+    setCategoryToActivate(null);
+  };
+
+  const handleAddCategory = () => {
+    setEditingCategoryId(null);
+    setOriginalValues(null);
+    setCategoryName('');
+    setCategoryImage(null);
+    setVisibility(1);
+    setShowAddModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowAddModal(false);
+    setEditingCategoryId(null);
+    setOriginalValues(null);
+    setCategoryName('');
+    setCategoryImage(null);
+    setVisibility(1);
+    setShowVisibilityDropdown(false);
+  };
+
+  const handleImageUpload = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Permission to access media library is required!');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        console.log('📷 Image selected:', {
+          uri: asset.uri,
+          type: asset.type,
+          width: asset.width,
+          height: asset.height,
+          fileName: asset.fileName
+        });
+        setCategoryImage(asset.uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const visibilityOptions = [
+    { label: 'On', value: 1 },
+    { label: 'Off', value: 0 },
+  ];
+
+  const handleSubmitCategory = async () => {
+    // Validation
+    if (!categoryName.trim()) {
+      Alert.alert('Validation Error', 'Please enter category name');
+      return;
+    }
+
+    if (!editingCategoryId && !categoryImage) {
+      Alert.alert('Validation Error', 'Please upload category image');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('title', categoryName.trim());
+      formData.append('status', visibility.toString());
+      formData.append('visibility', visibility.toString());
+
+      // Add image file - only if it's a new upload (not an existing URL from edit)
+      // For edit mode, only upload if it's a new image (blob/data URL or file://)
+      const isEditMode = editingCategoryId !== null;
+      const isNewImage = categoryImage && (
+        categoryImage.startsWith('blob:') || 
+        categoryImage.startsWith('data:') || 
+        categoryImage.startsWith('file://') ||
+        !categoryImage.startsWith('http')
+      );
+
+      if (categoryImage && (!isEditMode || isNewImage)) {
+        // Extract file extension from URI
+        const uriParts = categoryImage.split('.');
+        const fileExtension = uriParts.length > 1 ? uriParts[uriParts.length - 1].toLowerCase() : 'jpg';
+        const fileName = `category_${Date.now()}.${fileExtension}`;
+        
+        // Determine MIME type based on extension
+        let mimeType = 'image/jpeg';
+        if (fileExtension === 'png') {
+          mimeType = 'image/png';
+        } else if (fileExtension === 'gif') {
+          mimeType = 'image/gif';
+        } else if (fileExtension === 'jpg' || fileExtension === 'jpeg') {
+          mimeType = 'image/jpeg';
+        }
+        
+        console.log('📤 Uploading image:', {
+          uri: categoryImage,
+          name: fileName,
+          type: mimeType,
+          fileExtension: fileExtension,
+          isEditMode: isEditMode,
+          isNewImage: isNewImage
+        });
+        
+        // Check if running on web platform
+        const isWeb = typeof window !== 'undefined';
+        
+        if (isWeb) {
+          // For web, try to get file from ImagePicker result first
+          // If not available, convert URI to Blob/File
+          let fileToUpload: File | Blob | null = null;
+          
+          // Check if we have a file object stored (from ImagePicker on web)
+          const imageState = categoryImage as any;
+          if (imageState?.file instanceof File) {
+            fileToUpload = imageState.file;
+            console.log('✅ Web: Using File object from ImagePicker');
+          } else {
+            // Try to convert URI to File
+            try {
+              // Check if it's a blob URL or data URL
+              if (categoryImage.startsWith('blob:') || categoryImage.startsWith('data:')) {
+                const response = await fetch(categoryImage);
+                const blob = await response.blob();
+                fileToUpload = new File([blob], fileName, { type: mimeType });
+                console.log('✅ Web: Converted blob/data URL to File');
+              } else if (!categoryImage.startsWith('http')) {
+                // Local file - fetch and convert
+                const response = await fetch(categoryImage);
+                const blob = await response.blob();
+                fileToUpload = new File([blob], fileName, { type: mimeType });
+                console.log('✅ Web: Converted local file to File');
+              }
+            } catch (error) {
+              console.error('❌ Error converting image to file:', error);
+              // Fallback: try as React Native format (might work in some cases)
+              formData.append('categoryImage', {
+                uri: categoryImage,
+                name: fileName,
+                type: mimeType,
+              } as any);
+              console.log('⚠️ Web: Using fallback React Native format');
+            }
+          }
+          
+          if (fileToUpload) {
+            formData.append('categoryImage', fileToUpload);
+            console.log('✅ Web: File appended to FormData:', {
+              name: fileToUpload instanceof File ? fileToUpload.name : 'blob',
+              type: fileToUpload.type,
+              size: fileToUpload.size
+            });
+          }
+        } else {
+          // React Native FormData format
+          formData.append('categoryImage', {
+            uri: categoryImage,
+            name: fileName,
+            type: mimeType,
+          } as any);
+          console.log('✅ React Native: File appended to FormData');
+        }
+      }
+
+      // Determine endpoint and method
+      const endpoint = isEditMode 
+        ? `${API_ENDPOINTS.ADMIN_CATEGORIES}/${editingCategoryId}`
+        : API_ENDPOINTS.ADMIN_CATEGORIES;
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      // Create or update the category
+      const response = await fetch(endpoint, {
+        method: method,
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Success',
+          text2: isEditMode ? 'Category Updated Successfully' : 'New Category Created Successfully',
+        });
+        // Refresh the categories list
+        await fetchCategories();
+        // Close modal and reset form
+        handleCloseModal();
+      } else {
+        Alert.alert('Error', data.message || `Failed to ${isEditMode ? 'update' : 'create'} category`);
+      }
+    } catch (error) {
+      console.error('❌ Error creating category:', error);
+      Alert.alert('Error', 'Failed to create category. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const styles = createStyles(width, height);
 
   if (loading) {
@@ -188,27 +633,41 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
   const paginatedCategories = getPaginatedCategories();
 
   return (
-    <ScrollView 
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-      nestedScrollEnabled={true}
-      scrollEnabled={true}
-      bounces={true}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#06b6d4']} />
-      }
-    >
+    <View style={{ flex: 1 }}>
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+        scrollEnabled={true}
+        bounces={true}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#06b6d4']} />
+        }
+      >
       <View style={styles.customersContainer}>
         <View style={styles.customersHeader}>
-          <View style={styles.controlsRow}>
-            {/* Left side - Title */}
-            <Text style={styles.customersTitle}>
-              Categories
-            </Text>
-            
-            {/* Right side - Sort and Records */}
+          <Text style={styles.customersTitle}>
+            Categories
+          </Text>
+        </View>
+
+        <View style={styles.tableWrapper}>
+          <View style={styles.tableControlsRow}>
+            {/* Add Category, Sort and Records - aligned with table header */}
             <View style={styles.controlsRight}>
+              {/* Add Category Button */}
+              <View style={styles.addButtonWrapper}>
+                <View style={styles.labelSpacer} />
+                <TouchableOpacity 
+                  style={styles.addButton}
+                  onPress={handleAddCategory}
+                >
+                  <Ionicons name="add" size={isDesktop ? 18 : 16} color="#ffffff" />
+                  <Text style={styles.addButtonText}>Add Category</Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Sort Dropdown */}
               <View style={styles.dropdownWrapperSort}>
                 <Text style={styles.dropdownLabel}>Sort By:</Text>
@@ -309,9 +768,6 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
               </View>
             </View>
           </View>
-        </View>
-
-        <View style={styles.tableWrapper}>
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={true} 
@@ -334,6 +790,14 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
                   <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
                   <Text style={styles.tableHeaderText}>Created On</Text>
                 </View>
+                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 150 : isTablet ? 100 : 80 }]}>
+                  <Ionicons name="eye" size={isDesktop ? 16 : 14} color="#ffffff" />
+                  <Text style={styles.tableHeaderText}>Visibility</Text>
+                </View>
+                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 220 : isTablet ? 100 : 80 }]}>
+                  <Ionicons name="settings" size={isDesktop ? 16 : 14} color="#ffffff" />
+                  <Text style={styles.tableHeaderText}>Action</Text>
+                </View>
               </View>
 
               {/* Table Body */}
@@ -355,8 +819,40 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
                     <View style={[styles.tableCell, { width: isDesktop ? 300 : isTablet ? 100 : 50 }]}>
                       <Text style={styles.tableCellText}>{categories.title || 'N/A'}</Text>
                     </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 250 : isTablet ? 70 : 35  }]}>
+                    <View style={[styles.tableCell, { width: isDesktop ? 290 : isTablet ? 70 : 35  }]}>
                       <Text style={styles.tableCellText}>{formatDate(categories.created_at) || 'N/A'}</Text>
+                    </View>
+                    <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 100 : 80 }]}>
+                      <Switch
+                        value={visibilityStates[categories.id] !== undefined ? visibilityStates[categories.id] : true}
+                        onValueChange={(value) => handleVisibilityToggle(categories.id, value)}
+                        trackColor={{ false: '#e2e8f0', true: '#06b6d4' }}
+                        thumbColor="#ffffff"
+                        ios_backgroundColor="#e2e8f0"
+                      />
+                    </View>
+                    <View style={[styles.tableCell, styles.actionCell, { width: isDesktop ? 150 : isTablet ? 100 : 80 }]}>
+                      <TouchableOpacity 
+                        style={styles.actionButton}
+                        onPress={() => handleEdit(categories.id)}
+                      >
+                        <Ionicons name="create-outline" size={isDesktop ? 18 : 16} color="#06b6d4" />
+                      </TouchableOpacity>
+                      {((categories.status === 0) && (categories.visibility === false || categories.visibility === 0 || (typeof categories.visibility === 'number' && categories.visibility === 0))) ? (
+                        <TouchableOpacity 
+                          style={styles.actionButton}
+                          onPress={() => handleActivate(categories.id)}
+                        >
+                          <Ionicons name="checkmark-circle-outline" size={isDesktop ? 18 : 16} color="#10b981" />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity 
+                          style={styles.actionButton}
+                          onPress={() => handleDelete(categories.id)}
+                        >
+                          <Ionicons name="trash-outline" size={isDesktop ? 18 : 16} color="#ef4444" />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 );
@@ -418,7 +914,225 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
           </View>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelDelete}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteIconContainer}>
+              <View style={styles.deleteIconCircle}>
+                <Ionicons name="trash" size={isDesktop ? 32 : 28} color="#ef4444" />
+              </View>
+            </View>
+            <Text style={styles.deleteModalTitle}>Delete Category Type?</Text>
+            <Text style={styles.deleteModalText}>
+              Are You Sure You Want to Delete The {categoryToDelete?.title || 'Category'}?
+            </Text>
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={styles.deleteCancelButton}
+                onPress={handleCancelDelete}
+              >
+                <Text style={styles.deleteCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteConfirmButton}
+                onPress={handleConfirmDelete}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.deleteConfirmButtonText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Activate Confirmation Modal */}
+      <Modal
+        visible={showActivateModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelActivate}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteIconContainer}>
+              <View style={styles.activateIconCircle}>
+                <Ionicons name="checkmark-circle" size={isDesktop ? 32 : 28} color="#10b981" />
+              </View>
+            </View>
+            <Text style={styles.deleteModalTitle}>Make Active?</Text>
+            <Text style={styles.deleteModalText}>
+              Are You Sure You Want to Make Active The {categoryToActivate?.title || 'Category'}?
+            </Text>
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={styles.deleteCancelButton}
+                onPress={handleCancelActivate}
+              >
+                <Text style={styles.deleteCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.activateConfirmButton}
+                onPress={handleConfirmActivate}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.activateConfirmButtonText}>Active</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Category Modal */}
+      <Modal
+        visible={showAddModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCloseModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingCategoryId ? 'Edit Category' : 'Add New Category'}
+              </Text>
+              <TouchableOpacity onPress={handleCloseModal} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Body */}
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Category Name */}
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Category Name</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter category name"
+                  placeholderTextColor="#94a3b8"
+                  value={categoryName}
+                  onChangeText={setCategoryName}
+                />
+              </View>
+
+              {/* Category Image */}
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Category Image</Text>
+                <TouchableOpacity
+                  style={styles.imageUploadInput}
+                  onPress={handleImageUpload}
+                >
+                  <Text style={styles.imageUploadInputText}>
+                    {categoryImage ? 'Image Selected' : 'Tap to upload image'}
+                  </Text>
+                  <Ionicons name="cloud-upload-outline" size={20} color="#06b6d4" />
+                </TouchableOpacity>
+                {categoryImage && (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image source={{ uri: categoryImage }} style={styles.imagePreview} />
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={() => setCategoryImage(null)}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* Visibility */}
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Visibility</Text>
+                <View style={styles.visibilityDropdownWrapper}>
+                  <TouchableOpacity
+                    style={styles.visibilityDropdownButton}
+                    onPress={() => {
+                      setShowVisibilityDropdown(!showVisibilityDropdown);
+                    }}
+                  >
+                    <Text style={styles.visibilityDropdownText}>
+                      {visibilityOptions.find(opt => opt.value === visibility)?.label || 'Select'}
+                    </Text>
+                    <Ionicons
+                      name={showVisibilityDropdown ? "chevron-up" : "chevron-down"}
+                      size={20}
+                      color="#64748b"
+                    />
+                  </TouchableOpacity>
+                  {showVisibilityDropdown && (
+                    <View style={styles.visibilityDropdownMenu}>
+                      {visibilityOptions.map((option) => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.visibilityDropdownItem,
+                            visibility === option.value && styles.visibilityDropdownItemActive
+                          ]}
+                          onPress={() => {
+                            setVisibility(option.value);
+                            setShowVisibilityDropdown(false);
+                          }}
+                        >
+                          <Text style={[
+                            styles.visibilityDropdownItemText,
+                            visibility === option.value && styles.visibilityDropdownItemTextActive
+                          ]}>
+                            {option.label}
+                          </Text>
+                          {visibility === option.value && (
+                            <Ionicons name="checkmark" size={20} color="#06b6d4" />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Modal Footer */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={handleCloseModal}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalSubmitButton, 
+                  (loading || !isFormValid() || !hasChanges()) && styles.modalSubmitButtonDisabled
+                ]}
+                onPress={handleSubmitCategory}
+                disabled={loading || !isFormValid() || !hasChanges()}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.modalSubmitButtonText}>Submit</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -481,7 +1195,7 @@ const createStyles = (width: number, height: number) => {
       width: '100%',
     },
     customersHeader: {
-      marginBottom: 12,
+      marginBottom: -20,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -490,40 +1204,76 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '700',
       color: '#0f172a',
       paddingBottom: 2,
-      flexShrink: 1,
+      flexShrink: 0,
     },
-    controlsRow: {
-      flexDirection: isMobile ? 'column' : 'row',
-      justifyContent: 'space-between',
-      alignItems: isMobile ? 'flex-start' : 'flex-end',
-      gap: isMobile ? 16 : 12,
+    tableControlsRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      alignItems: 'flex-end',
       marginBottom: 12,
       zIndex: 500,
       overflow: 'visible',
     },
     controlsRight: {
       flexDirection: isMobile ? 'column' : 'row',
-      gap: isMobile ? 12 : 10,
-      alignItems: isMobile ? 'stretch' : 'center',
+      gap: isMobile ? 12 : 8,
+      alignItems: 'flex-end',
       width: isMobile ? '100%' : 'auto',
       zIndex: 500,
       overflow: 'visible',
+      flexShrink: 1,
+      marginRight: isDesktop ? 105 : isTablet ? 30 : 20,
+    },
+    addButtonWrapper: {
+      position: 'relative',
+      zIndex: 1000,
+      flexShrink: 0,
+      display: 'flex',
+      flexDirection: 'column',
+    },
+    labelSpacer: {
+      height: 20,
+      marginBottom: 0,
+    },
+    addButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#06b6d4',
+      borderRadius: 10,
+      paddingHorizontal: isDesktop ? 16 : isTablet ? 14 : 12,
+      paddingVertical: isDesktop ? 10 : isTablet ? 8 : 6,
+      gap: isDesktop ? 8 : 6,
+      height: isMobile ? 36 : 38,
+      flexShrink: 0,
+      justifyContent: 'center',
+    },
+    addButtonText: {
+      fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
+      fontWeight: '600',
+      color: '#ffffff',
     },
     dropdownWrapperSort: {
       position: 'relative',
-      width: isDesktop ? 160 : isTablet ? 140 : '100%',
+      width: isDesktop ? 150 : isTablet ? 130 : '100%',
       zIndex: 1000,
+      flexShrink: 0,
+      display: 'flex',
+      flexDirection: 'column',
     },
     dropdownWrapperShow: {
       position: 'relative',
-      width: isDesktop ? 80 : isTablet ? 70 : '100%',
+      width: isDesktop ? 75 : isTablet ? 65 : '100%',
       zIndex: 1000,
+      flexShrink: 0,
+      display: 'flex',
+      flexDirection: 'column',
     },
     dropdownLabel: {
       fontSize: isDesktop ? 11 : 10,
       fontWeight: '600',
       color: '#64748b',
       marginBottom: 4,
+      height: 16,
     },
     dropdownButtonSort: {
       flexDirection: 'row',
@@ -536,6 +1286,7 @@ const createStyles = (width: number, height: number) => {
       paddingVertical: isDesktop ? 8 : 6,
       height: isMobile ? 36 : 38,
       gap: isDesktop ? 8 : 6,
+      justifyContent: 'center',
     },
     dropdownButtonShow: {
       flexDirection: 'row',
@@ -548,6 +1299,7 @@ const createStyles = (width: number, height: number) => {
       paddingVertical: isDesktop ? 8 : 6,
       height: isMobile ? 36 : 38,
       gap: 4,
+      justifyContent: 'center',
     },
     dropdownButtonText: {
       flex: 1,
@@ -619,6 +1371,7 @@ const createStyles = (width: number, height: number) => {
     // Table Styles
     tableWrapper: {
       marginBottom: 12,
+      marginLeft: isDesktop ? 95 : isTablet ? 130 : 110,
     },
     tableScrollView: {
       width: '100%',
@@ -676,6 +1429,17 @@ const createStyles = (width: number, height: number) => {
       color: '#0f172a',
       fontWeight: '500',
     },
+    actionCell: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: isDesktop ? 12 : isTablet ? 10 : 8,
+      justifyContent: 'center',
+    },
+    actionButton: {
+      padding: isDesktop ? 6 : isTablet ? 5 : 4,
+      borderRadius: 6,
+      backgroundColor: '#f8fafc',
+    },
     // Pagination Styles
     paginationContainer: {
       flexDirection: isDesktop ? 'row' : 'column',
@@ -716,6 +1480,303 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '600',
       color: '#0f172a',
       marginHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
+    },
+    // Modal Styles
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      width: isDesktop ? 550 : isTablet ? 480 : width - 40,
+      maxHeight: height * 0.98,
+      backgroundColor: '#ffffff',
+      borderRadius: 20,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 10,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: isDesktop ? 10 : isTablet ? 14 : 12,
+      backgroundColor: '#6366f1',
+      borderBottomWidth: 0,
+    },
+    modalTitle: {
+      fontSize: isDesktop ? 22 : isTablet ? 20 : 18,
+      fontWeight: '700',
+      color: '#ffffff',
+    },
+    modalCloseButton: {
+      padding: 6,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    modalBody: {
+      maxHeight: height * 0.85,
+      padding: isDesktop ? 24 : isTablet ? 20 : 18,
+      backgroundColor: '#f8fafc',
+    },
+    modalField: {
+      marginBottom: isDesktop ? 16 : isTablet ? 14 : 12,
+    },
+    modalLabel: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      color: '#1e293b',
+      marginBottom: 8,
+    },
+    modalInput: {
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      borderRadius: 12,
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      color: '#0f172a',
+      backgroundColor: '#ffffff',
+    },
+    // Image Upload Styles
+    imageUploadInput: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      borderRadius: 12,
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      backgroundColor: '#ffffff',
+    },
+    imageUploadInputText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '500',
+      color: '#64748b',
+      flex: 1,
+    },
+    imagePreviewContainer: {
+      position: 'relative',
+      width: '100%',
+      height: isDesktop ? 50 : isTablet ? 46 : 42,
+      marginTop: 12,
+      borderRadius: 12,
+      overflow: 'hidden',
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#ffffff',
+    },
+    imagePreview: {
+      width: '100%',
+      height: '100%',
+      resizeMode: 'cover',
+    },
+    removeImageButton: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      borderRadius: 50,
+      padding: 2,
+    },
+    // Visibility Dropdown Styles
+    visibilityDropdownWrapper: {
+      position: 'relative',
+      zIndex: 1000,
+    },
+    visibilityDropdownButton: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      borderRadius: 12,
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      backgroundColor: '#ffffff',
+    },
+    visibilityDropdownText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '500',
+      color: '#0f172a',
+    },
+    visibilityDropdownMenu: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      right: 0,
+      marginTop: 4,
+      backgroundColor: '#ffffff',
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 5,
+      zIndex: 10000,
+      overflow: 'hidden',
+    },
+    visibilityDropdownItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    visibilityDropdownItemActive: {
+      backgroundColor: '#f0fdfa',
+    },
+    visibilityDropdownItemText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '500',
+      color: '#0f172a',
+    },
+    visibilityDropdownItemTextActive: {
+      color: '#06b6d4',
+      fontWeight: '600',
+    },
+    modalFooter: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 12,
+      padding: isDesktop ? 10 : isTablet ? 14 : 12,
+      backgroundColor: '#f1f5f9',
+      borderTopWidth: 2,
+      borderTopColor: '#e2e8f0',
+    },
+    modalCancelButton: {
+      paddingHorizontal: isDesktop ? 24 : isTablet ? 20 : 18,
+      paddingVertical: isDesktop ? 12 : isTablet ? 10 : 8,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: '#94a3b8',
+      backgroundColor: '#cbd5e1',
+    },
+    modalCancelButtonText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      color: '#475569',
+    },
+    modalSubmitButton: {
+      paddingHorizontal: isDesktop ? 24 : isTablet ? 20 : 18,
+      paddingVertical: isDesktop ? 12 : isTablet ? 10 : 8,
+      borderRadius: 12,
+      backgroundColor: '#06b6d4',
+      shadowColor: '#06b6d4',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    modalSubmitButtonDisabled: {
+      opacity: 0.6,
+    },
+    modalSubmitButtonText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '700',
+      color: '#ffffff',
+    },
+    // Delete Modal Styles
+    deleteModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    deleteModalContent: {
+      width: isDesktop ? 400 : isTablet ? 360 : width - 60,
+      backgroundColor: '#ffffff',
+      borderRadius: 20,
+      padding: isDesktop ? 32 : isTablet ? 28 : 24,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 10,
+    },
+    deleteIconContainer: {
+      marginBottom: isDesktop ? 20 : isTablet ? 18 : 16,
+    },
+    deleteIconCircle: {
+      width: isDesktop ? 80 : isTablet ? 72 : 64,
+      height: isDesktop ? 80 : isTablet ? 72 : 64,
+      borderRadius: isDesktop ? 40 : isTablet ? 36 : 32,
+      backgroundColor: '#fee2e2',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    deleteModalTitle: {
+      fontSize: isDesktop ? 22 : isTablet ? 20 : 18,
+      fontWeight: '700',
+      color: '#0f172a',
+      marginBottom: isDesktop ? 12 : isTablet ? 10 : 8,
+      textAlign: 'center',
+    },
+    deleteModalText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      color: '#64748b',
+      textAlign: 'center',
+      marginBottom: isDesktop ? 28 : isTablet ? 24 : 20,
+      lineHeight: isDesktop ? 22 : isTablet ? 20 : 18,
+    },
+    deleteModalButtons: {
+      flexDirection: 'row',
+      gap: isDesktop ? 12 : isTablet ? 10 : 8,
+      width: '100%',
+    },
+    deleteCancelButton: {
+      flex: 1,
+      paddingVertical: isDesktop ? 12 : isTablet ? 10 : 8,
+      borderRadius: 10,
+      backgroundColor: '#cbd5e1',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    deleteCancelButtonText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      color: '#475569',
+    },
+    deleteConfirmButton: {
+      flex: 1,
+      paddingVertical: isDesktop ? 12 : isTablet ? 10 : 8,
+      borderRadius: 10,
+      backgroundColor: '#ef4444',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    deleteConfirmButtonText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+    // Activate Modal Styles
+    activateIconCircle: {
+      width: isDesktop ? 80 : isTablet ? 72 : 64,
+      height: isDesktop ? 80 : isTablet ? 72 : 64,
+      borderRadius: isDesktop ? 40 : isTablet ? 36 : 32,
+      backgroundColor: '#d1fae5',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    activateConfirmButton: {
+      flex: 1,
+      paddingVertical: isDesktop ? 12 : isTablet ? 10 : 8,
+      borderRadius: 10,
+      backgroundColor: '#10b981',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    activateConfirmButtonText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      color: '#ffffff',
     },
   });
 };

@@ -80,6 +80,7 @@ CREATE TABLE tbl_category (
   title VARCHAR(90) NOT NULL,
   status TINYINT NOT NULL DEFAULT 1,
   image varchar(255) NOT NULL,
+  visibility TINYINT NOT NULL DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

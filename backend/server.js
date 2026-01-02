@@ -123,13 +123,19 @@ const storage = multer.diskStorage({
       cb(null, 'uploads/workdocuments/'); // Add workdocuments destination
     } else if (file.fieldname === 'quoteDocuments') {
       cb(null, 'uploads/quotedocs/'); // Add quotedocs destination
+    } else if (file.fieldname === 'categoryImage') {
+      cb(null, 'uploads/categorys/');
     } else {
       cb(null, 'uploads/');
     }
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    if (file.fieldname === 'categoryImage') {
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    } else {
+      cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
   }
 });
 
@@ -5006,6 +5012,162 @@ message: 'failed to fetch categories',
 error: error.message
 });
 }
+});
+
+// Create Category for admin
+app.post('/api/admin/categories', upload.single('categoryImage'), async (req, res) => {
+  try {
+    const { title, status, visibility } = req.body;
+    // Validation
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category name is required'
+      });
+    }
+
+    if (!req.file) {
+      console.error('❌ No file received in request');
+      return res.status(400).json({
+        success: false,
+        message: 'Category image is required'
+      });
+    }
+
+    // Validate status/visibility - should be 0 or 1
+    const statusValue = status !== undefined ? parseInt(status) : (visibility !== undefined ? parseInt(visibility) : 1);
+    if (statusValue !== 0 && statusValue !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Visibility status must be 0 or 1'
+      });
+    }
+
+    // Store only filename in database (without path)
+    const imageFileName = req.file.filename;
+
+    // Insert into database - using both status and visibility to match table structure
+    const query = `INSERT INTO tbl_category (title, image, status, visibility) VALUES (?, ?, ?, ?)`;
+    const [result] = await pool.execute(query, [title.trim(), imageFileName, statusValue, statusValue]);
+
+    res.json({
+      success: true,
+      message: 'Category created successfully',
+      category: {
+        id: result.insertId,
+        title: title.trim(),
+        image: imageFileName,
+        status: statusValue,
+        visibility: statusValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create category',
+      error: error.message
+    });
+  }
+});
+
+// Update Category for admin
+app.put('/api/admin/categories/:id', upload.single('categoryImage'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, status, visibility } = req.body;
+
+    // Validation
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category name is required'
+      });
+    }
+
+    // Validate status/visibility - should be 0 or 1
+    const statusValue = status !== undefined ? parseInt(status) : (visibility !== undefined ? parseInt(visibility) : 1);
+    if (statusValue !== 0 && statusValue !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Visibility status must be 0 or 1'
+      });
+    }
+
+    // Check if category exists
+    const [existingCategory] = await pool.execute('SELECT * FROM tbl_category WHERE id = ?', [id]);
+    if (existingCategory.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Category not found'
+      });
+    }
+
+    let imageFileName = existingCategory[0].image;
+
+    // If new image is uploaded, use it; otherwise keep existing
+    if (req.file) {
+      imageFileName = req.file.filename;
+    }
+
+    // Update database
+    const query = `UPDATE tbl_category SET title = ?, image = ?, status = ?, visibility = ? WHERE id = ?`;
+    await pool.execute(query, [title.trim(), imageFileName, statusValue, statusValue, id]);
+
+    res.json({
+      success: true,
+      message: 'Category updated successfully',
+      category: {
+        id: parseInt(id),
+        title: title.trim(),
+        image: imageFileName,
+        status: statusValue,
+        visibility: statusValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update category',
+      error: error.message
+    });
+  }
+});
+
+// Delete category for admin (soft delete - update status and visibility to 0)
+app.delete('/api/admin/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if category exists
+    const [existingCategory] = await pool.execute('SELECT * FROM tbl_category WHERE id = ?', [id]);
+    if (existingCategory.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Category not found'
+      });
+    }
+
+    // Update status and visibility to 0 (soft delete)
+    const query = `UPDATE tbl_category SET status = 0, visibility = 0 WHERE id = ?`;
+    await pool.execute(query, [id]);
+
+    res.json({
+      success: true,
+      message: 'Category deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete category',
+      error: error.message
+    });
+  }
 });
 
 //get SubCategories for admin
