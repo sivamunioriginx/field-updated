@@ -125,13 +125,15 @@ const storage = multer.diskStorage({
       cb(null, 'uploads/quotedocs/'); // Add quotedocs destination
     } else if (file.fieldname === 'categoryImage') {
       cb(null, 'uploads/categorys/');
+    } else if (file.fieldname === 'image') {
+      cb(null, 'uploads/subcategorys/');
     } else {
       cb(null, 'uploads/');
     }
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    if (file.fieldname === 'categoryImage') {
+    if (file.fieldname === 'categoryImage' || file.fieldname === 'image') {
       cb(null, uniqueSuffix + path.extname(file.originalname));
     } else {
       cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
@@ -5111,9 +5113,13 @@ app.put('/api/admin/categories/:id', upload.single('categoryImage'), async (req,
       imageFileName = req.file.filename;
     }
 
-    // Update database
+    // Update database - preserve existing status if not provided, only update visibility if provided
+    const existingStatus = existingCategory[0].status;
+    const finalStatus = status !== undefined ? parseInt(status) : existingStatus;
+    const finalVisibility = visibility !== undefined ? parseInt(visibility) : existingCategory[0].visibility;
+    
     const query = `UPDATE tbl_category SET title = ?, image = ?, status = ?, visibility = ? WHERE id = ?`;
-    await pool.execute(query, [title.trim(), imageFileName, statusValue, statusValue, id]);
+    await pool.execute(query, [title.trim(), imageFileName, finalStatus, finalVisibility, id]);
 
     res.json({
       success: true,
@@ -5137,7 +5143,7 @@ app.put('/api/admin/categories/:id', upload.single('categoryImage'), async (req,
   }
 });
 
-// Delete category for admin (soft delete - update status and visibility to 0)
+// Delete category for admin (soft delete - update only status to 0)
 app.delete('/api/admin/categories/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -5151,8 +5157,8 @@ app.delete('/api/admin/categories/:id', async (req, res) => {
       });
     }
 
-    // Update status and visibility to 0 (soft delete)
-    const query = `UPDATE tbl_category SET status = 0, visibility = 0 WHERE id = ?`;
+    // Update only status to 0 (soft delete), keep other values unchanged
+    const query = `UPDATE tbl_category SET status = 0 WHERE id = ?`;
     await pool.execute(query, [id]);
 
     res.json({
@@ -5186,6 +5192,182 @@ const [subcategories] = await pool.query(query);
     res.status(500).json({
       success: false,
       message: 'failed to fetch subcategories',
+      error: error.message
+    });
+  }
+});
+
+// Create Subcategory for admin
+app.post('/api/admin/subcategories', upload.single('image'), async (req, res) => {
+  try {
+    const { name, category_id, status, visibility } = req.body;
+    
+    // Validation
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory name is required'
+      });
+    }
+
+    if (!category_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory image is required'
+      });
+    }
+
+    // Validate status/visibility - should be 0 or 1
+    const statusValue = status !== undefined ? parseInt(status) : (visibility !== undefined ? parseInt(visibility) : 1);
+    if (statusValue !== 0 && statusValue !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Visibility status must be 0 or 1'
+      });
+    }
+
+    // Store only filename in database (without path)
+    const imageFileName = req.file.filename;
+
+    // Insert into database
+    const query = `INSERT INTO tbl_subcategory (name, category_id, image, status, visibility) VALUES (?, ?, ?, ?, ?)`;
+    const [result] = await pool.execute(query, [name.trim(), category_id, imageFileName, statusValue, statusValue]);
+
+    res.json({
+      success: true,
+      message: 'Subcategory created successfully',
+      subcategory: {
+        id: result.insertId,
+        name: name.trim(),
+        category_id: category_id,
+        image: imageFileName,
+        status: statusValue,
+        visibility: statusValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating subcategory:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create subcategory',
+      error: error.message
+    });
+  }
+});
+
+// Update Subcategory for admin
+app.put('/api/admin/subcategories/:id', upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, category_id, status, visibility } = req.body;
+    
+    // Validation
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory name is required'
+      });
+    }
+
+    if (!category_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required'
+      });
+    }
+
+    // Validate status/visibility - should be 0 or 1
+    const statusValue = status !== undefined ? parseInt(status) : (visibility !== undefined ? parseInt(visibility) : 1);
+    if (statusValue !== 0 && statusValue !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Visibility status must be 0 or 1'
+      });
+    }
+
+    // Check if subcategory exists
+    const [existingSubcategory] = await pool.execute('SELECT * FROM tbl_subcategory WHERE id = ?', [id]);
+    if (existingSubcategory.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subcategory not found'
+      });
+    }
+
+    let imageFileName = existingSubcategory[0].image;
+
+    // If new image is uploaded, use it; otherwise keep existing
+    if (req.file) {
+      imageFileName = req.file.filename;
+    }
+
+    // Update database - preserve existing status if not provided, only update visibility if provided
+    const existingStatus = existingSubcategory[0].status;
+    const finalStatus = status !== undefined ? parseInt(status) : existingStatus;
+    const finalVisibility = visibility !== undefined ? parseInt(visibility) : existingSubcategory[0].visibility;
+    
+    const query = `UPDATE tbl_subcategory SET name = ?, category_id = ?, image = ?, status = ?, visibility = ? WHERE id = ?`;
+    await pool.execute(query, [name.trim(), category_id, imageFileName, finalStatus, finalVisibility, id]);
+
+    res.json({
+      success: true,
+      message: 'Subcategory updated successfully',
+      subcategory: {
+        id: parseInt(id),
+        name: name.trim(),
+        category_id: category_id,
+        image: imageFileName,
+        status: statusValue,
+        visibility: statusValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating subcategory:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update subcategory',
+      error: error.message
+    });
+  }
+});
+
+// Delete Subcategory for admin (soft delete - update status to 0)
+app.delete('/api/admin/subcategories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if subcategory exists
+    const [existingSubcategory] = await pool.execute('SELECT * FROM tbl_subcategory WHERE id = ?', [id]);
+    if (existingSubcategory.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subcategory not found'
+      });
+    }
+
+    // Update status to 0 (soft delete)
+    const query = `UPDATE tbl_subcategory SET status = 0 WHERE id = ?`;
+    await pool.execute(query, [id]);
+
+    res.json({
+      success: true,
+      message: 'Subcategory deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting subcategory:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete subcategory',
       error: error.message
     });
   }

@@ -70,6 +70,7 @@ CREATE TABLE tbl_subcategory (
   name VARCHAR(90) NOT NULL,
   category_id VARCHAR(50),
   status TINYINT NOT NULL DEFAULT 1,
+  visibility TINYINT NOT NULL DEFAULT 1,
   image varchar(255) NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

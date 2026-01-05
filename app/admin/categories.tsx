@@ -211,8 +211,10 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
 
       const formData = new FormData();
       formData.append('title', category.title);
+      // Keep existing status, only update visibility
+      const existingStatus = category.status !== undefined ? category.status : 1;
+      formData.append('status', existingStatus.toString());
       const visibilityValue = value ? 1 : 0;
-      formData.append('status', visibilityValue.toString());
       formData.append('visibility', visibilityValue.toString());
 
       const response = await fetch(`${API_ENDPOINTS.ADMIN_CATEGORIES}/${categoryId}`, {
@@ -838,7 +840,7 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
                       >
                         <Ionicons name="create-outline" size={isDesktop ? 18 : 16} color="#06b6d4" />
                       </TouchableOpacity>
-                      {((categories.status === 0) && (categories.visibility === false || categories.visibility === 0 || (typeof categories.visibility === 'number' && categories.visibility === 0))) ? (
+                      {(categories.status === 0) ? (
                         <TouchableOpacity 
                           style={styles.actionButton}
                           onPress={() => handleActivate(categories.id)}
@@ -930,9 +932,9 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
                 <Ionicons name="trash" size={isDesktop ? 32 : 28} color="#ef4444" />
               </View>
             </View>
-            <Text style={styles.deleteModalTitle}>Delete Category Type?</Text>
+            <Text style={styles.deleteModalTitle}>Inactive Category Type?</Text>
             <Text style={styles.deleteModalText}>
-              Are You Sure You Want to Delete The {categoryToDelete?.title || 'Category'}?
+              Are You Sure You Want to Inactive The {categoryToDelete?.title || 'Category'}?
             </Text>
             <View style={styles.deleteModalButtons}>
               <TouchableOpacity
@@ -949,7 +951,7 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
                 {loading ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
-                  <Text style={styles.deleteConfirmButtonText}>Delete</Text>
+                  <Text style={styles.deleteConfirmButtonText}>Inactive</Text>
                 )}
               </TouchableOpacity>
             </View>
