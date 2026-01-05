@@ -865,7 +865,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
       <Modal
         visible={showAddModal}
         transparent={true}
-        animationType="slide"
+        animationType="none"
         onRequestClose={handleCloseModal}
       >
         <View style={styles.modalOverlay}>

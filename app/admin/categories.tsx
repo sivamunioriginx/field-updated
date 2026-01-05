@@ -1004,7 +1004,7 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
       <Modal
         visible={showAddModal}
         transparent={true}
-        animationType="slide"
+        animationType="none"
         onRequestClose={handleCloseModal}
       >
         <View style={styles.modalOverlay}>
