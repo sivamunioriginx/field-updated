@@ -95,6 +95,7 @@ CREATE TABLE tbl_services (
   is_top_service TINYINT DEFAULT 0,
   instant_service TINYINT DEFAULT 0,
   status TINYINT NOT NULL DEFAULT 1,
+  visibility TINYINT NOT NULL DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

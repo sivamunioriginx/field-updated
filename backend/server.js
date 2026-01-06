@@ -126,7 +126,12 @@ const storage = multer.diskStorage({
     } else if (file.fieldname === 'categoryImage') {
       cb(null, 'uploads/categorys/');
     } else if (file.fieldname === 'image') {
-      cb(null, 'uploads/subcategorys/');
+      // Check if request is for services
+      if (req.path && req.path.includes('/services')) {
+        cb(null, 'uploads/services/');
+      } else {
+        cb(null, 'uploads/subcategorys/');
+      }
     } else {
       cb(null, 'uploads/');
     }
@@ -5390,6 +5395,209 @@ app.get('/api/admin/services', async (req, res) => {
       success : false,
       message : 'failed to fetch services',
       error : error.message
+    });
+  }
+});
+
+// Create Service for admin
+app.post('/api/admin/services', upload.single('image'), async (req, res) => {
+  try {
+    const { name, subcategory_id, price, rating, is_top_service, instant_service } = req.body;
+    
+    // Validation
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service name is required'
+      });
+    }
+
+    if (!subcategory_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory is required'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service image is required'
+      });
+    }
+
+    if (!price || isNaN(Number(price))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid price is required'
+      });
+    }
+
+    if (!rating || isNaN(Number(rating))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid rating is required'
+      });
+    }
+
+    // Store only filename in database (without path)
+    const imageFileName = req.file.filename;
+
+    // Parse values
+    const priceValue = parseFloat(price);
+    const ratingValue = parseFloat(rating);
+    const isTopServiceValue = is_top_service ? parseInt(is_top_service) : 0;
+    const instantServiceValue = instant_service ? parseInt(instant_service) : 0;
+
+    // Insert into tbl_services
+    const query = `INSERT INTO tbl_services (name, subcategory_id, image, price, rating, is_top_service, instant_service, status, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`;
+    const [result] = await pool.execute(query, [
+      name.trim(), 
+      subcategory_id, 
+      imageFileName, 
+      priceValue, 
+      ratingValue, 
+      isTopServiceValue, 
+      instantServiceValue
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Service created successfully',
+      service: {
+        id: result.insertId,
+        name: name.trim(),
+        subcategory_id: subcategory_id,
+        image: imageFileName,
+        price: priceValue,
+        rating: ratingValue,
+        is_top_service: isTopServiceValue,
+        instant_service: instantServiceValue,
+        status: 1,
+        visibility: 1
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating service:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create service',
+      error: error.message
+    });
+  }
+});
+
+// Update Service for admin
+app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, subcategory_id, price, rating, is_top_service, instant_service, status, visibility } = req.body;
+
+    // Validation
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service name is required'
+      });
+    }
+
+    if (!subcategory_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory is required'
+      });
+    }
+
+    if (!price || isNaN(Number(price))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid price is required'
+      });
+    }
+
+    if (!rating || isNaN(Number(rating))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid rating is required'
+      });
+    }
+
+    // Check if service exists
+    const [existingService] = await pool.execute('SELECT * FROM tbl_services WHERE id = ?', [id]);
+    if (existingService.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found'
+      });
+    }
+
+    // Parse values
+    const priceValue = parseFloat(price);
+    const ratingValue = parseFloat(rating);
+    const isTopServiceValue = is_top_service ? parseInt(is_top_service) : 0;
+    const instantServiceValue = instant_service ? parseInt(instant_service) : 0;
+    const statusValue = status !== undefined ? parseInt(status) : 1;
+    const visibilityValue = visibility !== undefined ? parseInt(visibility) : 1;
+
+    // If image is uploaded, update with new image, otherwise keep existing
+    let updateQuery;
+    let values;
+
+    if (req.file) {
+      const imageFileName = req.file.filename;
+      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, image = ?, price = ?, rating = ?, is_top_service = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
+      values = [name.trim(), subcategory_id, imageFileName, priceValue, ratingValue, isTopServiceValue, instantServiceValue, statusValue, visibilityValue, id];
+    } else {
+      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, price = ?, rating = ?, is_top_service = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
+      values = [name.trim(), subcategory_id, priceValue, ratingValue, isTopServiceValue, instantServiceValue, statusValue, visibilityValue, id];
+    }
+
+    await pool.execute(updateQuery, values);
+
+    res.json({
+      success: true,
+      message: 'Service updated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating service:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update service',
+      error: error.message
+    });
+  }
+});
+
+// Delete (Deactivate) Service for admin
+app.delete('/api/admin/services/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if service exists
+    const [existingService] = await pool.execute('SELECT * FROM tbl_services WHERE id = ?', [id]);
+    if (existingService.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found'
+      });
+    }
+
+    // Set status and visibility to 0 (inactive) instead of actually deleting
+    await pool.execute('UPDATE tbl_services SET status = 0, visibility = 0 WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: 'Service deactivated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deactivating service:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to deactivate service',
+      error: error.message
     });
   }
 });

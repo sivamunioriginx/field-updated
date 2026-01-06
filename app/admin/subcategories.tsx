@@ -308,8 +308,25 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
 
     try {
       setLoading(true);
+      const subcategory = subcategories.find(sub => sub.id === subcategoryToDelete.id);
+      if (!subcategory) {
+        Alert.alert('Error', 'Subcategory not found');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('name', subcategory.name);
+      formData.append('category_id', (subcategory as any).category_id?.toString() || '');
+      formData.append('status', '0');
+      // Keep existing visibility
+      const existingVisibility = subcategory.visibility !== undefined 
+        ? (typeof subcategory.visibility === 'boolean' ? (subcategory.visibility ? 1 : 0) : subcategory.visibility)
+        : 1;
+      formData.append('visibility', existingVisibility.toString());
+
       const response = await fetch(`${API_ENDPOINTS.ADMIN_SUBCATEGORIES}/${subcategoryToDelete.id}`, {
-        method: 'DELETE',
+        method: 'PUT',
+        body: formData,
       });
 
       const data = await response.json();
@@ -318,17 +335,17 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
         Toast.show({
           type: 'success',
           text1: 'Success',
-          text2: 'Subcategory Deleted Successfully',
+          text2: 'Subcategory Inactivated Successfully',
         });
         await fetchSubcategories();
         setShowDeleteModal(false);
         setSubcategoryToDelete(null);
       } else {
-        Alert.alert('Error', data.message || 'Failed to delete subcategory');
+        Alert.alert('Error', data.message || 'Failed to inactivate subcategory');
       }
     } catch (error) {
-      console.error('❌ Error deleting subcategory:', error);
-      Alert.alert('Error', 'Failed to delete subcategory. Please try again.');
+      console.error('❌ Error inactivating subcategory:', error);
+      Alert.alert('Error', 'Failed to inactivate subcategory. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -362,7 +379,11 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
       formData.append('name', subcategory.name);
       formData.append('category_id', (subcategory as any).category_id?.toString() || '');
       formData.append('status', '1');
-      formData.append('visibility', '1');
+      // Keep existing visibility
+      const existingVisibility = subcategory.visibility !== undefined 
+        ? (typeof subcategory.visibility === 'boolean' ? (subcategory.visibility ? 1 : 0) : subcategory.visibility)
+        : 1;
+      formData.append('visibility', existingVisibility.toString());
 
       const response = await fetch(`${API_ENDPOINTS.ADMIN_SUBCATEGORIES}/${subcategoryToActivate.id}`, {
         method: 'PUT',

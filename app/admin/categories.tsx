@@ -315,8 +315,24 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
 
     try {
       setLoading(true);
+      const category = categories.find(cat => cat.id === categoryToDelete.id);
+      if (!category) {
+        Alert.alert('Error', 'Category not found');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('title', category.title);
+      formData.append('status', '0');
+      // Keep existing visibility
+      const existingVisibility = category.visibility !== undefined 
+        ? (typeof category.visibility === 'boolean' ? (category.visibility ? 1 : 0) : category.visibility)
+        : 1;
+      formData.append('visibility', existingVisibility.toString());
+
       const response = await fetch(`${API_ENDPOINTS.ADMIN_CATEGORIES}/${categoryToDelete.id}`, {
-        method: 'DELETE',
+        method: 'PUT',
+        body: formData,
       });
 
       const data = await response.json();
@@ -325,17 +341,17 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
         Toast.show({
           type: 'success',
           text1: 'Success',
-          text2: 'Category Deleted Successfully',
+          text2: 'Category Inactivated Successfully',
         });
         await fetchCategories();
         setShowDeleteModal(false);
         setCategoryToDelete(null);
       } else {
-        Alert.alert('Error', data.message || 'Failed to delete category');
+        Alert.alert('Error', data.message || 'Failed to inactivate category');
       }
     } catch (error) {
-      console.error('❌ Error deleting category:', error);
-      Alert.alert('Error', 'Failed to delete category. Please try again.');
+      console.error('❌ Error inactivating category:', error);
+      Alert.alert('Error', 'Failed to inactivate category. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -368,7 +384,11 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
       const formData = new FormData();
       formData.append('title', category.title);
       formData.append('status', '1');
-      formData.append('visibility', '1');
+      // Keep existing visibility
+      const existingVisibility = category.visibility !== undefined 
+        ? (typeof category.visibility === 'boolean' ? (category.visibility ? 1 : 0) : category.visibility)
+        : 1;
+      formData.append('visibility', existingVisibility.toString());
 
       const response = await fetch(`${API_ENDPOINTS.ADMIN_CATEGORIES}/${categoryToActivate.id}`, {
         method: 'PUT',
