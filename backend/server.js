@@ -80,6 +80,7 @@ const createUploadsDir = async () => {
     await fs.mkdir('uploads/quotedocs', { recursive: true }); // Add quotedocs directory
     await fs.mkdir('uploads/services', { recursive: true }); // Add services directory
     await fs.mkdir('uploads/deals', { recursive: true }); // Add deals directory
+    await fs.mkdir('uploads/animations', { recursive: true }); // Add animations directory
     // List existing profile images
     try {
       const profileFiles = await fs.readdir('uploads/profiles');
@@ -125,6 +126,8 @@ const storage = multer.diskStorage({
       cb(null, 'uploads/quotedocs/'); // Add quotedocs destination
     } else if (file.fieldname === 'categoryImage') {
       cb(null, 'uploads/categorys/');
+    } else if (file.fieldname === 'animationVideo') {
+      cb(null, 'uploads/animations/');
     } else if (file.fieldname === 'image') {
       // Check if request is for services
       if (req.path && req.path.includes('/services')) {
@@ -138,7 +141,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    if (file.fieldname === 'categoryImage' || file.fieldname === 'image') {
+    if (file.fieldname === 'categoryImage' || file.fieldname === 'image' || file.fieldname === 'animationVideo') {
       cb(null, uniqueSuffix + path.extname(file.originalname));
     } else {
       cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
@@ -2437,6 +2440,7 @@ app.get('/api/categories-with-subcategories', async (req, res) => {
         s.image AS subcategory_image
       FROM tbl_category c
       LEFT JOIN tbl_subcategory s ON c.id = s.category_id
+      WHERE c.status = 1 AND c.visibility = 1 AND s.status = 1 AND s.visibility = 1
       ORDER BY c.id, s.id`
     );
 
@@ -2521,7 +2525,7 @@ app.get('/api/top-services', async (req, res) => {
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
       LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
       LEFT JOIN tbl_category c ON sc.category_id = c.id
-      WHERE s.is_top_service = 1
+      WHERE s.is_top_service = 1 AND s.status = 1 AND s.visibility = 1
       ORDER BY s.rating DESC, s.id DESC`
     );
     
@@ -2592,7 +2596,7 @@ app.get('/api/top-deals', async (req, res) => {
       LEFT JOIN tbl_services s ON d.service_id = s.id
       LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
       LEFT JOIN tbl_category c ON sc.category_id = c.id
-      WHERE d.is_active = 1
+      WHERE d.is_active = 1 AND s.status = 1 AND s.visibility = 1
       ORDER BY d.id DESC`
     );
     
@@ -2667,7 +2671,15 @@ app.get('/api/services/search', async (req, res) => {
         s.instant_service
       FROM tbl_services s
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+      LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+      LEFT JOIN tbl_category c ON sc.category_id = c.id
       WHERE s.name LIKE ? 
+        AND s.status = 1 
+        AND s.visibility = 1 
+        AND sc.status = 1 
+        AND sc.visibility = 1 
+        AND c.status = 1 
+        AND c.visibility = 1
       ORDER BY s.id DESC 
       LIMIT 20`,
       [`%${q}%`]
@@ -2735,7 +2747,7 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
 
     // First get all subcategories for this category
     const [subcategories] = await pool.execute(
-      'SELECT id FROM tbl_subcategory WHERE category_id = ?',
+      'SELECT id FROM tbl_subcategory WHERE category_id = ? AND status = 1 AND visibility = 1',
       [categoryId]
     );
 
@@ -2763,7 +2775,15 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
         s.instant_service
       FROM tbl_services s
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+      LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+      LEFT JOIN tbl_category c ON sc.category_id = c.id
       WHERE s.subcategory_id IN (${placeholders}) 
+        AND s.status = 1 
+        AND s.visibility = 1 
+        AND sc.status = 1 
+        AND sc.visibility = 1 
+        AND c.status = 1 
+        AND c.visibility = 1
       ORDER BY s.created_at DESC`,
       subcategoryIds
     );
@@ -2812,7 +2832,15 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
         s.instant_service
       FROM tbl_services s
       LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+      LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+      LEFT JOIN tbl_category c ON sc.category_id = c.id
       WHERE s.subcategory_id = ? 
+        AND s.status = 1 
+        AND s.visibility = 1 
+        AND sc.status = 1 
+        AND sc.visibility = 1 
+        AND c.status = 1 
+        AND c.visibility = 1
       ORDER BY s.created_at DESC`,
       [subcategoryId]
     );
@@ -5176,6 +5204,239 @@ app.delete('/api/admin/categories/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete category',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// ANIMATIONS ENDPOINTS FOR ADMIN
+// ============================================
+
+// Get all animations for admin
+app.get('/api/admin/animations', async (req, res) => {
+  try {
+    const query = `SELECT * FROM tbl_animations ORDER BY id DESC`;
+    const [animations] = await pool.query(query);
+
+    res.json({
+      success: true,
+      animations: animations
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching animations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch animations',
+      error: error.message
+    });
+  }
+});
+
+// Get active animation for Customer APP
+app.get('/api/active-animation', async (req, res) => {
+  try {
+    const query = `SELECT * FROM tbl_animations WHERE status = 1 LIMIT 1`;
+    const [animations] = await pool.query(query);
+
+    if (animations.length > 0) {
+      res.json({
+        success: true,
+        animation: animations[0]
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'No active animation found'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error fetching active animation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch active animation',
+      error: error.message
+    });
+  }
+});
+
+// Create Animation for admin
+app.post('/api/admin/animations', upload.single('animationVideo'), async (req, res) => {
+  try {
+    const { event_name, is_active } = req.body;
+    
+    // Validation
+    if (!event_name || !event_name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Event name is required'
+      });
+    }
+
+    if (!req.file) {
+      console.error('❌ No video file received in request');
+      return res.status(400).json({
+        success: false,
+        message: 'Animation video is required'
+      });
+    }
+
+    // Validate is_active - should be 0 or 1
+    const statusValue = is_active !== undefined ? parseInt(is_active) : 0;
+    if (statusValue !== 0 && statusValue !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Active status must be 0 or 1'
+      });
+    }
+
+    // Store only filename in database (without path)
+    const videoFileName = req.file.filename;
+    // Insert into database - default status is 0 (inactive)
+    const query = `INSERT INTO tbl_animations (name, video_title, status) VALUES (?, ?, ?)`;
+    const [result] = await pool.execute(query, [event_name.trim(), videoFileName, statusValue]);
+
+    res.json({
+      success: true,
+      message: 'Animation created successfully',
+      animation: {
+        id: result.insertId,
+        event_name: event_name.trim(),
+        animation_name: videoFileName,
+        video_url: videoFileName,
+        is_active: statusValue === 1
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating animation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create animation',
+      error: error.message
+    });
+  }
+});
+
+// Update Animation for admin
+app.put('/api/admin/animations/:id', upload.single('animationVideo'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { event_name, is_active } = req.body;
+
+    // Validation
+    if (!event_name || !event_name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Event name is required'
+      });
+    }
+
+    // Validate is_active - should be 0 or 1
+    const statusValue = is_active !== undefined ? parseInt(is_active) : 1;
+    if (statusValue !== 0 && statusValue !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Active status must be 0 or 1'
+      });
+    }
+
+    // Check if animation exists
+    const [existingAnimation] = await pool.execute('SELECT * FROM tbl_animations WHERE id = ?', [id]);
+    if (existingAnimation.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Animation not found'
+      });
+    }
+
+    let videoFileName = existingAnimation[0].video_title;
+
+    // If new video is uploaded, use it; otherwise keep existing
+    if (req.file) {
+      videoFileName = req.file.filename;
+      
+      // Optionally delete old video file
+      try {
+        const oldFilePath = path.join(__dirname, 'uploads', 'animations', existingAnimation[0].video_title);
+        await fs.unlink(oldFilePath);
+        console.log('🗑️ Deleted old video file:', existingAnimation[0].video_title);
+      } catch (err) {
+        console.log('⚠️ Could not delete old video file:', err.message);
+      }
+    }
+
+
+    // If activating this animation (status = 1), first deactivate all others
+    if (statusValue === 1) {
+      await pool.execute('UPDATE tbl_animations SET status = 0 WHERE id != ?', [id]);
+    }
+
+    // Update database
+    const query = `UPDATE tbl_animations SET name = ?, video_title = ?, status = ? WHERE id = ?`;
+    await pool.execute(query, [event_name.trim(), videoFileName, statusValue, id]);
+
+    res.json({
+      success: true,
+      message: 'Animation updated successfully',
+      animation: {
+        id: parseInt(id),
+        event_name: event_name.trim(),
+        animation_name: videoFileName,
+        video_url: videoFileName,
+        is_active: statusValue === 1
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating animation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update animation',
+      error: error.message
+    });
+  }
+});
+
+// Delete Animation for admin (hard delete - removes from database and file)
+app.delete('/api/admin/animations/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if animation exists
+    const [existingAnimation] = await pool.execute('SELECT * FROM tbl_animations WHERE id = ?', [id]);
+    if (existingAnimation.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Animation not found'
+      });
+    }
+
+    // Delete video file from uploads directory
+    try {
+      const filePath = path.join(__dirname, 'uploads', 'animations', existingAnimation[0].video_title);
+      await fs.unlink(filePath);
+      console.log('🗑️ Deleted video file:', existingAnimation[0].video_title);
+    } catch (err) {
+      console.log('⚠️ Could not delete video file:', err.message);
+    }
+
+    // Delete from database
+    const query = `DELETE FROM tbl_animations WHERE id = ?`;
+    await pool.execute(query, [id]);
+
+    res.json({
+      success: true,
+      message: 'Animation deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting animation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete animation',
       error: error.message
     });
   }

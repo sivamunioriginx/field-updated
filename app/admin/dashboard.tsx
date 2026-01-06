@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_ENDPOINTS } from '../../constants/api';
+import Animations from './animations';
 import Bookings from './bookings';
 import Categories from './categories';
 import Customers from './customers';
@@ -458,6 +459,7 @@ const menuItems = [
     { id: 'services', icon: 'cog-outline', label: 'Services', color: '#14b8a6' },
     { id: 'quote', icon: 'document-text-outline', label: 'Quotes', color: '#ef4444' },
     { id: 'fags', icon: 'help-circle-outline', label: 'FAQS', color: '#f97316' },
+    { id: 'animations', icon: 'film-outline', label: 'Animations', color: '#8b5cf6' },
     { id: 'help', icon: 'help-circle-outline', label: 'Help & Support', color: '#14b8a6' },
   ];
 
@@ -580,7 +582,7 @@ const menuItems = [
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'services' ? 'Services Management' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'animations' ? 'Animations Management' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
@@ -591,12 +593,12 @@ const menuItems = [
                 </View>
               </View>
               <View style={styles.topBarRight}>
-                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers' || activeMenu === 'categories' || activeMenu === 'subcategories' || activeMenu === 'services' || activeMenu === 'quote') && (
+                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers' || activeMenu === 'categories' || activeMenu === 'subcategories' || activeMenu === 'services' || activeMenu === 'quote' || activeMenu === 'animations') && (
                   <View style={styles.topBarSearchContainer}>
                     <Ionicons name="search-outline" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" style={styles.topBarSearchIcon} />
                     <TextInput
                       style={[styles.topBarSearchInput, { outlineWidth: 0, outlineStyle: 'none' } as any]}
-                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search Quotes..." : activeMenu === 'categories' ? "Search categories" : activeMenu === 'subcategories' ? "Search Subcategories..." : activeMenu === 'services' ? "Search Services..." : "Search quotes..."}
+                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search Quotes..." : activeMenu === 'categories' ? "Search categories" : activeMenu === 'subcategories' ? "Search Subcategories..." : activeMenu === 'services' ? "Search Services..." : activeMenu === 'animations' ? "Search Animations..." : "Search quotes..."}
                       placeholderTextColor="#94a3b8"
                       value={searchQuery}
                       onChangeText={setSearchQuery}
@@ -682,6 +684,13 @@ const menuItems = [
           ) : activeMenu === 'quote' ? (
             <View style={styles.content}>
               <Quote 
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </View>
+          ) : activeMenu === 'animations' ? (
+            <View style={styles.content}>
+              <Animations
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
               />

@@ -78,6 +78,7 @@ export default function HomeScreen() {
   const [topDeals, setTopDeals] = useState<TopDeal[]>([]);
   const [serviceImageErrors, setServiceImageErrors] = useState<Set<number>>(new Set());
   const [dealImageErrors, setDealImageErrors] = useState<Set<number>>(new Set());
+  const [activeAnimation, setActiveAnimation] = useState<string | null>(null);
 
   // Load saved location or get current location
   useEffect(() => {
@@ -224,6 +225,22 @@ export default function HomeScreen() {
   }, []);
 
   // Fetch top deals
+  useEffect(() => {
+    const fetchActiveAnimation = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.ACTIVE_ANIMATION);
+        const data = await response.json();
+        if (data.success && data.animation) {
+          setActiveAnimation(data.animation.video_title);
+        }
+      } catch (error) {
+        console.error('Error fetching active animation:', error);
+      }
+    };
+
+    fetchActiveAnimation();
+  }, []);
+
   useEffect(() => {
     const fetchTopDeals = async () => {
       try {
@@ -400,15 +417,19 @@ export default function HomeScreen() {
 
         {/* Video Section */}
         <View style={styles.videoContainer}>
-          <Video
-            ref={videoRef}
-            source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/diwali (2).mp4` }}
-            style={styles.video}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping
-            isMuted
-          />
+          {activeAnimation ? (
+            <Video
+              ref={videoRef}
+              source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/${activeAnimation}` }}
+              style={styles.video}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay
+              isLooping
+              isMuted
+            />
+          ) : (
+            <View style={styles.video} />
+          )}
           {/* Search Bar positioned at 90% of video */}
           <View style={styles.searchBarContainer}>
             <TouchableOpacity 
