@@ -5924,6 +5924,197 @@ app.delete('/api/admin/services/:id', async (req, res) => {
   }
 });
 
+//get Deals for admin
+app.get('/api/admin/deals', async (req, res) => {
+  try {
+    const query = `SELECT d.*, s.name as service_name 
+                   FROM tbl_deals AS d 
+                   LEFT JOIN tbl_services AS s ON d.service_id = s.id 
+                   ORDER BY d.id DESC`;
+    const [deals] = await pool.query(query);
+
+    res.json({
+      success: true,
+      deals: deals
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching deals:', error);
+    res.status(500).json({
+      success: false,
+      message: 'failed to fetch deals',
+      error: error.message
+    });
+  }
+});
+
+// Create Deal for admin
+app.post('/api/admin/deals', async (req, res) => {
+  try {
+    const { service_id, original_price, deal_price, discount, is_active } = req.body;
+    
+    // Validation
+    if (!service_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID is required'
+      });
+    }
+
+    if (!original_price || isNaN(Number(original_price))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid original price is required'
+      });
+    }
+
+    if (!deal_price || isNaN(Number(deal_price))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid deal price is required'
+      });
+    }
+
+    if (!discount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Discount is required'
+      });
+    }
+
+    const isActiveValue = is_active !== undefined ? parseInt(is_active) : 1;
+    const originalPriceValue = parseFloat(original_price);
+    const dealPriceValue = parseFloat(deal_price);
+
+    // Insert into database
+    const query = `INSERT INTO tbl_deals (service_id, original_price, deal_price, discount, is_active) VALUES (?, ?, ?, ?, ?)`;
+    const [result] = await pool.execute(query, [service_id, originalPriceValue, dealPriceValue, discount, isActiveValue]);
+
+    res.json({
+      success: true,
+      message: 'Deal created successfully',
+      deal: {
+        id: result.insertId,
+        service_id: service_id,
+        original_price: originalPriceValue,
+        deal_price: dealPriceValue,
+        discount: discount,
+        is_active: isActiveValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating deal:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create deal',
+      error: error.message
+    });
+  }
+});
+
+// Update Deal for admin
+app.put('/api/admin/deals/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { service_id, original_price, deal_price, discount, is_active } = req.body;
+
+    // Check if deal exists
+    const [existingDeal] = await pool.execute('SELECT * FROM tbl_deals WHERE id = ?', [id]);
+    if (existingDeal.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Deal not found'
+      });
+    }
+
+    // Build update query dynamically based on provided fields
+    const updates = [];
+    const values = [];
+
+    if (service_id !== undefined) {
+      updates.push('service_id = ?');
+      values.push(service_id);
+    }
+
+    if (original_price !== undefined) {
+      updates.push('original_price = ?');
+      values.push(parseFloat(original_price));
+    }
+
+    if (deal_price !== undefined) {
+      updates.push('deal_price = ?');
+      values.push(parseFloat(deal_price));
+    }
+
+    if (discount !== undefined) {
+      updates.push('discount = ?');
+      values.push(discount);
+    }
+
+    if (is_active !== undefined) {
+      updates.push('is_active = ?');
+      values.push(parseInt(is_active));
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No fields to update'
+      });
+    }
+
+    values.push(id);
+    const query = `UPDATE tbl_deals SET ${updates.join(', ')} WHERE id = ?`;
+    await pool.execute(query, values);
+
+    res.json({
+      success: true,
+      message: 'Deal updated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating deal:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update deal',
+      error: error.message
+    });
+  }
+});
+
+// Delete Deal for admin
+app.delete('/api/admin/deals/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if deal exists
+    const [existingDeal] = await pool.execute('SELECT * FROM tbl_deals WHERE id = ?', [id]);
+    if (existingDeal.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Deal not found'
+      });
+    }
+
+    // Actually delete the deal (not soft delete)
+    await pool.execute('DELETE FROM tbl_deals WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: 'Deal deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting deal:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete deal',
+      error: error.message
+    });
+  }
+});
+
 // 404 handler - THIS MUST BE LAST!
 app.use('*', (req, res) => {
   res.status(404).json({
