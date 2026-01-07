@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import {
@@ -55,6 +56,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [categories, setCategories] = useState<{ id: number; title: string }[]>([]);
   const [subcategoryImage, setSubcategoryImage] = useState<string | null>(null);
+  const [subcategoryVideo, setSubcategoryVideo] = useState<{ uri: string; name: string; size: number } | null>(null);
   const [visibility, setVisibility] = useState<number>(1);
   const [showVisibilityDropdown, setShowVisibilityDropdown] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -286,6 +288,14 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
       }
       const finalImageUrl = imageUrl || null;
       setSubcategoryImage(finalImageUrl);
+      // Set video if exists
+      const videoTitle = (subcategory as any).video_title;
+      if (videoTitle) {
+        const videoUrl = `http://192.168.31.84:3001/uploads/subcategory_videos/${videoTitle}`;
+        setSubcategoryVideo({ uri: videoUrl, name: videoTitle, size: 0 });
+      } else {
+        setSubcategoryVideo(null);
+      }
       // Set visibility - check both status and visibility fields
       const visValue = subcategory.visibility !== undefined 
         ? (typeof subcategory.visibility === 'boolean' ? (subcategory.visibility ? 1 : 0) : subcategory.visibility)
@@ -422,6 +432,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
     setSubcategoryName('');
     setSelectedCategoryId(null);
     setSubcategoryImage(null);
+    setSubcategoryVideo(null);
     setVisibility(1);
     setShowAddModal(true);
   };
@@ -432,6 +443,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
     setSubcategoryName('');
     setSelectedCategoryId(null);
     setSubcategoryImage(null);
+    setSubcategoryVideo(null);
     setVisibility(1);
     setShowVisibilityDropdown(false);
     setShowCategoryDropdown(false);
@@ -458,6 +470,55 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const handleVideoUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'video/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const fileSize = asset.size || 0;
+        const maxSize = 10 * 1024 * 1024; // 10 MB in bytes
+
+        if (fileSize > maxSize) {
+          Alert.alert('File Too Large', 'Please select a video file smaller than 10 MB.');
+          return;
+        }
+
+        // Validate video file type
+        const mimeType = asset.mimeType || '';
+        const isVideo = mimeType.startsWith('video/') || 
+                       asset.name.match(/\.(mp4|mov|avi|mkv|webm|flv|wmv|3gp)$/i);
+
+        if (!isVideo) {
+          Alert.alert('Invalid File', 'Please select a valid video file.');
+          return;
+        }
+
+        setSubcategoryVideo({
+          uri: asset.uri,
+          name: asset.name,
+          size: fileSize,
+        });
+
+        // Toast.show({
+        //   type: 'success',
+        //   text1: 'Video Selected',
+        //   text2: `${asset.name} (${(fileSize / (1024 * 1024)).toFixed(2)} MB)`,
+        // });
+      }
+    } catch (error) {
+      console.error('Error picking video:', error);
+      Alert.alert('Error', 'Failed to pick video. Please try again.');
     }
   };
 
@@ -530,6 +591,51 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
             name: fileName,
             type: mimeType,
           } as any);
+        }
+      }
+
+      // Handle video upload
+      if (subcategoryVideo) {
+        const isNewVideo = subcategoryVideo.uri && !subcategoryVideo.uri.startsWith('http://192.168.31.84:3001/uploads/subcategory_videos/');
+        
+        if (isNewVideo) {
+          const uriParts = subcategoryVideo.name.split('.');
+          const fileExtension = uriParts.length > 1 ? uriParts[uriParts.length - 1].toLowerCase() : 'mp4';
+          const videoFileName = `subcategory_video_${Date.now()}.${fileExtension}`;
+          
+          let videoMimeType = 'video/mp4';
+          if (fileExtension === 'mov') {
+            videoMimeType = 'video/quicktime';
+          } else if (fileExtension === 'avi') {
+            videoMimeType = 'video/x-msvideo';
+          } else if (fileExtension === 'mkv') {
+            videoMimeType = 'video/x-matroska';
+          } else if (fileExtension === 'webm') {
+            videoMimeType = 'video/webm';
+          }
+
+          const isWeb = typeof window !== 'undefined';
+          if (isWeb) {
+            try {
+              const response = await fetch(subcategoryVideo.uri);
+              const blob = await response.blob();
+              const fileToUpload = new File([blob], videoFileName, { type: videoMimeType });
+              formData.append('video', fileToUpload);
+            } catch (error) {
+              console.error('❌ Error converting video:', error);
+              formData.append('video', {
+                uri: subcategoryVideo.uri,
+                name: videoFileName,
+                type: videoMimeType,
+              } as any);
+            }
+          } else {
+            formData.append('video', {
+              uri: subcategoryVideo.uri,
+              name: videoFileName,
+              type: videoMimeType,
+            } as any);
+          }
         }
       }
 
@@ -902,8 +1008,8 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
             {/* Modal Body */}
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {/* Subcategory Name and Category in one row */}
-              <View style={styles.modalRow}>
-                <View style={[styles.modalField, styles.modalFieldHalf]}>
+              <View style={[styles.modalRow, { zIndex: 1000 }]}>
+                <View style={[styles.modalField, styles.modalFieldHalf, { zIndex: 1 }]}>
                   <Text style={styles.modalLabel}>Subcategory Name</Text>
                   <TextInput
                     style={styles.modalInput}
@@ -914,7 +1020,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
                   />
                 </View>
 
-                <View style={[styles.modalField, styles.modalFieldHalf]}>
+                <View style={[styles.modalField, styles.modalFieldHalf, { zIndex: 10000 }]}>
                   <Text style={styles.modalLabel}>Category</Text>
                   <View style={styles.categoryDropdownWrapper}>
                     <TouchableOpacity
@@ -972,33 +1078,73 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
                 </View>
               </View>
 
-              {/* Subcategory Image */}
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Subcategory Image</Text>
-                <TouchableOpacity
-                  style={styles.imageUploadInput}
-                  onPress={handleImageUpload}
-                >
-                  <Text style={styles.imageUploadInputText}>
-                    {subcategoryImage ? 'Image Selected' : 'Tap to upload image'}
-                  </Text>
-                  <Ionicons name="cloud-upload-outline" size={20} color="#06b6d4" />
-                </TouchableOpacity>
-                {subcategoryImage && (
-                  <View style={styles.imagePreviewContainer}>
-                    <Image source={{ uri: subcategoryImage }} style={styles.imagePreview} />
-                    <TouchableOpacity
-                      style={styles.removeImageButton}
-                      onPress={() => setSubcategoryImage(null)}
-                    >
-                      <Ionicons name="close-circle" size={24} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
-                )}
+              {/* Subcategory Image and Video in one row */}
+              <View style={[styles.modalRow, { zIndex: 1 }]}>
+                {/* Subcategory Image */}
+                <View style={[styles.modalField, styles.modalFieldHalf]}>
+                  <Text style={styles.modalLabel}>Subcategory Image</Text>
+                  <TouchableOpacity
+                    style={styles.imageUploadInput}
+                    onPress={handleImageUpload}
+                  >
+                    <Text style={styles.imageUploadInputText}>
+                      {subcategoryImage ? 'Image Selected' : 'Tap to upload image'}
+                    </Text>
+                    <Ionicons name="cloud-upload-outline" size={20} color="#06b6d4" />
+                  </TouchableOpacity>
+                  {subcategoryImage && (
+                    <View style={styles.imagePreviewContainer}>
+                      <Image source={{ uri: subcategoryImage }} style={styles.imagePreview} />
+                      <TouchableOpacity
+                        style={styles.removeImageButton}
+                        onPress={() => setSubcategoryImage(null)}
+                      >
+                        <Ionicons name="close-circle" size={24} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* Subcategory Video */}
+                <View style={[styles.modalField, styles.modalFieldHalf, { zIndex: 1 }]}>
+                  <Text style={styles.modalLabel}>Subcategory Video (Max 10 MB)</Text>
+                  <TouchableOpacity
+                    style={styles.videoUploadInput}
+                    onPress={handleVideoUpload}
+                  >
+                    <Text style={styles.videoUploadInputText}>
+                      {subcategoryVideo ? 'Video Selected' : 'Tap to upload video'}
+                    </Text>
+                    <Ionicons name="videocam-outline" size={20} color="#8b5cf6" />
+                  </TouchableOpacity>
+                  {subcategoryVideo && (
+                    <View style={styles.videoPreviewContainer}>
+                      <View style={styles.videoInfoContainer}>
+                        <Ionicons name="videocam" size={24} color="#8b5cf6" />
+                        <View style={styles.videoTextContainer}>
+                          <Text style={styles.videoFileName} numberOfLines={1}>
+                            {subcategoryVideo.name}
+                          </Text>
+                          {subcategoryVideo.size > 0 && (
+                            <Text style={styles.videoFileSize}>
+                              {(subcategoryVideo.size / (1024 * 1024)).toFixed(2)} MB
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.removeVideoButton}
+                        onPress={() => setSubcategoryVideo(null)}
+                      >
+                        <Ionicons name="close-circle" size={24} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               </View>
 
               {/* Visibility */}
-              <View style={styles.modalField}>
+              <View style={[styles.modalField, { zIndex: 1 }]}>
                 <Text style={styles.modalLabel}>Visibility</Text>
                 <View style={styles.visibilityDropdownWrapper}>
                   <TouchableOpacity
@@ -1545,18 +1691,20 @@ const createStyles = (width: number, height: number) => {
       maxHeight: height * 0.85,
       padding: isDesktop ? 24 : isTablet ? 20 : 18,
       backgroundColor: '#f8fafc',
+      overflow: 'visible',
     },
     modalRow: {
       flexDirection: 'row',
       gap: isDesktop ? 16 : isTablet ? 14 : 12,
       marginBottom: isDesktop ? 16 : isTablet ? 14 : 12,
-      zIndex: 1,
     },
     modalField: {
       marginBottom: isDesktop ? 16 : isTablet ? 14 : 12,
+      overflow: 'visible',
     },
     modalFieldHalf: {
       flex: 1,
+      overflow: 'visible',
     },
     modalLabel: {
       fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
@@ -1576,6 +1724,7 @@ const createStyles = (width: number, height: number) => {
     // Category Dropdown Styles
     categoryDropdownWrapper: {
       position: 'relative',
+      zIndex: 9999,
     },
     categoryDropdownButton: {
       flexDirection: 'row',
@@ -1607,8 +1756,8 @@ const createStyles = (width: number, height: number) => {
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.1,
       shadowRadius: 8,
-      elevation: 999,
-      zIndex: 999,
+      elevation: 9999,
+      zIndex: 9999,
       maxHeight: isDesktop ? 250 : isTablet ? 220 : 190,
       overflow: 'hidden',
     },
@@ -1672,6 +1821,59 @@ const createStyles = (width: number, height: number) => {
       position: 'absolute',
       top: 8,
       right: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      borderRadius: 50,
+      padding: 4,
+    },
+    // Video Upload Styles
+    videoUploadInput: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      borderRadius: 12,
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      backgroundColor: '#ffffff',
+    },
+    videoUploadInputText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '500',
+      color: '#64748b',
+      flex: 1,
+    },
+    videoPreviewContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 12,
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#f8f4ff',
+    },
+    videoInfoContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      gap: 12,
+    },
+    videoTextContainer: {
+      flex: 1,
+    },
+    videoFileName: {
+      fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
+      fontWeight: '600',
+      color: '#1e293b',
+      marginBottom: 4,
+    },
+    videoFileSize: {
+      fontSize: isDesktop ? 12 : isTablet ? 11 : 10,
+      fontWeight: '500',
+      color: '#64748b',
+    },
+    removeVideoButton: {
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderRadius: 50,
       padding: 4,

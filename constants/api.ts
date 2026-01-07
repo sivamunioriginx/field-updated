@@ -38,6 +38,7 @@ export const API_ENDPOINTS = {
   SERVICESEEKER_BY_MOBILE: (mobile: string) => `${getBaseUrl()}/serviceseeker/mobile/${mobile}`,
   CATEGORIES: `${getBaseUrl()}/categories`,
   SUBCATEGORIES: `${getBaseUrl()}/subcategories`,
+  SUBCATEGORY_BY_ID: (id: string) => `${getBaseUrl()}/subcategory/${id}`,
   BANNERS: `${getBaseUrl()}/banners`,
   CATEGORY_SUBCATEGORY: `${getBaseUrl()}/category-subcategory`,
   CATEGORIES_WITH_SUBCATEGORIES: `${getBaseUrl()}/categories-with-subcategories`,

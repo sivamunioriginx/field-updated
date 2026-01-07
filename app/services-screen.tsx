@@ -34,6 +34,14 @@ interface Service {
   instant_service?: number | string | boolean;
 }
 
+interface Subcategory {
+  id: number;
+  name: string;
+  image: string;
+  video_title?: string;
+  category_id: string;
+}
+
 interface ServicesScreenProps {
   subcategoryId?: string;
   subcategoryName?: string;
@@ -67,6 +75,7 @@ export default function ServicesScreen() {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(null);
+  const [subcategoryData, setSubcategoryData] = useState<Subcategory | null>(null);
   const videoRef = useRef<Video>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
@@ -74,6 +83,22 @@ export default function ServicesScreen() {
 
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
+
+  // Fetch subcategory details including video
+  const fetchSubcategoryData = async () => {
+    if (!subcategoryId) return;
+    
+    try {
+      const response = await fetch(`${getBaseUrl()}/subcategory/${subcategoryId}`);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        setSubcategoryData(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching subcategory data:', error);
+    }
+  };
 
   // Fetch services by category ID, subcategory ID, search query, top services, top deals, or single service ID
   const fetchServices = async () => {
@@ -171,6 +196,9 @@ export default function ServicesScreen() {
   useEffect(() => {
     if (categoryId || subcategoryId || searchQuery || showTopServices === 'true' || showTopDeals === 'true' || serviceId) {
       fetchServices();
+    }
+    if (subcategoryId) {
+      fetchSubcategoryData();
     }
   }, [categoryId, subcategoryId, searchQuery, showTopServices, showTopDeals, serviceId]);
 
@@ -405,9 +433,9 @@ export default function ServicesScreen() {
           <Video
             ref={videoRef}
             source={{ 
-              uri: `${getBaseUrl().replace('/api', '')}/uploads/service_videos/electrical.mov`,
-              // Fallback to MP4 if available
-              // uri: `${getBaseUrl().replace('/api', '')}/uploads/service_videos/electrical.mp4`,
+              uri: subcategoryData?.video_title 
+                ? `${getBaseUrl().replace('/api', '')}/uploads/subcategory_videos/${subcategoryData.video_title}`
+                : `${getBaseUrl().replace('/api', '')}/uploads/subcategory_videos/electrical.mov`,
             }}
             style={styles.video}
             resizeMode={ResizeMode.COVER}

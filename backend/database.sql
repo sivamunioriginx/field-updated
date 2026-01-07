@@ -72,6 +72,7 @@ CREATE TABLE tbl_subcategory (
   status TINYINT NOT NULL DEFAULT 1,
   visibility TINYINT NOT NULL DEFAULT 1,
   image varchar(255) NOT NULL,
+  video_title VARCHAR(255) DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

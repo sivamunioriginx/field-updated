@@ -76,6 +76,7 @@ const createUploadsDir = async () => {
     await fs.mkdir('uploads/profiles', { recursive: true });
     await fs.mkdir('uploads/documents', { recursive: true });
     await fs.mkdir('uploads/subcategorys', { recursive: true });
+    await fs.mkdir('uploads/subcategory_videos', { recursive: true }); // Add subcategory_videos directory
     await fs.mkdir('uploads/workdocuments', { recursive: true }); // Add workdocuments directory
     await fs.mkdir('uploads/quotedocs', { recursive: true }); // Add quotedocs directory
     await fs.mkdir('uploads/services', { recursive: true }); // Add services directory
@@ -128,6 +129,8 @@ const storage = multer.diskStorage({
       cb(null, 'uploads/categorys/');
     } else if (file.fieldname === 'animationVideo') {
       cb(null, 'uploads/animations/');
+    } else if (file.fieldname === 'video') {
+      cb(null, 'uploads/subcategory_videos/'); // Subcategory videos destination
     } else if (file.fieldname === 'image') {
       // Check if request is for services
       if (req.path && req.path.includes('/services')) {
@@ -141,7 +144,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    if (file.fieldname === 'categoryImage' || file.fieldname === 'image' || file.fieldname === 'animationVideo') {
+    if (file.fieldname === 'categoryImage' || file.fieldname === 'image' || file.fieldname === 'animationVideo' || file.fieldname === 'video') {
       cb(null, uniqueSuffix + path.extname(file.originalname));
     } else {
       cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
@@ -2412,7 +2415,7 @@ app.get('/api/categories', async (req, res) => {
 app.get('/api/subcategories', async (req, res) => {
   try {
     const [subcategories] = await pool.execute(
-      'SELECT id, name, image FROM tbl_subcategory ORDER BY id DESC'
+      'SELECT id, name, image, video_title FROM tbl_subcategory ORDER BY id DESC'
     );
     res.json({
       success: true,
@@ -2422,6 +2425,35 @@ app.get('/api/subcategories', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching subcategories',
+      error: error.message
+    });
+  }
+});
+
+// Get single subcategory by ID endpoint
+app.get('/api/subcategory/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [subcategory] = await pool.execute(
+      'SELECT id, name, image, video_title, category_id FROM tbl_subcategory WHERE id = ? LIMIT 1',
+      [id]
+    );
+    
+    if (subcategory.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subcategory not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: subcategory[0]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching subcategory',
       error: error.message
     });
   }
@@ -5464,7 +5496,7 @@ const [subcategories] = await pool.query(query);
 });
 
 // Create Subcategory for admin
-app.post('/api/admin/subcategories', upload.single('image'), async (req, res) => {
+app.post('/api/admin/subcategories', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const { name, category_id, status, visibility } = req.body;
     
@@ -5483,7 +5515,7 @@ app.post('/api/admin/subcategories', upload.single('image'), async (req, res) =>
       });
     }
 
-    if (!req.file) {
+    if (!req.files || !req.files['image']) {
       return res.status(400).json({
         success: false,
         message: 'Subcategory image is required'
@@ -5500,11 +5532,24 @@ app.post('/api/admin/subcategories', upload.single('image'), async (req, res) =>
     }
 
     // Store only filename in database (without path)
-    const imageFileName = req.file.filename;
+    const imageFileName = req.files['image'][0].filename;
+    const videoFileName = req.files['video'] ? req.files['video'][0].filename : null;
+
+    // Validate video size if uploaded (max 10MB)
+    if (req.files['video']) {
+      const videoSize = req.files['video'][0].size;
+      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+      if (videoSize > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: 'Video file size must be less than 10MB'
+        });
+      }
+    }
 
     // Insert into database
-    const query = `INSERT INTO tbl_subcategory (name, category_id, image, status, visibility) VALUES (?, ?, ?, ?, ?)`;
-    const [result] = await pool.execute(query, [name.trim(), category_id, imageFileName, statusValue, statusValue]);
+    const query = `INSERT INTO tbl_subcategory (name, category_id, image, video_title, status, visibility) VALUES (?, ?, ?, ?, ?, ?)`;
+    const [result] = await pool.execute(query, [name.trim(), category_id, imageFileName, videoFileName, statusValue, statusValue]);
 
     res.json({
       success: true,
@@ -5514,6 +5559,7 @@ app.post('/api/admin/subcategories', upload.single('image'), async (req, res) =>
         name: name.trim(),
         category_id: category_id,
         image: imageFileName,
+        video_title: videoFileName,
         status: statusValue,
         visibility: statusValue
       }
@@ -5530,7 +5576,7 @@ app.post('/api/admin/subcategories', upload.single('image'), async (req, res) =>
 });
 
 // Update Subcategory for admin
-app.put('/api/admin/subcategories/:id', upload.single('image'), async (req, res) => {
+app.put('/api/admin/subcategories/:id', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, category_id, status, visibility } = req.body;
@@ -5569,10 +5615,24 @@ app.put('/api/admin/subcategories/:id', upload.single('image'), async (req, res)
     }
 
     let imageFileName = existingSubcategory[0].image;
+    let videoFileName = existingSubcategory[0].video_title;
 
     // If new image is uploaded, use it; otherwise keep existing
-    if (req.file) {
-      imageFileName = req.file.filename;
+    if (req.files && req.files['image']) {
+      imageFileName = req.files['image'][0].filename;
+    }
+
+    // If new video is uploaded, use it; otherwise keep existing
+    if (req.files && req.files['video']) {
+      const videoSize = req.files['video'][0].size;
+      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+      if (videoSize > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: 'Video file size must be less than 10MB'
+        });
+      }
+      videoFileName = req.files['video'][0].filename;
     }
 
     // Update database - preserve existing status if not provided, only update visibility if provided
@@ -5580,8 +5640,8 @@ app.put('/api/admin/subcategories/:id', upload.single('image'), async (req, res)
     const finalStatus = status !== undefined ? parseInt(status) : existingStatus;
     const finalVisibility = visibility !== undefined ? parseInt(visibility) : existingSubcategory[0].visibility;
     
-    const query = `UPDATE tbl_subcategory SET name = ?, category_id = ?, image = ?, status = ?, visibility = ? WHERE id = ?`;
-    await pool.execute(query, [name.trim(), category_id, imageFileName, finalStatus, finalVisibility, id]);
+    const query = `UPDATE tbl_subcategory SET name = ?, category_id = ?, image = ?, video_title = ?, status = ?, visibility = ? WHERE id = ?`;
+    await pool.execute(query, [name.trim(), category_id, imageFileName, videoFileName, finalStatus, finalVisibility, id]);
 
     res.json({
       success: true,
@@ -5591,6 +5651,7 @@ app.put('/api/admin/subcategories/:id', upload.single('image'), async (req, res)
         name: name.trim(),
         category_id: category_id,
         image: imageFileName,
+        video_title: videoFileName,
         status: statusValue,
         visibility: statusValue
       }
