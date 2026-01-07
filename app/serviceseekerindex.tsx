@@ -94,6 +94,13 @@ export default function Index() {
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelSuccess, setCancelSuccess] = useState(false);
   
+  // Rating states
+  const [ratingBookings, setRatingBookings] = useState<{ [key: number]: { rating: number; description: string } }>({});
+  const [ratingLoading, setRatingLoading] = useState<{ [key: number]: boolean }>({});
+  const [ratingError, setRatingError] = useState<{ [key: number]: string }>({});
+  const [ratingSuccess, setRatingSuccess] = useState<{ [key: number]: boolean }>({});
+  const [ratedBookings, setRatedBookings] = useState<Set<number>>(new Set()); // Track bookings that have been rated
+  
   // Animation refs for loading dots
   const rescheduleDotAnim1 = useRef(new Animated.Value(0)).current;
   const rescheduleDotAnim2 = useRef(new Animated.Value(0)).current;
@@ -760,6 +767,107 @@ export default function Index() {
     setCancelSuccess(false);
   };
 
+  // Handle Rating Star Selection
+  const handleStarPress = (bookingId: number, starIndex: number) => {
+    setRatingBookings(prev => ({
+      ...prev,
+      [bookingId]: {
+        ...prev[bookingId],
+        rating: starIndex + 1,
+        description: prev[bookingId]?.description || ''
+      }
+    }));
+    setRatingError(prev => ({ ...prev, [bookingId]: '' }));
+  };
+
+  // Handle Rating Description Change
+  const handleRatingDescriptionChange = (bookingId: number, text: string) => {
+    setRatingBookings(prev => ({
+      ...prev,
+      [bookingId]: {
+        ...prev[bookingId],
+        rating: prev[bookingId]?.rating || 0,
+        description: text
+      }
+    }));
+    setRatingError(prev => ({ ...prev, [bookingId]: '' }));
+  };
+
+  // Handle Rating Submit
+  const handleRatingSubmit = async (booking: Booking) => {
+    const bookingId = booking.id;
+    const ratingData = ratingBookings[bookingId];
+    
+    if (!ratingData || !ratingData.rating || ratingData.rating === 0) {
+      setRatingError(prev => ({ ...prev, [bookingId]: 'Please select a rating' }));
+      return;
+    }
+    
+    if (!ratingData.description || !ratingData.description.trim()) {
+      setRatingError(prev => ({ ...prev, [bookingId]: 'Please enter a description' }));
+      return;
+    }
+
+    setRatingError(prev => ({ ...prev, [bookingId]: '' }));
+    setRatingLoading(prev => ({ ...prev, [bookingId]: true }));
+    setRatingSuccess(prev => ({ ...prev, [bookingId]: false }));
+
+    try {
+      const response = await fetch(API_ENDPOINTS.SUBMIT_RATING, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bookingid: bookingId,
+          rating: ratingData.rating,
+          description: ratingData.description.trim()
+        }),
+      });
+
+      if (response.ok) {
+        setRatingLoading(prev => ({ ...prev, [bookingId]: false }));
+        setRatingSuccess(prev => ({ ...prev, [bookingId]: true }));
+        
+        // Mark booking as rated permanently
+        setRatedBookings(prev => new Set(prev).add(bookingId));
+        
+        // Clear rating input data (but keep success state)
+        setRatingBookings(prev => {
+          const newState = { ...prev };
+          delete newState[bookingId];
+          return newState;
+        });
+      } else {
+        setRatingLoading(prev => ({ ...prev, [bookingId]: false }));
+        setRatingError(prev => ({ ...prev, [bookingId]: 'Failed to submit rating. Please try again.' }));
+      }
+    } catch (error) {
+      setRatingLoading(prev => ({ ...prev, [bookingId]: false }));
+      setRatingError(prev => ({ ...prev, [bookingId]: 'An error occurred. Please try again.' }));
+      console.error('Error submitting rating:', error);
+    }
+  };
+
+  // Handle Rating Cancel
+  const handleRatingCancel = (bookingId: number) => {
+    setRatingBookings(prev => {
+      const newState = { ...prev };
+      delete newState[bookingId];
+      return newState;
+    });
+    setRatingError(prev => {
+      const newState = { ...prev };
+      delete newState[bookingId];
+      return newState;
+    });
+    setRatingSuccess(prev => {
+      const newState = { ...prev };
+      delete newState[bookingId];
+      return newState;
+    });
+  };
+
   // Add function to fetch total bookings (status 3,4,5: Completed, Rejected, Canceled)
   const fetchTotalBookings = async () => {
     // Use authenticated user's ID if available, otherwise use serviceSeeker ID
@@ -890,6 +998,27 @@ export default function Index() {
         });
         
         setBookings(finalBookings);
+        
+        // Fetch existing ratings for completed bookings (status 3)
+        const completedBookingIds = finalBookings
+          .filter((booking: Booking) => Number(booking.status) === 3)
+          .map((booking: Booking) => booking.id);
+        
+        if (completedBookingIds.length > 0) {
+          try {
+            const bookingIdsParam = completedBookingIds.join(',');
+            const ratingsResponse = await fetch(`${API_ENDPOINTS.GET_RATINGS}?bookingids=${bookingIdsParam}`);
+            const ratingsResult = await ratingsResponse.json();
+            
+            if (ratingsResult.success && ratingsResult.data) {
+              // Mark bookings as rated
+              const ratedIds = new Set(ratingsResult.data);
+              setRatedBookings(ratedIds);
+            }
+          } catch (error) {
+            console.error('Error fetching existing ratings:', error);
+          }
+        }
       } else {
         setBookings([]);
       }
@@ -1621,6 +1750,130 @@ export default function Index() {
                             );
                           }
                           
+                          // Status 3 - Completed (with rating option for totalBookings tab)
+                          if (statusNum === 3) {
+                            const bookingId = booking.id;
+                            const ratingData = ratingBookings[bookingId];
+                            const selectedRating = ratingData?.rating || 0;
+                            const showRatingInput = selectedRating > 0;
+                            const isRatingLoading = ratingLoading[bookingId] || false;
+                            const ratingErrorMsg = ratingError[bookingId] || '';
+                            const isRatingSuccess = ratingSuccess[bookingId] || false;
+                            const hasBeenRated = ratedBookings.has(bookingId) || isRatingSuccess;
+                            
+                            return (
+                              <View style={styles.bookingDetails}>
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Worker: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_name || `Worker #${booking.worker_id}`}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Contact: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_mobile || 'N/A'}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Booking For: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {new Date(booking.created_at).toLocaleString("en-GB", {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      hour12: true
+                                    })}
+                                  </Text>
+                                </View>
+                                
+                                <View style={styles.statusInfoContainer}>
+                                  <Text style={styles.statusInfoText}>
+                                    {getStatusChangeMessage(booking.status, booking)}
+                                  </Text>
+                                </View>
+                                
+                                {/* Rating Section - Only show in totalBookings tab */}
+                                {activeTab === 'totalBookings' && !hasBeenRated && (
+                                  <View style={styles.ratingContainer}>
+                                    <Text style={styles.ratingLabel}>Rate your experience:</Text>
+                                    <View style={styles.starsContainer}>
+                                      {[0, 1, 2, 3, 4].map((index) => (
+                                        <TouchableOpacity
+                                          key={index}
+                                          onPress={() => handleStarPress(bookingId, index)}
+                                          activeOpacity={0.7}
+                                        >
+                                          <Ionicons
+                                            name={index < selectedRating ? "star" : "star-outline"}
+                                            size={styles.ratingStarSize}
+                                            color={index < selectedRating ? "#fbbf24" : "#d1d5db"}
+                                          />
+                                        </TouchableOpacity>
+                                      ))}
+                                    </View>
+                                    
+                                    {showRatingInput && (
+                                      <View style={styles.ratingInputContainer}>
+                                        <Text style={styles.ratingInputLabel}>Your feedback:</Text>
+                                        <TextInput
+                                          style={[styles.ratingDescriptionInput, ratingErrorMsg && styles.ratingInputError]}
+                                          placeholder="Share your experience..."
+                                          value={ratingData?.description || ''}
+                                          onChangeText={(text) => handleRatingDescriptionChange(bookingId, text)}
+                                          multiline
+                                          numberOfLines={4}
+                                          textAlignVertical="top"
+                                          editable={!isRatingLoading}
+                                        />
+                                        {ratingErrorMsg ? (
+                                          <Text style={styles.ratingErrorText}>{ratingErrorMsg}</Text>
+                                        ) : null}
+                                        
+                                        <View style={styles.ratingActionsContainer}>
+                                          <TouchableOpacity
+                                            style={[styles.ratingActionButton, styles.ratingCancelButton]}
+                                            onPress={() => handleRatingCancel(bookingId)}
+                                            disabled={isRatingLoading}
+                                          >
+                                            <Text style={styles.ratingCancelButtonText}>Cancel</Text>
+                                          </TouchableOpacity>
+                                          
+                                          <TouchableOpacity
+                                            style={[styles.ratingActionButton, styles.ratingSubmitButton, isRatingLoading && styles.ratingSubmitButtonDisabled]}
+                                            onPress={() => handleRatingSubmit(booking)}
+                                            disabled={isRatingLoading || !ratingData?.description?.trim()}
+                                          >
+                                            {isRatingLoading ? (
+                                              <Text style={styles.ratingSubmitButtonText}>Submitting...</Text>
+                                            ) : (
+                                              <Text style={styles.ratingSubmitButtonText}>Submit</Text>
+                                            )}
+                                          </TouchableOpacity>
+                                        </View>
+                                      </View>
+                                    )}
+                                  </View>
+                                )}
+                                
+                                {hasBeenRated && (
+                                  <View style={styles.ratingSuccessContainer}>
+                                    <Ionicons name="checkmark-circle" size={styles.iconSize} color="#10b981" />
+                                    <Text style={styles.ratingSuccessText}>Your experience submitted successfully!</Text>
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          }
+                          
                           // Status 4 or 5 - Rejected/Canceled
                           if (statusNum === 4 || statusNum === 5) {
                             // Check if status 5 is a customer cancel request (type = 2) - show different UI
@@ -2214,6 +2467,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   const chevronIconSize = Math.max(14, Math.min(20, moderateScale(16)));
   const emptyIconSize = Math.max(40, Math.min(56, moderateScale(48)));
   const paymentIconSize = Math.max(24, Math.min(32, moderateScale(28)));
+  const ratingStarSize = Math.max(22, Math.min(28, moderateScale(24)));
 
   // Calculate menu width responsively
   const menuWidth = Math.max(250, Math.min(350, scale(300, 1)));
@@ -2935,6 +3189,109 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       fontSize: getResponsiveFontSize(16),
       fontWeight: '600',
     },
+    // Rating Styles
+    ratingContainer: {
+      marginTop: getResponsiveSpacing(1),
+      padding: getResponsiveSpacing(5),
+      backgroundColor: '#f9fafb',
+      borderRadius: getResponsiveValue(8, 6, 10),
+      borderWidth: 1,
+      borderColor: '#e5e7eb',
+    },
+    ratingLabel: {
+      fontSize: getResponsiveFontSize(14),
+      fontWeight: '600',
+      color: '#333',
+      marginBottom: getResponsiveSpacing(6),
+      textAlign: 'center',
+    },
+    starsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: getResponsiveSpacing(4),
+      marginBottom: getResponsiveSpacing(8),
+    },
+    ratingInputContainer: {
+      marginTop: getResponsiveSpacing(4),
+    },
+    ratingInputLabel: {
+      fontSize: getResponsiveFontSize(12),
+      fontWeight: '600',
+      color: '#333',
+      marginBottom: getResponsiveSpacing(4),
+    },
+    ratingDescriptionInput: {
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+      borderRadius: getResponsiveValue(6, 5, 8),
+      padding: getResponsiveSpacing(8),
+      fontSize: getResponsiveFontSize(13),
+      minHeight: getResponsiveValue(70, 60, 80),
+      textAlignVertical: 'top',
+      backgroundColor: '#ffffff',
+      color: '#333',
+    },
+    ratingInputError: {
+      borderColor: '#ef4444',
+    },
+    ratingErrorText: {
+      color: '#ef4444',
+      fontSize: getResponsiveFontSize(11),
+      marginTop: getResponsiveSpacing(4),
+    },
+    ratingActionsContainer: {
+      flexDirection: 'row',
+      gap: getResponsiveSpacing(6),
+      marginTop: getResponsiveSpacing(8),
+    },
+    ratingActionButton: {
+      flex: 1,
+      paddingVertical: getResponsiveSpacing(8),
+      paddingHorizontal: getResponsiveSpacing(12),
+      borderRadius: getResponsiveValue(6, 5, 8),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ratingCancelButton: {
+      backgroundColor: '#f3f4f6',
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+    },
+    ratingSubmitButton: {
+      backgroundColor: '#10b981',
+    },
+    ratingSubmitButtonDisabled: {
+      backgroundColor: '#9ca3af',
+      opacity: 0.6,
+    },
+    ratingCancelButtonText: {
+      color: '#374151',
+      fontSize: getResponsiveFontSize(12),
+      fontWeight: '600',
+    },
+    ratingSubmitButtonText: {
+      color: '#ffffff',
+      fontSize: getResponsiveFontSize(12),
+      fontWeight: '600',
+    },
+    ratingSuccessContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f0fdf4',
+      padding: getResponsiveSpacing(8),
+      borderRadius: getResponsiveValue(6, 5, 8),
+      marginTop: getResponsiveSpacing(8),
+      gap: getResponsiveSpacing(6),
+      borderWidth: 1,
+      borderColor: '#86efac',
+    },
+    ratingSuccessText: {
+      color: '#10b981',
+      fontSize: getResponsiveFontSize(12),
+      fontWeight: '600',
+    },
   });
 
   // Return styles with icon sizes as additional properties
@@ -2949,6 +3306,7 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     chevronIconSize,
     emptyIconSize,
     paymentIconSize,
+    ratingStarSize,
   } as typeof styles & {
     iconSize: number;
     titleIconSize: number;
@@ -2959,5 +3317,6 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     chevronIconSize: number;
     emptyIconSize: number;
     paymentIconSize: number;
+    ratingStarSize: number;
   };
 };

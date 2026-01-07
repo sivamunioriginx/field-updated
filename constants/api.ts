@@ -101,6 +101,8 @@ export const API_ENDPOINTS = {
   ADMIN_SERVICES: `${getBaseUrl()}/admin/services`,
   ADMIN_ANIMATIONS: `${getBaseUrl()}/admin/animations`,
   ACTIVE_ANIMATION: `${getBaseUrl()}/active-animation`,
+  SUBMIT_RATING: `${getBaseUrl()}/customer-ratings`,
+  GET_RATINGS: `${getBaseUrl()}/customer-ratings`,
 };
 
 export const API_BASE_URL = getBaseUrl();

@@ -217,3 +217,12 @@ CREATE TABLE tbl_animations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+-- create tbl_customerratings table for customer ratings
+CREATE TABLE tbl_customerratings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    bookingid INT NOT NULL,
+    rating TINYINT NOT NULL,
+    description TEXT NOT NULL,
+    created DATETIME DEFAULT CURRENT_TIMESTAMP
+);

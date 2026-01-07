@@ -1442,6 +1442,111 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
   }
 });
 
+// Submit customer rating endpoint
+app.post('/api/customer-ratings', async (req, res) => {
+  try {
+    const { bookingid, rating, description } = req.body;
+    
+    // Validation
+    if (!bookingid || !rating || !description) {
+      return res.status(400).json({
+        success: false,
+        message: 'Required fields are missing: bookingid, rating, description'
+      });
+    }
+    
+    // Validate rating is between 1 and 5
+    const ratingValue = parseInt(rating);
+    if (isNaN(ratingValue) || ratingValue < 1 || ratingValue > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be between 1 and 5'
+      });
+    }
+    
+    // Validate description is not empty
+    if (!description.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description cannot be empty'
+      });
+    }
+    
+    // Check if booking exists
+    const checkBookingQuery = 'SELECT id FROM tbl_bookings WHERE id = ?';
+    const [bookingResult] = await pool.execute(checkBookingQuery, [bookingid]);
+    
+    if (bookingResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+    
+    // Insert rating into tbl_customerratings
+    const insertQuery = `
+      INSERT INTO tbl_customerratings (bookingid, rating, description, created)
+      VALUES (?, ?, ?, NOW())
+    `;
+    
+    await pool.execute(insertQuery, [bookingid, ratingValue, description.trim()]);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Rating submitted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error submitting rating:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get ratings for bookings endpoint
+app.get('/api/customer-ratings', async (req, res) => {
+  try {
+    const { bookingids } = req.query;
+    
+    if (!bookingids) {
+      return res.status(400).json({
+        success: false,
+        message: 'bookingids parameter is required'
+      });
+    }
+    
+    // Parse booking IDs (comma-separated)
+    const bookingIdArray = bookingids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    
+    if (bookingIdArray.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: []
+      });
+    }
+    
+    // Get ratings for the specified booking IDs
+    const placeholders = bookingIdArray.map(() => '?').join(',');
+    const query = `SELECT bookingid FROM tbl_customerratings WHERE bookingid IN (${placeholders})`;
+    
+    const [results] = await pool.execute(query, bookingIdArray);
+    
+    return res.status(200).json({
+      success: true,
+      data: results.map(row => row.bookingid)
+    });
+    
+  } catch (error) {
+    console.error('Error fetching ratings:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 // Assign to other worker endpoint (for cancel and reschedule requests)
 app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
   try {
