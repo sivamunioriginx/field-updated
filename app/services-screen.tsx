@@ -76,6 +76,10 @@ export default function ServicesScreen() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [expandedFaqIndex, setExpandedFaqIndex] = useState<number | null>(null);
   const [subcategoryData, setSubcategoryData] = useState<Subcategory | null>(null);
+  const [processSteps, setProcessSteps] = useState<Array<{ processName: string; processText: string }>>([]);
+  const [notes, setNotes] = useState<string[]>([]);
+  const [faqs, setFaqs] = useState<Array<{ question: string; answer: string }>>([]);
+  const [reviews, setReviews] = useState<Array<{ reviewer_name: string; rating: number; review_description: string; created_at: string; service_name: string }>>([]);
   const videoRef = useRef<Video>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
@@ -292,11 +296,59 @@ export default function ServicesScreen() {
     return { total, itemCount };
   }, [cart, services, getTotalItems, getTotalPrice]);
 
+  // Fetch FAQs and process data for a service
+  const fetchFaqsProcess = async (serviceId: number) => {
+    try {
+      const response = await fetch(`${getBaseUrl()}/faqs-process/${serviceId}`);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        setProcessSteps(data.data.processes || []);
+        setNotes(data.data.notes || []);
+        setFaqs(data.data.faqs || []);
+      } else {
+        setProcessSteps([]);
+        setNotes([]);
+        setFaqs([]);
+      }
+    } catch (error) {
+      console.error('Error fetching FAQs & Process:', error);
+      setProcessSteps([]);
+      setNotes([]);
+      setFaqs([]);
+    }
+  };
+
+  // Fetch reviews for a service
+  const fetchServiceReviews = async (serviceId: number) => {
+    try {
+      const response = await fetch(`${getBaseUrl()}/service-reviews/${serviceId}`);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        setReviews(data.data || []);
+      } else {
+        setReviews([]);
+      }
+    } catch (error) {
+      console.error('Error fetching service reviews:', error);
+      setReviews([]);
+    }
+  };
+
   const handleViewDetails = (service: Service) => {
     console.log('View details clicked for service:', service.name);
     setSelectedService(service);
     setExpandedFaqIndex(null); // Reset FAQ state when opening modal
+    setProcessSteps([]); // Reset process steps
+    setNotes([]); // Reset notes
+    setFaqs([]); // Reset FAQs
+    setReviews([]); // Reset reviews
     setShowDetailsModal(true);
+    // Fetch FAQs and process data
+    fetchFaqsProcess(service.id);
+    // Fetch reviews
+    fetchServiceReviews(service.id);
     console.log('Modal should now be visible');
   };
 
@@ -757,141 +809,76 @@ export default function ServicesScreen() {
                   <View style={styles.modalDivider} />
 
                   {/* Our Process Section */}
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Our process</Text>
-                    
-                    <View style={styles.processStepsContainer}>
-                      {/* Step 1 */}
-                      <View style={styles.processStep}>
-                        <View style={styles.processStepNumberContainer}>
-                          <Text style={styles.processStepNumber}>1</Text>
-                          <View style={styles.processStepLine} />
-                        </View>
-                        <View style={styles.processStepContent}>
-                          <Text style={styles.processStepTitle}>Inspection</Text>
-                          <Text style={styles.processStepDescription}>
-                            We will check the space where you want to install the switchbox
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Step 2 */}
-                      <View style={styles.processStep}>
-                        <View style={styles.processStepNumberContainer}>
-                          <Text style={styles.processStepNumber}>2</Text>
-                          <View style={styles.processStepLine} />
-                        </View>
-                        <View style={styles.processStepContent}>
-                          <Text style={styles.processStepTitle}>Installation</Text>
-                          <Text style={styles.processStepDescription}>
-                            We will install the switchbox with care
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Step 3 */}
-                      <View style={styles.processStep}>
-                        <View style={styles.processStepNumberContainer}>
-                          <Text style={styles.processStepNumber}>3</Text>
-                          <View style={styles.processStepLine} />
-                        </View>
-                        <View style={styles.processStepContent}>
-                          <Text style={styles.processStepTitle}>Cleanup</Text>
-                          <Text style={styles.processStepDescription}>
-                            We will clean the area once work is done
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Step 4 */}
-                      <View style={styles.processStep}>
-                        <View style={styles.processStepNumberContainer}>
-                          <Text style={styles.processStepNumber}>4</Text>
-                          {/* No line for the last step */}
-                        </View>
-                        <View style={styles.processStepContent}>
-                          <Text style={styles.processStepTitle}>Warranty activation</Text>
-                          <Text style={styles.processStepDescription}>
-                            The service is covered by a 30-day warranty for any issues after installation
-                          </Text>
-                        </View>
+                  {processSteps.length > 0 && (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalSectionTitle}>Our process</Text>
+                      
+                      <View style={styles.processStepsContainer}>
+                        {processSteps.map((step, index) => (
+                          <View key={index} style={styles.processStep}>
+                            <View style={styles.processStepNumberContainer}>
+                              <Text style={styles.processStepNumber}>{index + 1}</Text>
+                              {index < processSteps.length - 1 && <View style={styles.processStepLine} />}
+                            </View>
+                            <View style={styles.processStepContent}>
+                              <Text style={styles.processStepTitle}>{step.processName}</Text>
+                              <Text style={styles.processStepDescription}>
+                                {step.processText}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
                       </View>
                     </View>
-                  </View>
+                  )}
 
                   {/* Please Note Section */}
-                  <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Please note</Text>
-                    
-                    <View style={styles.notesContainer}>
-                      {/* Note 1 */}
-                      <View style={styles.noteItem}>
-                        <View style={styles.noteIconContainer}>
-                          <Ionicons name="information-circle" size={Math.max(16, Math.min(20, screenWidth * 0.045))} color="#666" />
-                        </View>
-                        <Text style={styles.noteText}>
-                          Provide a ladder, if required
-                        </Text>
-                      </View>
-
-                      {/* Note 2 */}
-                      <View style={styles.noteItem}>
-                        <View style={styles.noteIconContainer}>
-                          <Ionicons name="information-circle" size={Math.max(16, Math.min(20, screenWidth * 0.045))} color="#666" />
-                        </View>
-                        <Text style={styles.noteText}>
-                          If spare parts are needed, the electrician will source them from the local market
-                        </Text>
+                  {notes.length > 0 && (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalSectionTitle}>Please note</Text>
+                      
+                      <View style={styles.notesContainer}>
+                        {notes.map((note, index) => (
+                          <View key={index} style={styles.noteItem}>
+                            <View style={styles.noteIconContainer}>
+                              <Ionicons name="information-circle" size={Math.max(16, Math.min(20, screenWidth * 0.045))} color="#666" />
+                            </View>
+                            <Text style={styles.noteText}>
+                              {note}
+                            </Text>
+                          </View>
+                        ))}
                       </View>
                     </View>
-                  </View>
+                  )}
 
                   {/* FAQ Section */}
-                  <View style={styles.faqSection}>
-                    <Text style={styles.faqTitle}>Frequently asked questions</Text>
-                    
-                    {[
-                      {
-                        question: 'Does the cost include spare parts?',
-                        answer: 'No, the amount you pay at booking is a visitation fee which will be adjusted in your final installation quote.'
-                      },
-                      {
-                        question: 'What if any issue occurs during installation?',
-                        answer: 'Our professionals are trained to handle any issues during installation. If something unexpected occurs, they will inform you immediately and provide solutions.'
-                      },
-                      {
-                        question: 'What if anything gets damaged?',
-                        answer: 'We take full responsibility for any damage caused during our service. All damages will be covered and repaired at no additional cost to you.'
-                      },
-                      {
-                        question: 'Are spare parts covered under warranty?',
-                        answer: 'Yes, all spare parts installed during the service are covered under our 30-day warranty for any manufacturing defects or installation issues.'
-                      },
-                      {
-                        question: 'Will the electrician buy installation material (wire, nails, etc.)?',
-                        answer: 'The electrician will assess the required materials during inspection and can purchase them from local markets. Material costs will be added to your final bill.'
-                      }
-                    ].map((faq, index) => (
-                      <View key={index} style={styles.faqItem}>
-                        <TouchableOpacity 
-                          style={styles.faqQuestion}
-                          onPress={() => toggleFaq(index)}
-                        >
-                          <Text style={styles.faqQuestionText}>{faq.question}</Text>
-                          <Ionicons 
-                            name={expandedFaqIndex === index ? "chevron-up" : "chevron-down"} 
-                            size={20} 
-                            color="#666" 
-                          />
-                        </TouchableOpacity>
-                        {expandedFaqIndex === index && (
-                          <Text style={styles.faqAnswer}>
-                            {faq.answer}
-                          </Text>
-                        )}
-                      </View>
-                    ))}
-                  </View>
+                  {faqs.length > 0 && (
+                    <View style={styles.faqSection}>
+                      <Text style={styles.faqTitle}>Frequently asked questions</Text>
+                      
+                      {faqs.map((faq, index) => (
+                        <View key={index} style={styles.faqItem}>
+                          <TouchableOpacity 
+                            style={styles.faqQuestion}
+                            onPress={() => toggleFaq(index)}
+                          >
+                            <Text style={styles.faqQuestionText}>{faq.question}</Text>
+                            <Ionicons 
+                              name={expandedFaqIndex === index ? "chevron-up" : "chevron-down"} 
+                              size={20} 
+                              color="#666" 
+                            />
+                          </TouchableOpacity>
+                          {expandedFaqIndex === index && (
+                            <Text style={styles.faqAnswer}>
+                              {faq.answer}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  )}
 
                   {/* Share Section */}
                   <View style={styles.shareSection}>
@@ -906,7 +893,11 @@ export default function ServicesScreen() {
                   <View style={styles.ratingSection}>
                     <View style={styles.ratingHeader}>
                       <Ionicons name="star" size={24} color="#000" />
-                      <Text style={styles.ratingScore}>4.84</Text>
+                      <Text style={styles.ratingScore}>
+                        {selectedService?.rating && typeof selectedService.rating === 'number' && selectedService.rating > 0
+                          ? selectedService.rating.toFixed(2)
+                          : '4.84'}
+                      </Text>
                     </View>
                     <Text style={styles.ratingReviews}>20K reviews</Text>
 
@@ -1002,66 +993,53 @@ export default function ServicesScreen() {
 
                     {/* Review Cards */}
                     <View style={styles.reviewsContainer}>
-                      {/* Review 1 */}
-                      <View style={styles.reviewCard}>
-                        <View style={styles.reviewHeader}>
-                          <Text style={styles.reviewerName}>Jitendra Dabhi</Text>
-                          <View style={styles.reviewRatingBadge}>
-                            <Ionicons name="star" size={12} color="#FFF" />
-                            <Text style={styles.reviewRatingText}>5</Text>
-                          </View>
-                        </View>
-                        <Text style={styles.reviewDate}>Oct 23, 2025 • For new 15+ Amp Switch Box</Text>
-                        <Text style={styles.reviewText}>
-                          It was good and having good experience.{'\n'}
-                          I am writing this review to commend the outstanding service provided by Aadil Mansuri, an electrician from Urban Company, who rec .... <Text style={styles.readMoreText}>read more</Text>
-                        </Text>
-                      </View>
+                      {reviews.length > 0 ? (
+                        reviews.map((review, index) => {
+                          // Format date
+                          const formatDate = (dateString: string) => {
+                            const date = new Date(dateString);
+                            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                            const month = months[date.getMonth()];
+                            const day = date.getDate();
+                            const year = date.getFullYear();
+                            return `${month} ${day}, ${year}`;
+                          };
 
-                      {/* Review 2 */}
-                      <View style={styles.reviewCard}>
-                        <View style={styles.reviewHeader}>
-                          <Text style={styles.reviewerName}>Suresh Thakur</Text>
-                          <View style={[styles.reviewRatingBadge, styles.reviewRatingBadgeOrange]}>
-                            <Ionicons name="star" size={12} color="#FFF" />
-                            <Text style={styles.reviewRatingText}>2</Text>
-                          </View>
-                        </View>
-                        <Text style={styles.reviewDate}>Oct 23, 2025 • For new 15+ Amp Switch Box, At home consultation for major work</Text>
-                        <Text style={styles.reviewText}>
-                          First of all your app does not clearly explain everything, it is bit confusing, for changing a power socket of 15amp cost me Rs. 868, isn't too high, you have to provide a customer friendly service where both sa .... <Text style={styles.readMoreText}>read more</Text>
-                        </Text>
-                      </View>
+                          // Determine badge style based on rating
+                          const badgeStyle = review.rating <= 2 
+                            ? [styles.reviewRatingBadge, styles.reviewRatingBadgeOrange]
+                            : styles.reviewRatingBadge;
 
-                      {/* Review 3 */}
-                      <View style={styles.reviewCard}>
-                        <View style={styles.reviewHeader}>
-                          <Text style={styles.reviewerName}>Vimal</Text>
-                          <View style={styles.reviewRatingBadge}>
-                            <Ionicons name="star" size={12} color="#FFF" />
-                            <Text style={styles.reviewRatingText}>5</Text>
-                          </View>
-                        </View>
-                        <Text style={styles.reviewDate}>Oct 25, 2025 • For new 15+ Amp Switch Box, CCTV Installation(WiFi)</Text>
-                        <Text style={styles.reviewText}>
-                          Very good . Polite and knowledgeable. Highly recommended
-                        </Text>
-                      </View>
+                          // Truncate review text if too long
+                          const maxLength = 150;
+                          const reviewText = review.review_description || '';
+                          const isLongText = reviewText.length > maxLength;
+                          const truncatedText = isLongText ? reviewText.substring(0, maxLength) + ' ....' : reviewText;
 
-                      {/* Review 4 */}
-                      <View style={styles.reviewCard}>
-                        <View style={styles.reviewHeader}>
-                          <Text style={styles.reviewerName}>Virendra Shah</Text>
-                          <View style={styles.reviewRatingBadge}>
-                            <Ionicons name="star" size={12} color="#FFF" />
-                            <Text style={styles.reviewRatingText}>5</Text>
-                          </View>
+                          return (
+                            <View key={index} style={styles.reviewCard}>
+                              <View style={styles.reviewHeader}>
+                                <Text style={styles.reviewerName}>{review.reviewer_name}</Text>
+                                <View style={badgeStyle}>
+                                  <Ionicons name="star" size={12} color="#FFF" />
+                                  <Text style={styles.reviewRatingText}>{review.rating}</Text>
+                                </View>
+                              </View>
+                              <Text style={styles.reviewDate}>
+                                {formatDate(review.created_at)} • For {review.service_name}
+                              </Text>
+                              <Text style={styles.reviewText}>
+                                {truncatedText}
+                                {isLongText && <Text style={styles.readMoreText}> read more</Text>}
+                              </Text>
+                            </View>
+                          );
+                        })
+                      ) : (
+                        <View style={styles.reviewCard}>
+                          <Text style={styles.reviewText}>No reviews yet for this service.</Text>
                         </View>
-                        <Text style={styles.reviewDate}>Oct 22, 2025 • For new 15+ Amp Switch Box, Internal Wiring (upto 6m), Wiring with casing (upto 5m), Door Bell Installation, One Switchboard (Install), Bulb Holder</Text>
-                        <Text style={styles.reviewText} numberOfLines={3}>
-                          Excellent service by the technician. Very professional and courteous. Would highly recommend.
-                        </Text>
-                      </View>
+                      )}
                     </View>
                   </View>
 

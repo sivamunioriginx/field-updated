@@ -104,6 +104,7 @@ export const API_ENDPOINTS = {
   SUBMIT_RATING: `${getBaseUrl()}/customer-ratings`,
   GET_RATINGS: `${getBaseUrl()}/customer-ratings`,
   ADMIN_REVIEWS_RATINGS: `${getBaseUrl()}/admin/reviews-ratings`,
+  ADMIN_FAQS_PROCESS: `${getBaseUrl()}/admin/faqs-process`,
 };
 
 export const API_BASE_URL = getBaseUrl();

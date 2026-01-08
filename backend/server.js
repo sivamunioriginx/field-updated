@@ -1472,8 +1472,8 @@ app.post('/api/customer-ratings', async (req, res) => {
       });
     }
     
-    // Check if booking exists
-    const checkBookingQuery = 'SELECT id FROM tbl_bookings WHERE id = ?';
+    // Check if booking exists and get description
+    const checkBookingQuery = 'SELECT id, description FROM tbl_bookings WHERE id = ?';
     const [bookingResult] = await pool.execute(checkBookingQuery, [bookingid]);
     
     if (bookingResult.length === 0) {
@@ -1483,17 +1483,53 @@ app.post('/api/customer-ratings', async (req, res) => {
       });
     }
     
-    // Insert rating into tbl_customerratings
+    const bookingDescription = bookingResult[0].description || '';
+    
+    // Extract service names from booking description
+    // Format: "Booking for Service1, Service2" or "Booking for Service1"
+    let serviceNames = [];
+    if (bookingDescription) {
+      // Remove "Booking for " prefix if present
+      let cleanedDescription = bookingDescription.replace(/^Booking for\s*/i, '').trim();
+      // Split by comma to get individual service names
+      serviceNames = cleanedDescription.split(',').map(name => name.trim()).filter(name => name.length > 0);
+    }
+    
+    // Get service IDs from service names
+    let serviceIds = [];
+    if (serviceNames.length > 0) {
+      // Create placeholders for IN clause
+      const placeholders = serviceNames.map(() => '?').join(',');
+      const getServiceIdsQuery = `SELECT id FROM tbl_services WHERE name IN (${placeholders}) AND status = 1`;
+      const [serviceResults] = await pool.execute(getServiceIdsQuery, serviceNames);
+      serviceIds = serviceResults.map(row => row.id);
+    }
+    
+    // If no services found, insert one record without service_id (or use 0 as fallback)
+    // But according to schema, service_id is NOT NULL, so we need to handle this
+    if (serviceIds.length === 0) {
+      // Try to get any service from the booking's subcategory or use a default
+      // For now, we'll skip inserting if no services found, or you can modify schema
+      return res.status(400).json({
+        success: false,
+        message: 'No services found for this booking'
+      });
+    }
+    
+    // Insert one rating record per service_id
     const insertQuery = `
-      INSERT INTO tbl_customerratings (bookingid, rating, description, created_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO tbl_customerratings (bookingid, service_id, rating, description, created_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
     
-    await pool.execute(insertQuery, [bookingid, ratingValue, description.trim()]);
+    // Insert multiple records - one for each service
+    for (const serviceId of serviceIds) {
+      await pool.execute(insertQuery, [bookingid, serviceId, ratingValue, description.trim()]);
+    }
     
     return res.status(200).json({
       success: true,
-      message: 'Rating submitted successfully'
+      message: `Rating submitted successfully for ${serviceIds.length} service(s)`
     });
     
   } catch (error) {
@@ -6053,6 +6089,50 @@ app.get('/api/admin/deals', async (req, res) => {
   }
 });
 
+// Get reviews and ratings for a specific service
+app.get('/api/service-reviews/:serviceId', async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+    
+    if (!serviceId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID is required'
+      });
+    }
+
+    const query = `
+      SELECT 
+        ss.name AS reviewer_name,
+        cr.rating,
+        cr.description AS review_description,
+        cr.created_at,
+        sv.name AS service_name
+      FROM tbl_customerratings cr
+      INNER JOIN tbl_bookings b ON cr.bookingid = b.id
+      INNER JOIN tbl_serviceseeker ss ON b.user_id = ss.id
+      INNER JOIN tbl_services sv ON cr.service_id = sv.id
+      WHERE cr.service_id = ?
+      ORDER BY cr.created_at DESC
+    `;
+    
+    const [reviews] = await pool.execute(query, [serviceId]);
+
+    res.json({
+      success: true,
+      data: reviews
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching service reviews:', error);
+    res.status(500).json({
+      success: false,
+      message: 'failed to fetch service reviews',
+      error: error.message
+    });
+  }
+});
+
 //get Reviews and Ratings for admin
 app.get('/api/admin/reviews-ratings', async (req, res) => {
   try {
@@ -6250,6 +6330,391 @@ app.delete('/api/admin/deals/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete deal',
+      error: error.message
+    });
+  }
+});
+
+// Get all FAQs & Process for admin
+app.get('/api/admin/faqs-process', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        f.id,
+        f.service_id,
+        f.process_name,
+        f.process_text,
+        f.note,
+        f.question,
+        f.answer,
+        f.status,
+        f.created_at,
+        s.name as service_name
+      FROM tbl_faqs f
+      LEFT JOIN tbl_services s ON f.service_id = s.id
+      WHERE f.status = 1 
+      ORDER BY f.id DESC
+    `;
+    const [rows] = await pool.query(query);
+
+    // Parse semicolon-separated values
+    const formattedData = rows.map(row => {
+      // Split process names and texts
+      const processNames = row.process_name ? row.process_name.split(';').filter(p => p.trim()) : [];
+      const processTexts = row.process_text ? row.process_text.split(';').filter(p => p.trim()) : [];
+      const processes = processNames.map((name, index) => ({
+        processName: name.trim(),
+        processText: processTexts[index] ? processTexts[index].trim() : ''
+      })).filter(p => p.processName || p.processText);
+
+      // Split notes
+      const notes = row.note ? row.note.split(';').filter(n => n.trim()).map(n => n.trim()) : [];
+
+      // Split questions and answers
+      const questions = row.question ? row.question.split(';').filter(q => q.trim()) : [];
+      const answers = row.answer ? row.answer.split(';').filter(a => a.trim()) : [];
+      const faqs = questions.map((question, index) => ({
+        question: question.trim(),
+        answer: answers[index] ? answers[index].trim() : ''
+      })).filter(f => f.question || f.answer);
+
+      return {
+        id: row.id,
+        service_id: row.service_id,
+        service_name: row.service_name || 'N/A',
+        status: row.status,
+        created_at: row.created_at,
+        processes: processes,
+        notes: notes,
+        faqs: faqs
+      };
+    });
+
+    res.json({
+      success: true,
+      faqsProcess: formattedData
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching FAQs & Process:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch FAQs & Process',
+      error: error.message
+    });
+  }
+});
+
+// Create FAQs & Process for admin
+app.post('/api/admin/faqs-process', async (req, res) => {
+  try {
+    const { service_id, processes, notes, faqs, status } = req.body;
+    
+    // Validation - all fields are required
+    if (!service_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID is required'
+      });
+    }
+
+    if (!processes || !Array.isArray(processes) || processes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one process is required'
+      });
+    }
+
+    // Validate that each process has both processName and processText
+    const invalidProcesses = processes.filter(p => !p.processName?.trim() || !p.processText?.trim());
+    if (invalidProcesses.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All processes must have both Process Name and Process Text'
+      });
+    }
+
+    if (!notes || !Array.isArray(notes) || notes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one note is required'
+      });
+    }
+
+    // Validate that all notes have content
+    const invalidNotes = notes.filter(n => !n?.trim());
+    if (invalidNotes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All notes must have content'
+      });
+    }
+
+    if (!faqs || !Array.isArray(faqs) || faqs.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one FAQ is required'
+      });
+    }
+
+    // Validate that each FAQ has both question and answer
+    const invalidFaqs = faqs.filter(f => !f.question?.trim() || !f.answer?.trim());
+    if (invalidFaqs.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All FAQs must have both Question and Answer'
+      });
+    }
+
+    const statusValue = status !== undefined ? parseInt(status) : 1;
+
+    // Concatenate values with ';' separator
+    const processNames = processes.map(p => p.processName.trim()).join(';');
+    const processTexts = processes.map(p => p.processText.trim()).join(';');
+    const notesText = notes.map(n => n.trim()).join(';');
+    const questions = faqs.map(f => f.question.trim()).join(';');
+    const answers = faqs.map(f => f.answer.trim()).join(';');
+
+    // Insert single row with all values
+    const insertQuery = `INSERT INTO tbl_faqs (service_id, process_name, process_text, note, question, answer, status) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    const [result] = await pool.execute(insertQuery, [
+      service_id,
+      processNames,
+      processTexts,
+      notesText,
+      questions,
+      answers,
+      statusValue
+    ]);
+
+    // Get service name
+    const [services] = await pool.query('SELECT name FROM tbl_services WHERE id = ?', [service_id]);
+    const serviceName = services.length > 0 ? services[0].name : 'N/A';
+
+    res.json({
+      success: true,
+      message: 'FAQs & Process created successfully',
+      faqProcess: {
+        id: result.insertId,
+        service_id: service_id,
+        service_name: serviceName,
+        processes: processes,
+        notes: notes,
+        faqs: faqs,
+        status: statusValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating FAQs & Process:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create FAQs & Process',
+      error: error.message
+    });
+  }
+});
+
+// Update FAQs & Process for admin
+app.put('/api/admin/faqs-process/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { service_id, processes, notes, faqs, status } = req.body;
+
+    // Validation - all fields are required
+    if (!service_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID is required'
+      });
+    }
+
+    if (!processes || !Array.isArray(processes) || processes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one process is required'
+      });
+    }
+
+    // Validate that each process has both processName and processText
+    const invalidProcesses = processes.filter(p => !p.processName?.trim() || !p.processText?.trim());
+    if (invalidProcesses.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All processes must have both Process Name and Process Text'
+      });
+    }
+
+    if (!notes || !Array.isArray(notes) || notes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one note is required'
+      });
+    }
+
+    // Validate that all notes have content
+    const invalidNotes = notes.filter(n => !n?.trim());
+    if (invalidNotes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All notes must have content'
+      });
+    }
+
+    if (!faqs || !Array.isArray(faqs) || faqs.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one FAQ is required'
+      });
+    }
+
+    // Validate that each FAQ has both question and answer
+    const invalidFaqs = faqs.filter(f => !f.question?.trim() || !f.answer?.trim());
+    if (invalidFaqs.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All FAQs must have both Question and Answer'
+      });
+    }
+
+    // Get existing FAQ Process to find all related rows
+    const [existingRows] = await pool.execute(
+      'SELECT service_id, status FROM tbl_faqs WHERE service_id = (SELECT service_id FROM tbl_faqs WHERE id = ? LIMIT 1) LIMIT 1',
+      [id]
+    );
+    
+    if (existingRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'FAQs & Process not found'
+      });
+    }
+
+    const existingServiceId = existingRows[0].service_id;
+    const statusValue = status !== undefined ? parseInt(status) : existingRows[0].status;
+
+    // Concatenate values with ';' separator
+    const processNames = processes.map(p => p.processName.trim()).join(';');
+    const processTexts = processes.map(p => p.processText.trim()).join(';');
+    const notesText = notes.map(n => n.trim()).join(';');
+    const questions = faqs.map(f => f.question.trim()).join(';');
+    const answers = faqs.map(f => f.answer.trim()).join(';');
+
+    // Delete all existing rows for this service_id
+    await pool.execute('DELETE FROM tbl_faqs WHERE service_id = ?', [existingServiceId]);
+
+    // Insert single row with all values
+    const insertQuery = `INSERT INTO tbl_faqs (service_id, process_name, process_text, note, question, answer, status) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    const [result] = await pool.execute(insertQuery, [
+      service_id,
+      processNames,
+      processTexts,
+      notesText,
+      questions,
+      answers,
+      statusValue
+    ]);
+
+    // Get service name
+    const [services] = await pool.query('SELECT name FROM tbl_services WHERE id = ?', [service_id]);
+    const serviceName = services.length > 0 ? services[0].name : 'N/A';
+
+    res.json({
+      success: true,
+      message: 'FAQs & Process updated successfully',
+      faqProcess: {
+        id: result.insertId,
+        service_id: service_id,
+        service_name: serviceName,
+        processes: processes,
+        notes: notes,
+        faqs: faqs,
+        status: statusValue
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating FAQs & Process:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update FAQs & Process',
+      error: error.message
+    });
+  }
+});
+
+// Get FAQs & Process by service_id (public endpoint)
+app.get('/api/faqs-process/:serviceId', async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+    
+    if (!serviceId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID is required'
+      });
+    }
+
+    const query = `
+      SELECT 
+        f.id,
+        f.service_id,
+        f.process_name,
+        f.process_text,
+        f.note,
+        f.question,
+        f.answer,
+        f.status
+      FROM tbl_faqs f
+      WHERE f.service_id = ? AND f.status = 1
+      LIMIT 1
+    `;
+    const [rows] = await pool.query(query, [serviceId]);
+
+    if (rows.length === 0) {
+      return res.json({
+        success: true,
+        data: null
+      });
+    }
+
+    const row = rows[0];
+    
+    // Parse semicolon-separated values
+    const processNames = row.process_name ? row.process_name.split(';').filter(p => p.trim()) : [];
+    const processTexts = row.process_text ? row.process_text.split(';').filter(p => p.trim()) : [];
+    const processes = processNames.map((name, index) => ({
+      processName: name.trim(),
+      processText: processTexts[index] ? processTexts[index].trim() : ''
+    })).filter(p => p.processName || p.processText);
+
+    // Split notes
+    const notes = row.note ? row.note.split(';').filter(n => n.trim()).map(n => n.trim()) : [];
+
+    // Split questions and answers
+    const questions = row.question ? row.question.split(';').filter(q => q.trim()) : [];
+    const answers = row.answer ? row.answer.split(';').filter(a => a.trim()) : [];
+    const faqs = questions.map((question, index) => ({
+      question: question.trim(),
+      answer: answers[index] ? answers[index].trim() : ''
+    })).filter(f => f.question || f.answer);
+
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        service_id: row.service_id,
+        processes: processes,
+        notes: notes,
+        faqs: faqs
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching FAQs & Process:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch FAQs & Process',
       error: error.message
     });
   }

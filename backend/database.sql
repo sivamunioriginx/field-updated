@@ -222,7 +222,26 @@ CREATE TABLE tbl_animations (
 CREATE TABLE tbl_customerratings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     bookingid INT NOT NULL,
+    service_id INT NOT NULL,
     rating TINYINT NOT NULL,
     description TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create tbl_faqs table for FAQs & Process
+-- Each row represents one item: a process, a note, or an FAQ
+CREATE TABLE tbl_faqs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    service_id INT NOT NULL,
+    process_name VARCHAR(255) DEFAULT NULL,
+    process_text TEXT DEFAULT NULL,
+    note TEXT DEFAULT NULL,
+    question TEXT DEFAULT NULL,
+    answer TEXT DEFAULT NULL,
+    status TINYINT NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (service_id) REFERENCES tbl_services(id) ON DELETE CASCADE,
+    INDEX idx_service_id (service_id),
+    INDEX idx_status (status)
 );

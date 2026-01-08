@@ -18,6 +18,7 @@ import Animations from './animations';
 import Bookings from './bookings';
 import Categories from './categories';
 import Customers from './customers';
+import FaqsAndProcess from './faqsandprocess';
 import Payments from './payments';
 import Quote from './quote';
 import ReviewsRatings from './reviewsandratings';
@@ -460,7 +461,7 @@ const menuItems = [
     { id: 'subcategories', icon: 'layers-outline', label: 'Subcategories', color: '#64748b' },
     { id: 'services', icon: 'cog-outline', label: 'Services', color: '#14b8a6' },
     { id: 'quote', icon: 'document-text-outline', label: 'Quotes', color: '#ef4444' },
-    { id: 'fags', icon: 'help-circle-outline', label: 'FAQS', color: '#f97316' },
+    { id: 'fags', icon: 'help-circle-outline', label: 'FAQS & Process', color: '#f97316' },
     { id: 'animations', icon: 'film-outline', label: 'Animations', color: '#8b5cf6' },
     { id: 'topdeals', icon: 'pricetag-outline', label: 'Top Deals', color: '#f59e0b' },
     { id: 'reviewsratings', icon: 'star-outline', label: 'Review & Ratings', color: '#f59e0b' },
@@ -586,7 +587,7 @@ const menuItems = [
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'animations' ? 'Animations Management' : activeMenu === 'topdeals' ? 'Top Deals Management' : activeMenu === 'reviewsratings' ? 'Reviews & Ratings Management' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'animations' ? 'Animations Management' : activeMenu === 'topdeals' ? 'Top Deals Management' : activeMenu === 'reviewsratings' ? 'Reviews & Ratings Management' : activeMenu === 'fags' ? 'FAQS & Process Management' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
@@ -597,12 +598,12 @@ const menuItems = [
                 </View>
               </View>
               <View style={styles.topBarRight}>
-                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers' || activeMenu === 'categories' || activeMenu === 'subcategories' || activeMenu === 'services' || activeMenu === 'quote' || activeMenu === 'animations' || activeMenu === 'topdeals' || activeMenu === 'reviewsratings') && (
+                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers' || activeMenu === 'categories' || activeMenu === 'subcategories' || activeMenu === 'services' || activeMenu === 'quote' || activeMenu === 'animations' || activeMenu === 'topdeals' || activeMenu === 'reviewsratings' || activeMenu === 'fags') && (
                   <View style={styles.topBarSearchContainer}>
                     <Ionicons name="search-outline" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" style={styles.topBarSearchIcon} />
                     <TextInput
                       style={[styles.topBarSearchInput, { outlineWidth: 0, outlineStyle: 'none' } as any]}
-                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search Quotes..." : activeMenu === 'categories' ? "Search categories" : activeMenu === 'subcategories' ? "Search Subcategories..." : activeMenu === 'services' ? "Search Services..." : activeMenu === 'animations' ? "Search Animations..." : activeMenu === 'topdeals' ? "Search Top Deals..." : activeMenu === 'reviewsratings' ? "Search Reviews & Ratings..." : "Search quotes..."}
+                      placeholder={activeMenu === 'bookings' ? "Search bookings..." : activeMenu === 'payments' ? "Search payments..." : activeMenu === 'customers' ? "Search customers..." : activeMenu === 'workers' ? "Search workers..." : activeMenu === 'quote' ? "Search Quotes..." : activeMenu === 'categories' ? "Search categories" : activeMenu === 'subcategories' ? "Search Subcategories..." : activeMenu === 'services' ? "Search Services..." : activeMenu === 'animations' ? "Search Animations..." : activeMenu === 'topdeals' ? "Search Top Deals..." : activeMenu === 'reviewsratings' ? "Search Reviews & Ratings..." : activeMenu === 'fags' ? "Search FAQs & Process..." : "Search quotes..."}
                       placeholderTextColor="#94a3b8"
                       value={searchQuery}
                       onChangeText={setSearchQuery}
@@ -709,6 +710,13 @@ const menuItems = [
           ) : activeMenu === 'reviewsratings' ? (
             <View style={styles.content}>
               <ReviewsRatings
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </View>
+          ) : activeMenu === 'fags' ? (
+            <View style={styles.content}>
+              <FaqsAndProcess
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
               />
