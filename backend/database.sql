@@ -224,5 +224,5 @@ CREATE TABLE tbl_customerratings (
     bookingid INT NOT NULL,
     rating TINYINT NOT NULL,
     description TEXT NOT NULL,
-    created DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

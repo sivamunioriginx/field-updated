@@ -1485,8 +1485,8 @@ app.post('/api/customer-ratings', async (req, res) => {
     
     // Insert rating into tbl_customerratings
     const insertQuery = `
-      INSERT INTO tbl_customerratings (bookingid, rating, description, created)
-      VALUES (?, ?, ?, NOW())
+      INSERT INTO tbl_customerratings (bookingid, rating, description, created_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     `;
     
     await pool.execute(insertQuery, [bookingid, ratingValue, description.trim()]);
@@ -6048,6 +6048,41 @@ app.get('/api/admin/deals', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'failed to fetch deals',
+      error: error.message
+    });
+  }
+});
+
+//get Reviews and Ratings for admin
+app.get('/api/admin/reviews-ratings', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        b.booking_id,
+        s.name AS customer_name,
+        w.name AS worker_name,
+        b.description AS booking_for,
+        cr.rating,
+        cr.description AS review,
+        cr.created_at
+      FROM tbl_customerratings cr
+      INNER JOIN tbl_bookings b ON cr.bookingid = b.id
+      INNER JOIN tbl_workers w ON b.worker_id = w.id
+      INNER JOIN tbl_serviceseeker s ON b.user_id = s.id
+      ORDER BY cr.id DESC
+    `;
+    const [reviews] = await pool.query(query);
+
+    res.json({
+      success: true,
+      reviews: reviews
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching reviews and ratings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'failed to fetch reviews and ratings',
       error: error.message
     });
   }
