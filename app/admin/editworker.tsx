@@ -86,6 +86,7 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
   const [areaName, setAreaName] = useState(''); // Store area name for city column
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [isLocationFocused, setIsLocationFocused] = useState(false);
 
   const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
   const [locationSuggestions, setLocationSuggestions] = useState<Array<{description: string; place_id?: string}>>([]);
@@ -200,15 +201,28 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
 
   const handleCityChange = (text: string) => {
     setCity(text);
+    // Clear state and country when user starts typing a new location
+    if (text.length === 0) {
+      setState('');
+      setCountry('');
+      setDistrict('');
+      setMandal('');
+      setPincode('');
+      setLatitude('');
+      setLongitude('');
+    }
     if (text.length >= 2) debouncedSearch(text);
     else setLocationSuggestions([]);
   };
 
   const selectLocationSuggestion = async (suggestion: { description: string; place_id?: string }) => {
-    setCity(suggestion.description);
+    // Clear suggestions first
     setLocationSuggestions([]);
-
-    // Extract area name from the selected location
+    // Blur the input to close keyboard and update display
+    setIsLocationFocused(false);
+    
+    // Don't set city here - let extractLocationDetails handle it to avoid duplicates
+    // Just extract area name from the selected location as fallback
     const locationParts = suggestion.description.split(', ');
     if (locationParts.length > 0) {
       const extractedAreaName = locationParts[0].trim();
@@ -292,8 +306,9 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
           const lat = placeDetails.geometry.location.lat;
           const lng = placeDetails.geometry.location.lng;
 
-          setLatitude(lat.toString());
-          setLongitude(lng.toString());
+          // Round to 5 decimal places
+          setLatitude(parseFloat(lat.toFixed(5)).toString());
+          setLongitude(parseFloat(lng.toFixed(5)).toString());
         }
 
         if (postalCode) {
@@ -320,6 +335,22 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
           setCountry(countryComp.long_name);
         }
 
+        // Set city name (locality or first part of description)
+        if (locality) {
+          setCity(locality.long_name);
+          setAreaName(locality.long_name);
+        } else if (sublocality) {
+          setCity(sublocality.long_name);
+          setAreaName(sublocality.long_name);
+        } else {
+          // Extract city from description
+          const locationParts = description.split(', ');
+          if (locationParts.length > 0) {
+            setCity(locationParts[0].trim());
+            setAreaName(locationParts[0].trim());
+          }
+        }
+
         if (!postalCode && placeDetails.geometry && placeDetails.geometry.location) {
           await fetchPincodeFromCoordinates(
             placeDetails.geometry.location.lat,
@@ -340,8 +371,11 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
               const result = geoData.results[0];
 
               if (result.geometry && result.geometry.location) {
-                setLatitude(result.geometry.location.lat.toString());
-                setLongitude(result.geometry.location.lng.toString());
+                // Round to 5 decimal places
+                const lat = parseFloat(result.geometry.location.lat.toFixed(5));
+                const lng = parseFloat(result.geometry.location.lng.toFixed(5));
+                setLatitude(lat.toString());
+                setLongitude(lng.toString());
               }
 
               const addressComponents = result.address_components || [];
@@ -593,6 +627,9 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
         setDistrict(workerData.district || '');
         setState(workerData.state || '');
         setCountry(workerData.country || '');
+        setLatitude(workerData.latitude ? parseFloat(workerData.latitude).toFixed(5) : '');
+        setLongitude(workerData.longitude ? parseFloat(workerData.longitude).toFixed(5) : '');
+        setAreaName(workerData.city || '');
         
         // Parse existing skills
         let skillIds: number[] = [];
@@ -627,8 +664,8 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
           state: workerData.state || '',
           country: workerData.country || '',
           areaName: workerData.city || workerData.district || '',
-          latitude: workerData.latitude?.toString() || '',
-          longitude: workerData.longitude?.toString() || '',
+          latitude: workerData.latitude ? parseFloat(workerData.latitude).toFixed(5) : '',
+          longitude: workerData.longitude ? parseFloat(workerData.longitude).toFixed(5) : '',
           selectedSkills: skillIds,
           existingPersonalDocs: personalDocs,
           existingProfessionalDocs: professionalDocs,
@@ -842,8 +879,11 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
     formData.append('district', district.trim());
     formData.append('state', state.trim());
     formData.append('country', country.trim());
-    formData.append('latitude', latitude || '');
-    formData.append('longitude', longitude || '');
+    // Round latitude and longitude to 5 decimal places before saving
+    const latValue = latitude ? parseFloat(latitude).toFixed(5) : '';
+    const lngValue = longitude ? parseFloat(longitude).toFixed(5) : '';
+    formData.append('latitude', latValue);
+    formData.append('longitude', lngValue);
     formData.append('areaName', areaName || ''); // Send area name for city column
 
     // Add existing documents (send filenames only)
@@ -917,8 +957,9 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
         webForm.append('district', district.trim());
         webForm.append('state', state.trim());
         webForm.append('country', country.trim());
-        webForm.append('latitude', latitude || '');
-        webForm.append('longitude', longitude || '');
+        // Round latitude and longitude to 5 decimal places before saving
+        webForm.append('latitude', latValue);
+        webForm.append('longitude', lngValue);
         webForm.append('areaName', areaName || '');
 
         if (existingPersonalDocs.length > 0) {
@@ -1253,8 +1294,21 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
                 <Text style={styles.inputLabel}>Location</Text>
                 <TextInput
                   style={styles.input}
-                  value={city}
+                  value={isLocationFocused ? city : (city && state && country ? `${city}, ${state}, ${country}` : city)}
                   onChangeText={handleCityChange}
+                  onFocus={() => {
+                    setIsLocationFocused(true);
+                    // When focused, extract just the city name if it's in combined format
+                    if (city && state && country) {
+                      // If city already contains the combined format, extract just city name
+                      if (city.includes(', ')) {
+                        const parts = city.split(', ');
+                        setCity(parts[0] || '');
+                      }
+                      // Otherwise keep city as is (it's already just the city name)
+                    }
+                  }}
+                  onBlur={() => setIsLocationFocused(false)}
                   placeholder="Enter Location"
                   placeholderTextColor="#94a3b8"
                 />
