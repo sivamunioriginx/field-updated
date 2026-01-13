@@ -68,10 +68,67 @@ export default function AdminIndexScreen() {
     { id: 'alerts', label: 'Alerts', value: '5', icon: 'alert-circle-outline', bg: '#fee2e2', iconBg: '#ef4444', change: '-0.5%', changeColor: '#ef4444' },
   ];
 
+  // Helper function to check if session is expired (1 hour = 3600000 ms)
+  const isSessionExpired = (loginTime: number): boolean => {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+    return (now - loginTime) > oneHour;
+  };
+
+  // Helper function to clear admin session
+  const clearAdminSession = async () => {
+    try {
+      await AsyncStorage.removeItem('adminToken');
+      await AsyncStorage.removeItem('adminUser');
+      await AsyncStorage.removeItem('adminLoginTime');
+      router.replace('/admin');
+    } catch (error) {
+      console.error('Error clearing admin session:', error);
+      router.replace('/admin');
+    }
+  };
+
+  // Check session expiry on mount and periodically
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const adminToken = await AsyncStorage.getItem('adminToken');
+        const loginTimeStr = await AsyncStorage.getItem('adminLoginTime');
+        
+        if (!adminToken || !loginTimeStr) {
+          // No session found, redirect to login
+          await clearAdminSession();
+          return;
+        }
+        
+        const loginTime = parseInt(loginTimeStr, 10);
+        
+        // Check if session has expired
+        if (isSessionExpired(loginTime)) {
+          // Session expired, clear it and redirect
+          await clearAdminSession();
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+        await clearAdminSession();
+      }
+    };
+
+    // Check immediately
+    checkSession();
+
+    // Check every 5 minutes
+    const interval = setInterval(checkSession, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem('adminToken');
       await AsyncStorage.removeItem('adminUser');
+      await AsyncStorage.removeItem('adminLoginTime');
       router.replace('/admin');
     } catch (error) {
       console.error('Error during logout:', error);

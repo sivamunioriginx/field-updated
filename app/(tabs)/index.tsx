@@ -712,7 +712,7 @@ export default function HomeScreen() {
             <Ionicons name="list-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Bookings</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
+          <TouchableOpacity style={styles.navItem} onPress={() => router.push('/customer-service')}>
             <Ionicons name="call-outline" size={styles.navIconSize} color="#999" />
             <Text style={styles.navLabel}>Support</Text>
           </TouchableOpacity>

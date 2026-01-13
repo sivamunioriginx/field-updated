@@ -39,14 +39,47 @@ export default function AdminLoginScreen() {
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Helper function to check if session is expired (1 hour = 3600000 ms)
+  const isSessionExpired = (loginTime: number): boolean => {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+    return (now - loginTime) > oneHour;
+  };
+
+  // Helper function to clear admin session
+  const clearAdminSession = async () => {
+    try {
+      await AsyncStorage.removeItem('adminToken');
+      await AsyncStorage.removeItem('adminUser');
+      await AsyncStorage.removeItem('adminLoginTime');
+    } catch (error) {
+      console.error('Error clearing admin session:', error);
+    }
+  };
+
   // Check if admin is already logged in
   useEffect(() => {
     const checkAdminAuth = async () => {
       try {
         const adminToken = await AsyncStorage.getItem('adminToken');
-        if (adminToken) {
-          // Admin already logged in, redirect to admin dashboard
+        const loginTimeStr = await AsyncStorage.getItem('adminLoginTime');
+        
+        if (adminToken && loginTimeStr) {
+          const loginTime = parseInt(loginTimeStr, 10);
+          
+          // Check if session has expired
+          if (isSessionExpired(loginTime)) {
+            // Session expired, clear it
+            await clearAdminSession();
+            // Stay on login page
+            return;
+          }
+          
+          // Session is valid, redirect to admin dashboard
           router.replace('/admin/dashboard');
+        } else if (adminToken && !loginTimeStr) {
+          // Old session without timestamp, clear it for security
+          await clearAdminSession();
         }
       } catch (error) {
         console.error('Error checking admin auth:', error);
@@ -87,9 +120,11 @@ export default function AdminLoginScreen() {
       const data = await response.json();
 
       if (data.success && data.admin) {
-        // Save admin token and user data
+        // Save admin token, user data, and login timestamp
+        const loginTime = Date.now();
         await AsyncStorage.setItem('adminToken', data.token || 'admin_authenticated');
         await AsyncStorage.setItem('adminUser', JSON.stringify(data.admin));
+        await AsyncStorage.setItem('adminLoginTime', loginTime.toString());
         
         // Navigate to admin dashboard
         router.replace({
