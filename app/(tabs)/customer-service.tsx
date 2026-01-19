@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,15 +23,40 @@ interface Message {
   sender: 'user' | 'support';
   timestamp: Date;
   options?: string[];
+  bookings?: BookingData[];
+  services?: ServiceData[];
+  payments?: PaymentData[];
+}
+
+interface BookingData {
+  booking_id: string;
+  worker_name: string;
+  status: number;
+}
+
+interface ServiceData {
+  name: string;
+  price: number;
+  rating: number;
+}
+
+interface PaymentData {
+  booking_id: string;
+  amount: number;
+  payment_id: string;
+  created_at: string;
 }
 
 export default function CustomerServiceScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [loadingBookings, setLoadingBookings] = useState(false);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [loadingPayments, setLoadingPayments] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const handleBackPress = () => {
@@ -123,8 +149,76 @@ export default function CustomerServiceScreen() {
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
 
-    // Special handling for "No, other" option
-    if (option === 'No, other') {
+    // Special handling for "Booking inquiries" option
+    if (option === 'Booking inquiries') {
+      if (!isAuthenticated || !user?.id) {
+        setTimeout(() => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: 'Please login to view your booking inquiries.',
+            sender: 'support',
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+        }, 500);
+        return;
+      }
+      
+      // Show loading message
+      setTimeout(() => {
+        const loadingMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'Fetching your booking inquiries...',
+          sender: 'support',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, loadingMessage]);
+      }, 500);
+      
+      // Fetch bookings
+      fetchBookings();
+    } else if (option === 'Service-related questions') {
+      // Show loading message
+      setTimeout(() => {
+        const loadingMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'Fetching services...',
+          sender: 'support',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, loadingMessage]);
+      }, 500);
+      
+      // Fetch services
+      fetchServices();
+    } else if (option === 'Payment and billing') {
+      if (!isAuthenticated || !user?.id) {
+        setTimeout(() => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: 'Please login to view your payment records.',
+            sender: 'support',
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+        }, 500);
+        return;
+      }
+      
+      // Show loading message
+      setTimeout(() => {
+        const loadingMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'Fetching your payment records...',
+          sender: 'support',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, loadingMessage]);
+      }, 500);
+      
+      // Fetch payments
+      fetchPayments();
+    } else if (option === 'No, other') {
       setTimeout(() => {
         const specialReply: Message = {
           id: (Date.now() + 1).toString(),
@@ -177,6 +271,248 @@ export default function CustomerServiceScreen() {
       minute: '2-digit',
       hour12: true 
     });
+  };
+
+  // Get status text based on status number
+  const getStatusText = (status: number): string => {
+    switch (status) {
+      case 1:
+        return 'Accept';
+      case 2:
+        return 'Start';
+      case 3:
+        return 'Complete';
+      case 4:
+        return 'Reject';
+      case 5:
+        return 'Cancel';
+      case 6:
+        return 'Reschedule';
+      case 7:
+        return 'Cancel Request';
+      case 8:
+        return 'Reschedule Request';
+      default:
+        return 'Unknown';
+    }
+  };
+
+  // Get status color based on status number
+  const getStatusColor = (status: number): { backgroundColor: string } => {
+    switch (status) {
+      case 1:
+        return { backgroundColor: '#dbeafe' }; // Accept - blue
+      case 2:
+        return { backgroundColor: '#fef3c7' }; // Start - yellow
+      case 3:
+        return { backgroundColor: '#d1fae5' }; // Complete - green
+      case 4:
+        return { backgroundColor: '#fee2e2' }; // Reject - red
+      case 5:
+        return { backgroundColor: '#fee2e2' }; // Cancel - red
+      case 6:
+        return { backgroundColor: '#fed7aa' }; // Reschedule - orange
+      case 7:
+        return { backgroundColor: '#fef3c7' }; // Cancel Request - yellow
+      case 8:
+        return { backgroundColor: '#fef3c7' }; // Reschedule Request - yellow
+      default:
+        return { backgroundColor: '#f3f4f6' }; // Unknown - gray
+    }
+  };
+
+  // Fetch bookings for the current user
+  const fetchBookings = async () => {
+    if (!user?.id) {
+      return;
+    }
+
+    setLoadingBookings(true);
+    try {
+      // Use TOTAL_BOOKINGS_BY_USER to fetch all bookings (no status filter)
+      const response = await fetch(API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(user.id));
+      const result = await response.json();
+
+      if (result.success && result.data && Array.isArray(result.data)) {
+        // Sort all records by id (highest first) DESC
+        const sortedBookings = [...result.data].sort((a: any, b: any) => {
+          const idA = a.id || 0;
+          const idB = b.id || 0;
+          // Sort by id DESC (highest first)
+          return idB - idA;
+        });
+
+        // Group by booking_id and keep only the latest (first occurrence after sorting)
+        const bookingsMap = new Map<string, any>();
+        
+        sortedBookings.forEach((booking: any) => {
+          const bookingId = String(booking.booking_id || booking.id || 'N/A');
+          
+          // Only add if this booking_id hasn't been seen yet (since we sorted, first = latest)
+          if (!bookingsMap.has(bookingId)) {
+            bookingsMap.set(bookingId, booking);
+          }
+        });
+
+        // Convert map to array and map to BookingData format
+        const bookings: BookingData[] = Array.from(bookingsMap.values()).map((booking: any) => ({
+          booking_id: booking.booking_id || booking.id || 'N/A',
+          worker_name: booking.worker_name || 'N/A',
+          status: booking.status || 0,
+        }));
+
+        // Create message with bookings data
+        const bookingsMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: bookings.length > 0 
+            ? `Here are your booking inquiries (${bookings.length}):`
+            : 'You don\'t have any bookings yet.',
+          sender: 'support',
+          timestamp: new Date(),
+          bookings: bookings,
+        };
+
+        setMessages(prev => [...prev, bookingsMessage]);
+      } else {
+        const noBookingsMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'You don\'t have any bookings yet.',
+          sender: 'support',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, noBookingsMessage]);
+      }
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I couldn\'t fetch your bookings. Please try again later.',
+        sender: 'support',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoadingBookings(false);
+    }
+  };
+
+  // Fetch services with status = 1 and visibility = 1, ordered by id DESC
+  const fetchServices = async () => {
+    setLoadingServices(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.ADMIN_SERVICES);
+      const result = await response.json();
+
+      if (result.success && result.services && Array.isArray(result.services)) {
+        // Filter by status = 1 and visibility = 1, then sort by id DESC
+        const filteredServices = result.services
+          .filter((service: any) => {
+            const status = service.status !== undefined ? service.status : 1;
+            const visibility = service.visibility !== undefined 
+              ? (typeof service.visibility === 'boolean' ? (service.visibility ? 1 : 0) : service.visibility)
+              : 1;
+            return status === 1 && visibility === 1;
+          })
+          .sort((a: any, b: any) => {
+            // Sort by id DESC
+            const idA = a.id || 0;
+            const idB = b.id || 0;
+            return idB - idA;
+          })
+          .map((service: any) => ({
+            name: service.name || service.service_name || 'N/A',
+            price: service.price || 0,
+            rating: (service.rating !== undefined && service.rating !== null) ? Number(service.rating) : 0,
+          }));
+
+        // Create message with services data
+        const servicesMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: filteredServices.length > 0 
+            ? `Here are our services (${filteredServices.length}):`
+            : 'No services available at the moment.',
+          sender: 'support',
+          timestamp: new Date(),
+          services: filteredServices,
+        };
+
+        setMessages(prev => [...prev, servicesMessage]);
+      } else {
+        const noServicesMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'No services available at the moment.',
+          sender: 'support',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, noServicesMessage]);
+      }
+    } catch (error) {
+      console.error('Error fetching services:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I couldn\'t fetch services. Please try again later.',
+        sender: 'support',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoadingServices(false);
+    }
+  };
+
+  // Fetch payments for the current user
+  const fetchPayments = async () => {
+    if (!user?.id) {
+      return;
+    }
+
+    setLoadingPayments(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.PAYMENTS_BY_USER(user.id));
+      const result = await response.json();
+
+      if (result.success && result.data && Array.isArray(result.data)) {
+        // Map payments to include booking_id, amount, payment_id, and created_at
+        const payments: PaymentData[] = result.data.map((payment: any) => ({
+          booking_id: payment.booking_id || 'N/A',
+          amount: payment.amount || 0,
+          payment_id: payment.payment_id || 'N/A',
+          created_at: payment.payment_date || payment.created_at || 'N/A',
+        }));
+
+        // Create message with payments data
+        const paymentsMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: payments.length > 0 
+            ? `Here are your payment records (${payments.length}):`
+            : 'You don\'t have any payment records yet.',
+          sender: 'support',
+          timestamp: new Date(),
+          payments: payments,
+        };
+
+        setMessages(prev => [...prev, paymentsMessage]);
+      } else {
+        const noPaymentsMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'You don\'t have any payment records yet.',
+          sender: 'support',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, noPaymentsMessage]);
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I couldn\'t fetch your payment records. Please try again later.',
+        sender: 'support',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoadingPayments(false);
+    }
   };
 
   return (
@@ -269,6 +605,82 @@ export default function CustomerServiceScreen() {
                       <Text style={styles.supportMessageText}>
                         {message.text}
                       </Text>
+                      {message.bookings && message.bookings.length > 0 && (
+                        <View style={styles.bookingsContainer}>
+                          {message.bookings.map((booking, idx) => (
+                            <View key={idx} style={styles.bookingCard}>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Booking ID:</Text>
+                                <Text style={styles.bookingValue}>{booking.booking_id}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Worker Name:</Text>
+                                <Text style={styles.bookingValue}>{booking.worker_name}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Status:</Text>
+                                <View style={[styles.statusBadge, getStatusColor(booking.status)]}>
+                                  <Text style={styles.statusText}>{getStatusText(booking.status)}</Text>
+                                </View>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {message.services && message.services.length > 0 && (
+                        <View style={styles.bookingsContainer}>
+                          {message.services.map((service, idx) => (
+                            <View key={idx} style={styles.bookingCard}>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Name:</Text>
+                                <Text style={styles.bookingValue}>{service.name}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Price:</Text>
+                                <Text style={styles.bookingValue}>₹{service.price}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Rating:</Text>
+                                <Text style={styles.bookingValue}>
+                                  {(service.rating && typeof service.rating === 'number' ? service.rating.toFixed(1) : '0.0')} ⭐
+                                </Text>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {message.payments && message.payments.length > 0 && (
+                        <View style={styles.bookingsContainer}>
+                          {message.payments.map((payment, idx) => (
+                            <View key={idx} style={styles.bookingCard}>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Booking ID:</Text>
+                                <Text style={styles.bookingValue}>{payment.booking_id}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Amount:</Text>
+                                <Text style={styles.bookingValue}>₹{payment.amount}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Payment ID:</Text>
+                                <Text style={styles.bookingValue}>{payment.payment_id}</Text>
+                              </View>
+                              <View style={styles.bookingRow}>
+                                <Text style={styles.bookingLabel}>Date:</Text>
+                                <Text style={styles.bookingValue}>
+                                  {payment.created_at !== 'N/A' 
+                                    ? new Date(payment.created_at).toLocaleDateString('en-IN', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })
+                                    : 'N/A'}
+                                </Text>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                       {message.options && message.options.length > 0 && (
                         <View style={styles.optionsContainer}>
                           {message.options.map((option, idx) => {
@@ -649,6 +1061,50 @@ const createStyles = (screenWidth: number, screenHeight: number) => {
       color: '#FFFFFF',
       fontWeight: '600',
       letterSpacing: 0.3,
+    },
+    bookingsContainer: {
+      marginTop: scale(12),
+      marginBottom: scale(4),
+      gap: scale(12),
+    },
+    bookingCard: {
+      backgroundColor: '#f9fafb',
+      padding: scale(12),
+      borderRadius: scale(12),
+      borderWidth: 1,
+      borderColor: '#e5e7eb',
+      gap: scale(8),
+      width: '70%',
+      minWidth: scale(260),
+    },
+    bookingRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: scale(4),
+    },
+    bookingLabel: {
+      fontSize: moderateScale(13),
+      color: '#6b7280',
+      fontWeight: '500',
+      flex: 1,
+    },
+    bookingValue: {
+      fontSize: moderateScale(13),
+      color: '#1f2937',
+      fontWeight: '600',
+      flex: 1,
+      textAlign: 'right',
+    },
+    statusBadge: {
+      paddingHorizontal: scale(10),
+      paddingVertical: scale(4),
+      borderRadius: scale(8),
+    },
+    statusText: {
+      fontSize: moderateScale(12),
+      color: '#1f2937',
+      fontWeight: '600',
     },
     inputContainer: {
       backgroundColor: '#FFFFFF',
