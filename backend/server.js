@@ -5410,18 +5410,19 @@ app.get('/api/admin/animations', async (req, res) => {
 // Get active animation for Customer APP
 app.get('/api/active-animation', async (req, res) => {
   try {
-    const query = `SELECT * FROM tbl_animations WHERE status = 1 LIMIT 1`;
+    const query = `SELECT * FROM tbl_animations WHERE status = 1 ORDER BY id DESC`;
     const [animations] = await pool.query(query);
 
     if (animations.length > 0) {
       res.json({
         success: true,
-        animation: animations[0]
+        animations: animations
       });
     } else {
       res.json({
         success: false,
-        message: 'No active animation found'
+        message: 'No active animation found',
+        animations: []
       });
     }
 
@@ -5457,13 +5458,7 @@ app.post('/api/admin/animations', upload.single('animationVideo'), async (req, r
     }
 
     // Validate is_active - should be 0 or 1
-    const statusValue = is_active !== undefined ? parseInt(is_active) : 0;
-    if (statusValue !== 0 && statusValue !== 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'Active status must be 0 or 1'
-      });
-    }
+    const statusValue = 1;
 
     // Store only filename in database (without path)
     const videoFileName = req.file.filename;
@@ -5539,12 +5534,6 @@ app.put('/api/admin/animations/:id', upload.single('animationVideo'), async (req
       } catch (err) {
         console.log('⚠️ Could not delete old video file:', err.message);
       }
-    }
-
-
-    // If activating this animation (status = 1), first deactivate all others
-    if (statusValue === 1) {
-      await pool.execute('UPDATE tbl_animations SET status = 0 WHERE id != ?', [id]);
     }
 
     // Update database

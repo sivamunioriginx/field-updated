@@ -78,7 +78,8 @@ export default function HomeScreen() {
   const [topDeals, setTopDeals] = useState<TopDeal[]>([]);
   const [serviceImageErrors, setServiceImageErrors] = useState<Set<number>>(new Set());
   const [dealImageErrors, setDealImageErrors] = useState<Set<number>>(new Set());
-  const [activeAnimation, setActiveAnimation] = useState<string | null>(null);
+  const [animations, setAnimations] = useState<Array<{ video_title: string }>>([]);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
   // Load saved location or get current location
   useEffect(() => {
@@ -224,14 +225,15 @@ export default function HomeScreen() {
     fetchTopServices();
   }, []);
 
-  // Fetch top deals
+  // Fetch ACTIVE Animation
   useEffect(() => {
     const fetchActiveAnimation = async () => {
       try {
         const response = await fetch(API_ENDPOINTS.ACTIVE_ANIMATION);
         const data = await response.json();
-        if (data.success && data.animation) {
-          setActiveAnimation(data.animation.video_title);
+        if (data.success && data.animations && data.animations.length > 0) {
+          setAnimations(data.animations);
+          setCurrentVideoIndex(0);
         }
       } catch (error) {
         console.error('Error fetching active animation:', error);
@@ -241,6 +243,15 @@ export default function HomeScreen() {
     fetchActiveAnimation();
   }, []);
 
+  // Reset and play video when index changes
+  useEffect(() => {
+    if (videoRef.current && animations.length > 0 && animations[currentVideoIndex]) {
+      videoRef.current.setPositionAsync(0);
+      videoRef.current.playAsync();
+    }
+  }, [currentVideoIndex]);
+
+   // Fetch top deals
   useEffect(() => {
     const fetchTopDeals = async () => {
       try {
@@ -417,15 +428,25 @@ export default function HomeScreen() {
 
         {/* Video Section */}
         <View style={styles.videoContainer}>
-          {activeAnimation ? (
+          {animations.length > 0 && animations[currentVideoIndex] ? (
             <Video
               ref={videoRef}
-              source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/${activeAnimation}` }}
+              source={{ uri: `${getBaseUrl().replace('/api', '')}/uploads/animations/${animations[currentVideoIndex].video_title}` }}
               style={styles.video}
               resizeMode={ResizeMode.COVER}
               shouldPlay
-              isLooping
               isMuted
+              onPlaybackStatusUpdate={(status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                  // Move to next video when current video finishes
+                  if (currentVideoIndex < animations.length - 1) {
+                    setCurrentVideoIndex(currentVideoIndex + 1);
+                  } else {
+                    // Loop back to first video if all videos finished
+                    setCurrentVideoIndex(0);
+                  }
+                }
+              }}
             />
           ) : (
             <View style={styles.video} />
