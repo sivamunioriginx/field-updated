@@ -5854,7 +5854,7 @@ app.get('/api/admin/services', async (req, res) => {
 // Create Service for admin
 app.post('/api/admin/services', upload.single('image'), async (req, res) => {
   try {
-    const { name, subcategory_id, price, rating, is_top_service, instant_service } = req.body;
+    const { name, subcategory_id, price, rating, is_top_service, instant_service, pincodes } = req.body;
     
     // Validation
     if (!name || !name.trim()) {
@@ -5913,11 +5913,50 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
       instantServiceValue
     ]);
 
+    const serviceId = result.insertId;
+
+    // Handle pincodes if provided
+    let pincodesArray = [];
+    if (pincodes) {
+      // Parse if it's a JSON string, otherwise use as-is
+      if (typeof pincodes === 'string') {
+        try {
+          pincodesArray = JSON.parse(pincodes);
+        } catch (e) {
+          // If not JSON, treat as single value or array
+          pincodesArray = Array.isArray(pincodes) ? pincodes : [pincodes];
+        }
+      } else if (Array.isArray(pincodes)) {
+        pincodesArray = pincodes;
+      }
+      
+      if (pincodesArray.length > 0) {
+        const validPincodes = pincodesArray.filter(p => {
+          if (typeof p === 'object' && p.pincode) {
+            return p.pincode.toString().trim().length > 0;
+          }
+          return p && p.toString().trim().length > 0;
+        });
+        
+        if (validPincodes.length > 0) {
+          // Insert pincodes with localities into tbl_service_pincodes
+          const pincodeValues = validPincodes.map(item => {
+            if (typeof item === 'object') {
+              return [serviceId, item.pincode.toString().trim(), item.locality || ''];
+            }
+            return [serviceId, item.toString().trim(), ''];
+          });
+          const pincodeQuery = `INSERT INTO tbl_service_pincodes (service_id, pincode, locality) VALUES ?`;
+          await pool.query(pincodeQuery, [pincodeValues]);
+        }
+      }
+    }
+
     res.json({
       success: true,
       message: 'Service created successfully',
       service: {
-        id: result.insertId,
+        id: serviceId,
         name: name.trim(),
         subcategory_id: subcategory_id,
         image: imageFileName,
@@ -5944,7 +5983,7 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
 app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, subcategory_id, price, rating, is_top_service, instant_service, status, visibility } = req.body;
+    const { name, subcategory_id, price, rating, is_top_service, instant_service, status, visibility, pincodes } = req.body;
 
     // Validation
     if (!name || !name.trim()) {
@@ -6007,6 +6046,50 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
 
     await pool.execute(updateQuery, values);
 
+    // Handle pincodes update
+    if (pincodes !== undefined) {
+      // Delete existing pincodes for this service
+      await pool.execute('DELETE FROM tbl_service_pincodes WHERE service_id = ?', [id]);
+      
+      // Parse pincodes if provided
+      let pincodesArray = [];
+      if (pincodes) {
+        // Parse if it's a JSON string, otherwise use as-is
+        if (typeof pincodes === 'string') {
+          try {
+            pincodesArray = JSON.parse(pincodes);
+          } catch (e) {
+            // If not JSON, treat as single value or array
+            pincodesArray = Array.isArray(pincodes) ? pincodes : [pincodes];
+          }
+        } else if (Array.isArray(pincodes)) {
+          pincodesArray = pincodes;
+        }
+        
+        // Insert new pincodes if provided
+        if (pincodesArray.length > 0) {
+          const validPincodes = pincodesArray.filter(p => {
+            if (typeof p === 'object' && p.pincode) {
+              return p.pincode.toString().trim().length > 0;
+            }
+            return p && p.toString().trim().length > 0;
+          });
+          
+          if (validPincodes.length > 0) {
+            // Insert pincodes with localities into tbl_service_pincodes
+            const pincodeValues = validPincodes.map(item => {
+              if (typeof item === 'object') {
+                return [id, item.pincode.toString().trim(), item.locality || ''];
+              }
+              return [id, item.toString().trim(), ''];
+            });
+            const pincodeQuery = `INSERT INTO tbl_service_pincodes (service_id, pincode, locality) VALUES ?`;
+            await pool.query(pincodeQuery, [pincodeValues]);
+          }
+        }
+      }
+    }
+
     res.json({
       success: true,
       message: 'Service updated successfully'
@@ -6017,6 +6100,134 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update service',
+      error: error.message
+    });
+  }
+});
+
+// Get pincodes for a service
+app.get('/api/admin/services/:id/pincodes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [pincodes] = await pool.execute(
+      'SELECT pincode, locality FROM tbl_service_pincodes WHERE service_id = ? ORDER BY pincode',
+      [id]
+    );
+    
+    res.json({
+      success: true,
+      pincodes: pincodes
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching pincodes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pincodes',
+      error: error.message
+    });
+  }
+});
+
+// Proxy endpoint for Google Places Autocomplete (to avoid CORS)
+app.get('/api/google/places/autocomplete', async (req, res) => {
+  try {
+    const { input } = req.query;
+    const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
+    
+    if (!input || input.length < 2) {
+      return res.json({
+        success: true,
+        predictions: []
+      });
+    }
+    
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${GOOGLE_PLACES_API_KEY}&types=geocode`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    res.json({
+      success: true,
+      predictions: data.predictions || [],
+      status: data.status
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching place suggestions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch place suggestions',
+      error: error.message,
+      predictions: []
+    });
+  }
+});
+
+// Proxy endpoint for Google Places Details (to avoid CORS)
+app.get('/api/google/places/details', async (req, res) => {
+  try {
+    const { place_id } = req.query;
+    const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
+    
+    if (!place_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'place_id is required'
+      });
+    }
+    
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(place_id)}&fields=address_components,formatted_address,geometry&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    res.json({
+      success: true,
+      result: data.result || null,
+      status: data.status
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching place details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch place details',
+      error: error.message
+    });
+  }
+});
+
+// Proxy endpoint for Google Geocoding API - Reverse geocode to get postal code from lat/lng
+app.get('/api/google/geocode/reverse', async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
+    
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: 'lat and lng are required'
+      });
+    }
+    
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    res.json({
+      success: true,
+      results: data.results || [],
+      status: data.status
+    });
+    
+  } catch (error) {
+    console.error('❌ Error reverse geocoding:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reverse geocode',
       error: error.message
     });
   }

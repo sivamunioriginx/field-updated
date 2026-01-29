@@ -76,6 +76,8 @@ export default function HomeScreen() {
   // State for top services and top deals
   const [topServices, setTopServices] = useState<TopService[]>([]);
   const [topDeals, setTopDeals] = useState<TopDeal[]>([]);
+  const [filteredTopDeals, setFilteredTopDeals] = useState<TopDeal[]>([]);
+  const [userPincode, setUserPincode] = useState<string | null>(null);
   const [serviceImageErrors, setServiceImageErrors] = useState<Set<number>>(new Set());
   const [dealImageErrors, setDealImageErrors] = useState<Set<number>>(new Set());
   const [animations, setAnimations] = useState<Array<{ video_title: string }>>([]);
@@ -94,6 +96,9 @@ export default function HomeScreen() {
           setSavedLocationData(location);
           setLocationLabel(location.saveAsType || 'Home');
           setLocationAddress(location.address || 'Address not available');
+          // Extract pincode from address
+          const pincodeMatch = location.address?.match(/\b\d{6}\b/);
+          setUserPincode(pincodeMatch ? pincodeMatch[0] : null);
           return; // Use saved location, don't fetch GPS
         }
 
@@ -158,6 +163,10 @@ export default function HomeScreen() {
           setLocationLabel(areaName);
           setLocationAddress(formattedAddress || 'Location found');
           
+          // Extract pincode from address
+          const postalCode = addr.postalCode;
+          setUserPincode(postalCode || null);
+          
           // Mark that we've checked GPS
           await AsyncStorage.setItem('hasCheckedGPS', 'true');
         }
@@ -182,6 +191,9 @@ export default function HomeScreen() {
           setSavedLocationData(location);
           setLocationLabel(location.saveAsType || 'Home');
           setLocationAddress(location.address || 'Address not available');
+          // Extract pincode from address
+          const pincodeMatch = location.address?.match(/\b\d{6}\b/);
+          setUserPincode(pincodeMatch ? pincodeMatch[0] : null);
         }
       };
 
@@ -261,13 +273,57 @@ export default function HomeScreen() {
           setTopDeals(data.data);
         } else {
           console.log('No top deals data or unsuccessful response:', data);
+          setTopDeals([]);
         }
       } catch (error) {
         console.error('Error fetching top deals:', error);
+        setTopDeals([]);
       }
     };
     fetchTopDeals();
   }, []);
+
+  // Filter top deals by pincode
+  useEffect(() => {
+    const filterDealsByPincode = async () => {
+      if (!userPincode || topDeals.length === 0) {
+        setFilteredTopDeals([]);
+        return;
+      }
+
+      try {
+        const filteredDeals: TopDeal[] = [];
+        
+        // Check each deal's service pincode
+        await Promise.all(
+          topDeals.map(async (deal) => {
+            const serviceId = deal.serviceId || deal.id;
+            try {
+              const response = await fetch(`${getBaseUrl()}/admin/services/${serviceId}/pincodes`);
+              const data = await response.json();
+              
+              if (data.success && data.pincodes && Array.isArray(data.pincodes)) {
+                const servicePincodes = data.pincodes.map((p: any) => p.pincode.toString());
+                // Only include deal if service has pincodes and user's pincode matches
+                if (servicePincodes.length > 0 && servicePincodes.includes(userPincode)) {
+                  filteredDeals.push(deal);
+                }
+              }
+            } catch (error) {
+              console.error(`Error fetching pincodes for deal ${serviceId}:`, error);
+            }
+          })
+        );
+        
+        setFilteredTopDeals(filteredDeals);
+      } catch (error) {
+        console.error('Error filtering deals by pincode:', error);
+        setFilteredTopDeals([]);
+      }
+    };
+
+    filterDealsByPincode();
+  }, [topDeals, userPincode]);
 
   // Typing animation for search placeholder
   useEffect(() => {
@@ -633,7 +689,7 @@ export default function HomeScreen() {
           )}
 
           {/* Top Deals */}
-          {topDeals.length > 0 && (
+          {filteredTopDeals.length > 0 && (
             <View style={styles.topServicesSection}>
               <View style={styles.categoryHeader}>
                 <Text style={styles.categoryTitle}>Top Deals</Text>
@@ -662,7 +718,7 @@ export default function HomeScreen() {
                 style={styles.dealsScroll}
                 contentContainerStyle={styles.dealsScrollContent}
               >
-                {topDeals.map((deal) => (
+                {filteredTopDeals.map((deal) => (
                   <TouchableOpacity 
                     key={deal.id} 
                     style={styles.dealCard}

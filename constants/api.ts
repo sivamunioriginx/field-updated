@@ -105,6 +105,11 @@ export const API_ENDPOINTS = {
   GET_RATINGS: `${getBaseUrl()}/customer-ratings`,
   ADMIN_REVIEWS_RATINGS: `${getBaseUrl()}/admin/reviews-ratings`,
   ADMIN_FAQS_PROCESS: `${getBaseUrl()}/admin/faqs-process`,
+  
+  // Google Places API proxy endpoints (to avoid CORS)
+  GOOGLE_PLACES_AUTOCOMPLETE: (input: string) => `${getBaseUrl()}/google/places/autocomplete?input=${encodeURIComponent(input)}`,
+  GOOGLE_PLACES_DETAILS: (placeId: string) => `${getBaseUrl()}/google/places/details?place_id=${encodeURIComponent(placeId)}`,
+  GOOGLE_GEOCODE_REVERSE: (lat: number, lng: number) => `${getBaseUrl()}/google/geocode/reverse?lat=${lat}&lng=${lng}`,
 };
 
 export const API_BASE_URL = getBaseUrl();

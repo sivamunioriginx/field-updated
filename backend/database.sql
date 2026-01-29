@@ -100,6 +100,15 @@ CREATE TABLE tbl_services (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE tbl_service_pincodes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  service_id INT NOT NULL,
+  pincode VARCHAR(6) NOT NULL,
+  locality VARCHAR(100),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (service_id) REFERENCES tbl_services(id) ON DELETE CASCADE
+);
+
 -- Create deals table
 CREATE TABLE tbl_deals (
   id INT AUTO_INCREMENT PRIMARY KEY,

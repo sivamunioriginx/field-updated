@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,22 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { API_ENDPOINTS } from '../../constants/api';
+
+interface LocationSuggestion {
+  id: string;
+  place_id: string;
+  description: string;
+  structured_formatting?: {
+    main_text: string;
+    secondary_text: string;
+  };
+}
+
+interface SelectedLocation {
+  place_id: string;
+  description: string;
+  pincode: string;
+}
 
 interface Service {
   id: number;
@@ -74,6 +90,154 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
   const [serviceToDelete, setServiceToDelete] = useState<{ id: number; name: string } | null>(null);
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [serviceToActivate, setServiceToActivate] = useState<{ id: number; name: string } | null>(null);
+  const [locationInput, setLocationInput] = useState('');
+  const [locationSuggestions, setLocationSuggestions] = useState<LocationSuggestion[]>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const [selectedLocations, setSelectedLocations] = useState<SelectedLocation[]>([]);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Google Places API function (using backend proxy to avoid CORS)
+  const fetchPlaceSuggestions = async (input: string) => {
+    if (input.length < 2) {
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+      return;
+    }
+    
+    try {
+      const response = await fetch(API_ENDPOINTS.GOOGLE_PLACES_AUTOCOMPLETE(input));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.predictions && Array.isArray(data.predictions)) {
+        const suggestions = data.predictions.map((prediction: any) => ({
+          id: prediction.place_id,
+          place_id: prediction.place_id,
+          description: prediction.description,
+          structured_formatting: prediction.structured_formatting
+        }));
+        setLocationSuggestions(suggestions);
+        setShowLocationSuggestions(true);
+      } else {
+        setLocationSuggestions([]);
+        setShowLocationSuggestions(false);
+      }
+    } catch (error) {
+      console.error('Error fetching place suggestions:', error);
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+    }
+  };
+
+  // Debounced search function
+  const handleLocationInputChange = (text: string) => {
+    setLocationInput(text);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    debounceTimerRef.current = setTimeout(() => {
+      fetchPlaceSuggestions(text);
+    }, 300);
+  };
+
+  // Fetch place details to extract pincode (using backend proxy to avoid CORS)
+  const fetchPlaceDetails = async (placeId: string) => {
+    try {
+      const response = await fetch(API_ENDPOINTS.GOOGLE_PLACES_DETAILS(placeId));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.result) {
+        // First try: Get postal_code from address_components
+        if (data.result.address_components) {
+          const postalCode = data.result.address_components.find((component: any) => 
+            component.types.includes('postal_code')
+          );
+          
+          if (postalCode) {
+            return postalCode.long_name;
+          }
+        }
+        
+        // Second try: If no postal_code found, use reverse geocoding with coordinates
+        if (data.result.geometry && data.result.geometry.location) {
+          const { lat, lng } = data.result.geometry.location;
+          
+          try {
+            const reverseResponse = await fetch(API_ENDPOINTS.GOOGLE_GEOCODE_REVERSE(lat, lng));
+            
+            if (reverseResponse.ok) {
+              const reverseData = await reverseResponse.json();
+              
+              if (reverseData.success && reverseData.results && reverseData.results.length > 0) {
+                // Search through results to find one with postal_code
+                for (const result of reverseData.results) {
+                  if (result.address_components) {
+                    const postalCode = result.address_components.find((component: any) => 
+                      component.types.includes('postal_code')
+                    );
+                    
+                    if (postalCode) {
+                      return postalCode.long_name;
+                    }
+                  }
+                }
+              }
+            }
+          } catch (reverseError) {
+            console.error('Error in reverse geocoding:', reverseError);
+          }
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching place details:', error);
+      return null;
+    }
+  };
+
+  // Handle location suggestion selection
+  const selectLocationSuggestion = async (suggestion: LocationSuggestion) => {
+    // Close suggestions and clear input
+    setLocationInput('');
+    setShowLocationSuggestions(false);
+    setLocationSuggestions([]);
+    
+    const pincode = await fetchPlaceDetails(suggestion.place_id);
+    
+    if (pincode) {
+      // Check if this pincode is already added
+      const isDuplicate = selectedLocations.some(loc => loc.pincode === pincode);
+      
+      if (!isDuplicate) {
+        const newLocation: SelectedLocation = {
+          place_id: suggestion.place_id,
+          description: suggestion.description,
+          pincode: pincode
+        };
+        // Append to existing locations (don't clear previous)
+        setSelectedLocations([...selectedLocations, newLocation]);
+      } else {
+        Alert.alert('Info', 'This pincode is already added');
+      }
+    } else {
+      Alert.alert('Warning', 'Could not extract pincode from selected location');
+    }
+  };
+
+  // Remove location
+  const removeLocation = (placeId: string) => {
+    setSelectedLocations(selectedLocations.filter(loc => loc.place_id !== placeId));
+  };
 
   // Sync external search query if provided
   useEffect(() => {
@@ -97,7 +261,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     try {
       setLoading(true);
 
-      console.log('📡 Fetching services from:', API_ENDPOINTS.ADMIN_SERVICES);
       const response = await fetch(API_ENDPOINTS.ADMIN_SERVICES);
       
       if (!response.ok) {
@@ -108,11 +271,9 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       }
       
       const data = await response.json();
-      console.log('📦 Services response:', data);
       
       if (data.success) {
         const servicesData = data.services || data.data || [];
-        console.log('✅ Services fetched:', servicesData.length, 'records');
         setServices(servicesData);
 
         const initialVisibility: Record<number, boolean> = {};
@@ -317,7 +478,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
-  const handleEdit = (serviceId: number) => {
+  const handleEdit = async (serviceId: number) => {
     const service = services.find(ser => ser.id === serviceId);
     if (service) {
       setEditingServiceId(serviceId);
@@ -341,6 +502,31 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
         ? (typeof service.visibility === 'boolean' ? (service.visibility ? 1 : 0) : service.visibility)
         : (service.status !== undefined ? service.status : 1);
       setVisibility(visValue);
+      
+      // Fetch existing pincodes for this service
+      try {
+        const response = await fetch(`${API_ENDPOINTS.ADMIN_SERVICES}/${serviceId}/pincodes`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.pincodes) {
+            // Convert pincodes to selectedLocations format
+            const locations: SelectedLocation[] = data.pincodes.map((p: any) => ({
+              place_id: `pincode_${p.pincode}`,
+              description: p.locality || `Pincode: ${p.pincode}`,
+              pincode: p.pincode
+            }));
+            setSelectedLocations(locations);
+          } else {
+            setSelectedLocations([]);
+          }
+        } else {
+          setSelectedLocations([]);
+        }
+      } catch (error) {
+        console.error('Error fetching pincodes:', error);
+        setSelectedLocations([]);
+      }
+      
       setShowAddModal(true);
     }
   };
@@ -486,6 +672,10 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setIsTopService(1);
     setInstantService(1);
     setVisibility(1);
+    setLocationInput('');
+    setSelectedLocations([]);
+    setLocationSuggestions([]);
+    setShowLocationSuggestions(false);
     setShowAddModal(true);
   };
 
@@ -501,6 +691,10 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setIsTopService(1);
     setInstantService(1);
     setVisibility(1);
+    setLocationInput('');
+    setSelectedLocations([]);
+    setLocationSuggestions([]);
+    setShowLocationSuggestions(false);
     setShowSubcategoryDropdown(false);
     setShowTopServiceDropdown(false);
     setShowInstantServiceDropdown(false);
@@ -599,6 +793,13 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       formData.append('instant_service', instantService.toString());
       formData.append('status', visibility.toString());
       formData.append('visibility', visibility.toString());
+      
+      // Extract pincodes and localities from selectedLocations and append as JSON string
+      const pincodes = selectedLocations.map(loc => ({
+        pincode: loc.pincode,
+        locality: loc.description
+      }));
+      formData.append('pincodes', JSON.stringify(pincodes));
 
       // Only append image if it's a new upload (blob/data/file URLs) or create mode
       if (serviceImage && (isNewImage || !isEditMode)) {
@@ -1050,7 +1251,16 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
         animationType="none"
         onRequestClose={handleCloseModal}
       >
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCloseModal();
+            }
+          }}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
@@ -1309,6 +1519,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                       setShowSubcategoryDropdown(false);
                       setShowTopServiceDropdown(false);
                       setShowInstantServiceDropdown(false);
+                      setShowLocationSuggestions(false);
                     }}
                   >
                     <Text style={styles.visibilityDropdownText}>
@@ -1349,6 +1560,86 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                   )}
                 </View>
               </View>
+
+              {/* Available Locations */}
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Available Locations</Text>
+                <View style={styles.locationInputWrapper}>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Type location (min 2 letters)"
+                    placeholderTextColor="#94a3b8"
+                    value={locationInput}
+                    onChangeText={handleLocationInputChange}
+                    onFocus={() => {
+                      if (locationInput.length >= 2) {
+                        setShowLocationSuggestions(true);
+                      }
+                      setShowSubcategoryDropdown(false);
+                      setShowTopServiceDropdown(false);
+                      setShowInstantServiceDropdown(false);
+                      setShowVisibilityDropdown(false);
+                    }}
+                  />
+                  {showLocationSuggestions && locationSuggestions.length > 0 && (
+                    <View style={styles.locationSuggestionsMenu}>
+                      <ScrollView 
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                        style={styles.locationSuggestionsScrollView}
+                      >
+                        {locationSuggestions.map((suggestion) => (
+                          <TouchableOpacity
+                            key={suggestion.id}
+                            style={styles.locationSuggestionItem}
+                            onPress={() => selectLocationSuggestion(suggestion)}
+                          >
+                            <Ionicons name="location-outline" size={18} color="#06b6d4" />
+                            <View style={styles.locationSuggestionTextContainer}>
+                              <Text style={styles.locationSuggestionMainText}>
+                                {suggestion.structured_formatting?.main_text || suggestion.description.split(',')[0]}
+                              </Text>
+                              <Text style={styles.locationSuggestionSecondaryText}>
+                                {suggestion.structured_formatting?.secondary_text || suggestion.description}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+                
+                {/* Selected Locations */}
+                {selectedLocations.length > 0 && (
+                  <View style={styles.pincodesContainer}>
+                    <Text style={styles.pincodesLabel}>Selected Locations:</Text>
+                    <View style={styles.pincodesChipsContainer}>
+                      {selectedLocations.map((location, index) => (
+                        <View key={location.place_id || index} style={styles.locationChip}>
+                          <View style={styles.locationChipContent}>
+                            <Ionicons name="location" size={14} color="#06b6d4" />
+                            <View style={styles.locationChipTextContainer}>
+                              <Text style={styles.locationChipText} numberOfLines={1}>
+                                {location.description}
+                              </Text>
+                              <Text style={styles.locationChipPincode}>
+                                Pincode: {location.pincode}
+                              </Text>
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => removeLocation(location.place_id)}
+                            style={styles.pincodeChipRemove}
+                          >
+                            <Ionicons name="close-circle" size={18} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
             </ScrollView>
 
             {/* Modal Footer */}
@@ -1375,7 +1666,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Delete Confirmation Modal */}
@@ -2170,6 +2462,122 @@ const createStyles = (width: number, height: number) => {
       fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
       fontWeight: '600',
       color: '#ffffff',
+    },
+    // Location Input Styles
+    locationInputWrapper: {
+      position: 'relative',
+      zIndex: 1000,
+    },
+    locationSuggestionsMenu: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      right: 0,
+      marginTop: 4,
+      backgroundColor: '#ffffff',
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: '#e2e8f0',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 1000,
+      zIndex: 1000,
+      maxHeight: isDesktop ? 250 : isTablet ? 220 : 190,
+      overflow: 'hidden',
+    },
+    locationSuggestionsScrollView: {
+      maxHeight: isDesktop ? 250 : isTablet ? 220 : 190,
+    },
+    locationSuggestionItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: isDesktop ? 14 : isTablet ? 12 : 10,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+      gap: 12,
+    },
+    locationSuggestionTextContainer: {
+      flex: 1,
+    },
+    locationSuggestionMainText: {
+      fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
+      fontWeight: '600',
+      color: '#0f172a',
+      marginBottom: 2,
+    },
+    locationSuggestionSecondaryText: {
+      fontSize: isDesktop ? 13 : isTablet ? 12 : 11,
+      color: '#64748b',
+    },
+    // Pincodes Styles
+    pincodesContainer: {
+      marginTop: isDesktop ? 16 : isTablet ? 14 : 12,
+    },
+    pincodesLabel: {
+      fontSize: isDesktop ? 13 : isTablet ? 12 : 11,
+      fontWeight: '600',
+      color: '#64748b',
+      marginBottom: 8,
+    },
+    pincodesChipsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    pincodeChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#f0fdfa',
+      borderWidth: 1,
+      borderColor: '#06b6d4',
+      borderRadius: 8,
+      paddingHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
+      paddingVertical: isDesktop ? 6 : isTablet ? 5 : 4,
+      gap: 6,
+    },
+    pincodeChipText: {
+      fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
+      fontWeight: '600',
+      color: '#06b6d4',
+    },
+    pincodeChipRemove: {
+      padding: 2,
+    },
+    // Location Chip Styles
+    locationChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: '#f0fdfa',
+      borderWidth: 1,
+      borderColor: '#06b6d4',
+      borderRadius: 8,
+      paddingHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
+      paddingVertical: isDesktop ? 8 : isTablet ? 7 : 6,
+      gap: 8,
+      width: '48%', // 2 chips per row (48% width + 4% gap = 100%)
+    },
+    locationChipContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      gap: 8,
+    },
+    locationChipTextContainer: {
+      flex: 1,
+    },
+    locationChipText: {
+      fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
+      fontWeight: '600',
+      color: '#0f172a',
+      marginBottom: 2,
+    },
+    locationChipPincode: {
+      fontSize: isDesktop ? 12 : isTablet ? 11 : 10,
+      fontWeight: '500',
+      color: '#06b6d4',
     },
   });
 };

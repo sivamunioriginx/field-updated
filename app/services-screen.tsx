@@ -2,6 +2,7 @@ import getBaseUrl, { API_ENDPOINTS } from '@/constants/api';
 import type { CartService } from '@/contexts/CartContext';
 import { useCart } from '@/contexts/CartContext';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -80,6 +81,8 @@ export default function ServicesScreen() {
   const [notes, setNotes] = useState<string[]>([]);
   const [faqs, setFaqs] = useState<Array<{ question: string; answer: string }>>([]);
   const [reviews, setReviews] = useState<Array<{ reviewer_name: string; rating: number; review_description: string; created_at: string; service_name: string }>>([]);
+  const [userPincode, setUserPincode] = useState<string | null>(null);
+  const [servicePincodes, setServicePincodes] = useState<Map<number, string[]>>(new Map());
   const videoRef = useRef<Video>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
@@ -87,6 +90,84 @@ export default function ServicesScreen() {
 
   // Create responsive styles based on screen dimensions
   const styles = useMemo(() => createStyles(screenHeight, screenWidth), [screenHeight, screenWidth]);
+
+  // Extract pincode from location address
+  const extractPincodeFromAddress = (address: string): string | null => {
+    if (!address) return null;
+    // Extract 6-digit pincode from address
+    const pincodeMatch = address.match(/\b\d{6}\b/);
+    return pincodeMatch ? pincodeMatch[0] : null;
+  };
+
+  // Load user's pincode from saved location
+  useEffect(() => {
+    const loadUserPincode = async () => {
+      try {
+        const savedLocation = await AsyncStorage.getItem('defaultLocation');
+        if (savedLocation) {
+          const location = JSON.parse(savedLocation);
+          const pincode = extractPincodeFromAddress(location.address || '');
+          setUserPincode(pincode);
+        }
+      } catch (error) {
+        console.error('Error loading user pincode:', error);
+      }
+    };
+    loadUserPincode();
+  }, []);
+
+  // Fetch pincodes for all services
+  const fetchServicePincodes = async (serviceIds: number[]): Promise<Map<number, string[]>> => {
+    if (serviceIds.length === 0) return new Map();
+    
+    try {
+      const pincodeMap = new Map<number, string[]>();
+      
+      // Fetch pincodes for each service
+      await Promise.all(
+        serviceIds.map(async (serviceId) => {
+          try {
+            const response = await fetch(`${getBaseUrl()}/admin/services/${serviceId}/pincodes`);
+            const data = await response.json();
+            if (data.success && data.pincodes && Array.isArray(data.pincodes)) {
+              const pincodes = data.pincodes.map((p: any) => p.pincode.toString());
+              pincodeMap.set(serviceId, pincodes);
+            }
+          } catch (error) {
+            console.error(`Error fetching pincodes for service ${serviceId}:`, error);
+          }
+        })
+      );
+      
+      setServicePincodes(pincodeMap);
+      return pincodeMap;
+    } catch (error) {
+      console.error('Error fetching service pincodes:', error);
+      return new Map();
+    }
+  };
+
+  // Filter services by pincode - only show services that match the user's pincode
+  const filterServicesByPincode = (servicesList: Service[], pincodeMap?: Map<number, string[]>): Service[] => {
+    const pincodesToUse = pincodeMap || servicePincodes;
+    
+    if (!userPincode) {
+      // If no pincode available, don't show any services
+      return [];
+    }
+
+    return servicesList.filter((service) => {
+      const servicePincodeList = pincodesToUse.get(service.id);
+      
+      // Only show service if it has pincodes defined AND user's pincode matches
+      if (!servicePincodeList || servicePincodeList.length === 0) {
+        return false; // Don't show services without pincodes
+      }
+      
+      // Check if user's pincode matches any of the service's pincodes
+      return servicePincodeList.includes(userPincode);
+    });
+  };
 
   // Fetch subcategory details including video
   const fetchSubcategoryData = async () => {
@@ -118,8 +199,12 @@ export default function ServicesScreen() {
         if (topServicesData.success && Array.isArray(topServicesData.data)) {
           const foundService = topServicesData.data.find((s: Service) => s.id.toString() === serviceId);
           if (foundService) {
-            setServices([foundService]);
+            // Fetch pincodes for this service
+            const pincodeMap = await fetchServicePincodes([foundService.id]);
             setAllServices([foundService]);
+            // Filter by pincode
+            const filtered = filterServicesByPincode([foundService], pincodeMap);
+            setServices(filtered);
             setLoading(false);
             return;
           }
@@ -132,8 +217,12 @@ export default function ServicesScreen() {
         if (topDealsData.success && Array.isArray(topDealsData.data)) {
           const foundService = topDealsData.data.find((s: Service) => s.id.toString() === serviceId);
           if (foundService) {
-            setServices([foundService]);
+            // Fetch pincodes for this service
+            const pincodeMap = await fetchServicePincodes([foundService.id]);
             setAllServices([foundService]);
+            // Filter by pincode
+            const filtered = filterServicesByPincode([foundService], pincodeMap);
+            setServices(filtered);
             setLoading(false);
             return;
           }
@@ -174,8 +263,15 @@ export default function ServicesScreen() {
             const fullUrl = `${getBaseUrl().replace('/api', '')}${service.image}`;
           }
         });
-        setServices(data.data);
+        
+        // Fetch pincodes for all services
+        const serviceIds = data.data.map((s: Service) => s.id);
+        const pincodeMap = await fetchServicePincodes(serviceIds);
+        
+        // Filter services by pincode after fetching pincodes
         setAllServices(data.data);
+        const filtered = filterServicesByPincode(data.data, pincodeMap);
+        setServices(filtered);
       } else {
         console.log('No services found or unsuccessful response:', data);
         setServices([]);
@@ -205,6 +301,14 @@ export default function ServicesScreen() {
       fetchSubcategoryData();
     }
   }, [categoryId, subcategoryId, searchQuery, showTopServices, showTopDeals, serviceId]);
+
+  // Re-filter services when pincode or service pincodes change
+  useEffect(() => {
+    if (allServices.length > 0 && servicePincodes.size > 0) {
+      const filtered = filterServicesByPincode(allServices);
+      setServices(filtered);
+    }
+  }, [userPincode, servicePincodes, allServices]);
 
   // Initialize search input with current search query
   useEffect(() => {
@@ -379,12 +483,16 @@ export default function ServicesScreen() {
 
   const filterServices = (query: string) => {
     if (query.length >= 2) {
-      const filtered = allServices.filter(service =>
+      const nameFiltered = allServices.filter(service =>
         service.name.toLowerCase().includes(query.toLowerCase())
       );
+      // Also apply pincode filter
+      const filtered = filterServicesByPincode(nameFiltered);
       setServices(filtered);
     } else if (query.length === 0) {
-      setServices(allServices); // Show all services when search is cleared
+      // Show all services when search is cleared, but still apply pincode filter
+      const filtered = filterServicesByPincode(allServices);
+      setServices(filtered);
     }
   };
 
@@ -556,12 +664,18 @@ export default function ServicesScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="construct-outline" size={80} color="#ccc" />
             <Text style={styles.emptyTitle}>
-              {searchQuery ? 'No Services Found' : 'No Services Available'}
+              {userPincode && allServices.length > 0 
+                ? 'Service Not Available' 
+                : searchQuery 
+                  ? 'No Services Found' 
+                  : 'No Services Available'}
             </Text>
             <Text style={styles.emptySubtitle}>
-              {searchQuery 
-                ? `No services found for "${searchQuery}". Try searching with different keywords.`
-                : 'No services found for this category. Check back later!'
+              {userPincode && allServices.length > 0
+                ? 'Sorry we are not provide services at your location'
+                : searchQuery 
+                  ? `No services found for "${searchQuery}". Try searching with different keywords.`
+                  : 'No services found for this category. Check back later!'
               }
             </Text>
           </View>
