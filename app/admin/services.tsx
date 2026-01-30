@@ -42,7 +42,6 @@ interface Service {
   subcaregory_name: string;
   price: number;
   rating: number;
-  is_top_service: number;
   instant_service: number;
   image: string;
   created_at: string;
@@ -363,7 +362,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
         Service.subcaregory_name.toLowerCase().includes(query) ||
         Service.price.toString().toLowerCase().includes(query) ||
         Service.rating.toString().toLowerCase().includes(query) ||
-        Service.is_top_service.toString().toLowerCase().includes(query) ||
         Service.instant_service.toString().toLowerCase().includes(query) ||
         (Service.image && Service.image.toLowerCase().includes(query)) ||
         (Service.created_at && Service.created_at.toLowerCase().includes(query))
@@ -435,7 +433,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       formData.append('subcategory_id', (service as any).subcategory_id?.toString() || '');
       formData.append('price', service.price.toString());
       formData.append('rating', service.rating.toString());
-      formData.append('is_top_service', service.is_top_service.toString());
       formData.append('instant_service', service.instant_service.toString());
       // Keep existing status, only update visibility
       const existingStatus = service.status !== undefined ? service.status : 1;
@@ -552,7 +549,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       formData.append('subcategory_id', (service as any).subcategory_id?.toString() || '');
       formData.append('price', service.price.toString());
       formData.append('rating', service.rating.toString());
-      formData.append('is_top_service', service.is_top_service.toString());
       formData.append('instant_service', service.instant_service.toString());
       // Get current visibility value and preserve it
       const currentVisibility = service.visibility !== undefined 
@@ -617,7 +613,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       formData.append('subcategory_id', (service as any).subcategory_id?.toString() || '');
       formData.append('price', service.price.toString());
       formData.append('rating', service.rating.toString());
-      formData.append('is_top_service', service.is_top_service.toString());
       formData.append('instant_service', service.instant_service.toString());
       // Get current visibility value
       const currentVisibility = service.visibility !== undefined 
@@ -788,7 +783,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       formData.append('subcategory_id', selectedSubcategoryId.toString());
       formData.append('price', price.trim());
       formData.append('rating', rating.trim());
-      formData.append('is_top_service', '1');
       formData.append('instant_service', instantService.toString());
       formData.append('status', visibility.toString());
       formData.append('visibility', visibility.toString());
