@@ -93,7 +93,6 @@ CREATE TABLE tbl_services (
   image varchar(255) NOT NULL,
   price DECIMAL(10,2) DEFAULT 0,
   rating DECIMAL(3,2) DEFAULT 0,
-  is_top_service TINYINT DEFAULT 0,
   instant_service TINYINT DEFAULT 0,
   status TINYINT NOT NULL DEFAULT 1,
   visibility TINYINT NOT NULL DEFAULT 1,

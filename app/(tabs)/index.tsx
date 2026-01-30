@@ -223,19 +223,27 @@ export default function HomeScreen() {
   useEffect(() => {
     const fetchTopServices = async () => {
       try {
-        const response = await fetch(`${getBaseUrl()}/top-services`);
+        // Build URL with pincode if available
+        let url = `${getBaseUrl()}/top-services`;
+        if (userPincode) {
+          url += `?pincode=${encodeURIComponent(userPincode)}`;
+        }
+        
+        const response = await fetch(url);
         const data = await response.json();
         if (data.success && Array.isArray(data.data)) {
           setTopServices(data.data);
         } else {
           console.log('No top services data or unsuccessful response:', data);
+          setTopServices([]);
         }
       } catch (error) {
         console.error('Error fetching top services:', error);
+        setTopServices([]);
       }
     };
     fetchTopServices();
-  }, []);
+  }, [userPincode]);
 
   // Fetch ACTIVE Animation
   useEffect(() => {

@@ -2680,28 +2680,127 @@ app.get('/api/banners', async (req, res) => {
 // Get top services near by you endpoint
 app.get('/api/top-services', async (req, res) => {
   try {
-    const { format } = req.query;
+    const { format, pincode } = req.query;
     
-    const [results] = await pool.execute(
-      `SELECT 
-        s.id,
-        s.name,
-        s.subcategory_id,
-        s.image,
-        COALESCE(d.deal_price, s.price) AS price,
-        s.rating,
-        s.created_at,
-        s.instant_service,
-        sc.name AS subcategory_name,
-        c.title AS category_title
-      FROM tbl_services s
-      LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
-      LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
-      LEFT JOIN tbl_category c ON sc.category_id = c.id
-      WHERE s.is_top_service = 1 AND s.status = 1 AND s.visibility = 1
-      ORDER BY s.rating DESC, s.id DESC`
-    );
+    let results;
     
+    // If pincode is provided, get services based on bookings
+    if (pincode) {      
+      // First, let's check if we have any bookings with this pincode (debugging)
+      const [testBookingsAll] = await pool.execute(
+        `SELECT COUNT(*) as count FROM tbl_bookings WHERE work_location LIKE ?`,
+        [`%${pincode}%`]
+      );
+      
+      const [testBookings] = await pool.execute(
+        `SELECT COUNT(*) as count FROM tbl_bookings 
+         WHERE work_location LIKE ? AND status != 4 AND payment_status = 1`,
+        [`%${pincode}%`]
+      );      
+      // Check if workers have skill_ids that match services
+      const [workersWithSkills] = await pool.execute(
+        `SELECT COUNT(DISTINCT w.id) as count 
+         FROM tbl_bookings b
+         INNER JOIN tbl_workers w ON b.worker_id = w.id
+         WHERE b.work_location LIKE ? AND b.status != 4 AND b.payment_status = 1
+         AND w.skill_id IS NOT NULL AND w.skill_id != ''`,
+        [`%${pincode}%`]
+      );      
+      // Query to get services based on bookings in the pincode area
+      // Extract pincode from work_location and match with provided pincode
+      // Count bookings per service through workers' skill_id (subcategory_ids)
+      const [bookingResults] = await pool.execute(
+        `SELECT 
+          s.id,
+          s.name,
+          s.subcategory_id,
+          s.image,
+          COALESCE(d.deal_price, s.price) AS price,
+          s.rating,
+          s.created_at,
+          s.instant_service,
+          sc.name AS subcategory_name,
+          c.title AS category_title,
+          COUNT(DISTINCT b.id) AS booking_count
+        FROM tbl_bookings b
+        INNER JOIN tbl_workers w ON b.worker_id = w.id
+        INNER JOIN tbl_services s ON FIND_IN_SET(s.subcategory_id, REPLACE(w.skill_id, ' ', '')) > 0
+        LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+        LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+        LEFT JOIN tbl_category c ON sc.category_id = c.id
+        WHERE b.status != 4 
+          AND b.payment_status = 1
+          AND s.status = 1 
+          AND s.visibility = 1
+          AND b.work_location IS NOT NULL
+          AND b.work_location != ''
+          AND b.work_location LIKE ?
+        GROUP BY s.id, s.name, s.subcategory_id, s.image, s.price, d.deal_price, s.rating, s.created_at, s.instant_service, sc.name, c.title
+        HAVING booking_count >= 2
+        ORDER BY booking_count DESC, s.rating DESC
+        LIMIT 10`
+      , [
+        `%${pincode}%`  // LIKE pattern to match pincode within work_location
+      ]);
+            
+      // If no results with booking_count >= 2, try with booking_count >= 1 as fallback
+      if (bookingResults.length === 0) {
+        const [bookingResultsFallback] = await pool.execute(
+          `SELECT 
+            s.id,
+            s.name,
+            s.subcategory_id,
+            s.image,
+            COALESCE(d.deal_price, s.price) AS price,
+            s.rating,
+            s.created_at,
+            s.instant_service,
+            sc.name AS subcategory_name,
+            c.title AS category_title,
+            COUNT(DISTINCT b.id) AS booking_count
+          FROM tbl_bookings b
+          INNER JOIN tbl_workers w ON b.worker_id = w.id
+          INNER JOIN tbl_services s ON FIND_IN_SET(s.subcategory_id, REPLACE(w.skill_id, ' ', '')) > 0
+          LEFT JOIN tbl_deals d ON d.service_id = s.id AND d.is_active = 1
+          LEFT JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+          LEFT JOIN tbl_category c ON sc.category_id = c.id
+          WHERE b.status != 4 
+            AND b.payment_status = 1
+            AND s.status = 1 
+            AND s.visibility = 1
+            AND b.work_location IS NOT NULL
+            AND b.work_location != ''
+            AND b.work_location LIKE ?
+          GROUP BY s.id, s.name, s.subcategory_id, s.image, s.price, d.deal_price, s.rating, s.created_at, s.instant_service, sc.name, c.title
+          HAVING booking_count >= 1
+          ORDER BY booking_count DESC, s.rating DESC
+          LIMIT 10`
+        , [
+          `%${pincode}%`
+        ]);
+        if (bookingResultsFallback.length > 0) {
+          results = bookingResultsFallback;
+        } else {
+          // Debug: Check what's blocking the results
+          const [debugQuery] = await pool.execute(
+            `SELECT 
+              COUNT(DISTINCT b.id) as booking_count,
+              COUNT(DISTINCT w.id) as worker_count,
+              COUNT(DISTINCT s.id) as service_count
+            FROM tbl_bookings b
+            INNER JOIN tbl_workers w ON b.worker_id = w.id
+            LEFT JOIN tbl_services s ON FIND_IN_SET(s.subcategory_id, REPLACE(w.skill_id, ' ', '')) > 0
+            WHERE b.work_location LIKE ?
+              AND b.status != 4 
+              AND b.payment_status = 1`,
+            [`%${pincode}%`]
+          );
+          results = [];
+        }
+      } else {
+        results = bookingResults;
+      }
+    } 
     // Format based on query parameter
     let topServices;
     if (format === 'services') {
@@ -5854,7 +5953,7 @@ app.get('/api/admin/services', async (req, res) => {
 // Create Service for admin
 app.post('/api/admin/services', upload.single('image'), async (req, res) => {
   try {
-    const { name, subcategory_id, price, rating, is_top_service, instant_service, pincodes } = req.body;
+    const { name, subcategory_id, price, rating, instant_service, pincodes } = req.body;
     
     // Validation
     if (!name || !name.trim()) {
@@ -5898,18 +5997,16 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
     // Parse values
     const priceValue = parseFloat(price);
     const ratingValue = parseFloat(rating);
-    const isTopServiceValue = is_top_service ? parseInt(is_top_service) : 0;
     const instantServiceValue = instant_service ? parseInt(instant_service) : 0;
 
     // Insert into tbl_services
-    const query = `INSERT INTO tbl_services (name, subcategory_id, image, price, rating, is_top_service, instant_service, status, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`;
+    const query = `INSERT INTO tbl_services (name, subcategory_id, image, price, rating, instant_service, status, visibility) VALUES (?, ?, ?, ?, ?, ?, 1, 1)`;
     const [result] = await pool.execute(query, [
       name.trim(), 
       subcategory_id, 
       imageFileName, 
       priceValue, 
       ratingValue, 
-      isTopServiceValue, 
       instantServiceValue
     ]);
 
@@ -5962,7 +6059,6 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
         image: imageFileName,
         price: priceValue,
         rating: ratingValue,
-        is_top_service: isTopServiceValue,
         instant_service: instantServiceValue,
         status: 1,
         visibility: 1
@@ -5983,7 +6079,7 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
 app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, subcategory_id, price, rating, is_top_service, instant_service, status, visibility, pincodes } = req.body;
+    const { name, subcategory_id, price, rating, instant_service, status, visibility, pincodes } = req.body;
 
     // Validation
     if (!name || !name.trim()) {
@@ -6026,7 +6122,6 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
     // Parse values
     const priceValue = parseFloat(price);
     const ratingValue = parseFloat(rating);
-    const isTopServiceValue = is_top_service ? parseInt(is_top_service) : 0;
     const instantServiceValue = instant_service ? parseInt(instant_service) : 0;
     const statusValue = status !== undefined ? parseInt(status) : 1;
     const visibilityValue = visibility !== undefined ? parseInt(visibility) : 1;
@@ -6037,11 +6132,11 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
 
     if (req.file) {
       const imageFileName = req.file.filename;
-      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, image = ?, price = ?, rating = ?, is_top_service = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
-      values = [name.trim(), subcategory_id, imageFileName, priceValue, ratingValue, isTopServiceValue, instantServiceValue, statusValue, visibilityValue, id];
+      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, image = ?, price = ?, rating = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
+      values = [name.trim(), subcategory_id, imageFileName, priceValue, ratingValue, instantServiceValue, statusValue, visibilityValue, id];
     } else {
-      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, price = ?, rating = ?, is_top_service = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
-      values = [name.trim(), subcategory_id, priceValue, ratingValue, isTopServiceValue, instantServiceValue, statusValue, visibilityValue, id];
+      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, price = ?, rating = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
+      values = [name.trim(), subcategory_id, priceValue, ratingValue, instantServiceValue, statusValue, visibilityValue, id];
     }
 
     await pool.execute(updateQuery, values);

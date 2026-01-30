@@ -78,10 +78,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
   const [categoryName, setCategoryName] = useState('');
   const [price, setPrice] = useState('');
   const [rating, setRating] = useState('');
-  const [isTopService, setIsTopService] = useState<number>(1);
   const [instantService, setInstantService] = useState<number>(1);
   const [showSubcategoryDropdown, setShowSubcategoryDropdown] = useState(false);
-  const [showTopServiceDropdown, setShowTopServiceDropdown] = useState(false);
   const [showInstantServiceDropdown, setShowInstantServiceDropdown] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
   const [visibility, setVisibility] = useState<number>(1);
@@ -495,7 +493,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       setServiceImage(finalImageUrl);
       setPrice(service.price.toString());
       setRating(service.rating.toString());
-      setIsTopService(service.is_top_service);
       setInstantService(service.instant_service);
       // Set visibility - check both status and visibility fields
       const visValue = service.visibility !== undefined 
@@ -669,7 +666,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setServiceImage(null);
     setPrice('');
     setRating('');
-    setIsTopService(1);
     setInstantService(1);
     setVisibility(1);
     setLocationInput('');
@@ -688,7 +684,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setServiceImage(null);
     setPrice('');
     setRating('');
-    setIsTopService(1);
     setInstantService(1);
     setVisibility(1);
     setLocationInput('');
@@ -696,7 +691,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setLocationSuggestions([]);
     setShowLocationSuggestions(false);
     setShowSubcategoryDropdown(false);
-    setShowTopServiceDropdown(false);
     setShowInstantServiceDropdown(false);
     setShowVisibilityDropdown(false);
   };
@@ -782,6 +776,11 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       return;
     }
 
+    if (selectedLocations.length === 0) {
+      Alert.alert('Validation Error', 'Please add at least one available location');
+      return;
+    }
+
     try {
       setLoading(true);
       const formData = new FormData();
@@ -789,7 +788,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       formData.append('subcategory_id', selectedSubcategoryId.toString());
       formData.append('price', price.trim());
       formData.append('rating', rating.trim());
-      formData.append('is_top_service', isTopService.toString());
+      formData.append('is_top_service', '1');
       formData.append('instant_service', instantService.toString());
       formData.append('status', visibility.toString());
       formData.append('visibility', visibility.toString());
@@ -874,11 +873,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       setLoading(false);
     }
   };
-
-  const topServiceOptions = [
-    { label: 'ON', value: 1 },
-    { label: 'OFF', value: 0 },
-  ];
 
   const instantServiceOptions = [
     { label: 'ON', value: 1 },
@@ -1088,15 +1082,11 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                   <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
                   <Text style={styles.tableHeaderText}>rating</Text>
                 </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 150 : isTablet ? 75 : 50 }]}>
-                  <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Top Service</Text>
-                </View>
                 <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 190 : isTablet ? 75 : 50 }]}>
                   <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
                   <Text style={styles.tableHeaderText}>Instant Service</Text>
                 </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 230 : isTablet ? 70 : 35 }]}>
+                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 200 : isTablet ? 70 : 35 }]}>
                   <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
                   <Text style={styles.tableHeaderText}>Created On</Text>
                 </View>
@@ -1141,9 +1131,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                     <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 100 : 50 }]}>
                       <Text style={styles.tableCellText}>{services.rating || 'N/A'}</Text>
                     </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 75 : 50 }]}>
-                      <Text style={styles.tableCellText}>{services.is_top_service === 1 ? 'ON' : 'OFF'}</Text>
-                    </View>
                     <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 100 : 50 }]}>
                       <Text style={styles.tableCellText}>{services.instant_service === 1 ? 'ON' : 'OFF'}</Text>
                     </View>
@@ -1159,7 +1146,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                         ios_backgroundColor="#e2e8f0"
                       />
                     </View>
-                    <View style={[styles.tableCell, styles.actionCell, { width: isDesktop ? 220 : isTablet ? 100 : 80 }]}>
+                    <View style={[styles.tableCell, styles.actionCell, { width: isDesktop ? 200 : isTablet ? 100 : 80 }]}>
                       <TouchableOpacity 
                         style={styles.actionButton}
                         onPress={() => handleEdit(services.id)}
@@ -1293,7 +1280,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                       style={styles.categoryDropdownButton}
                       onPress={() => {
                         setShowSubcategoryDropdown(!showSubcategoryDropdown);
-                        setShowTopServiceDropdown(false);
                         setShowInstantServiceDropdown(false);
                       }}
                     >
@@ -1405,49 +1391,50 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                 </View>
               </View>
 
-              {/* Top Service and Instant Service in one row */}
+              {/* Visibility and Instant Service in one row */}
               <View style={styles.modalRow}>
                 <View style={[styles.modalField, styles.modalFieldHalf]}>
-                  <Text style={styles.modalLabel}>Top Service</Text>
+                  <Text style={styles.modalLabel}>Visibility</Text>
                   <View style={styles.visibilityDropdownWrapper}>
                     <TouchableOpacity
                       style={styles.visibilityDropdownButton}
                       onPress={() => {
-                        setShowTopServiceDropdown(!showTopServiceDropdown);
+                        setShowVisibilityDropdown(!showVisibilityDropdown);
                         setShowSubcategoryDropdown(false);
                         setShowInstantServiceDropdown(false);
+                        setShowLocationSuggestions(false);
                       }}
                     >
                       <Text style={styles.visibilityDropdownText}>
-                        {topServiceOptions.find(opt => opt.value === isTopService)?.label || 'ON'}
+                        {visibilityOptions.find(opt => opt.value === visibility)?.label || 'On'}
                       </Text>
                       <Ionicons
-                        name={showTopServiceDropdown ? "chevron-up" : "chevron-down"}
+                        name={showVisibilityDropdown ? "chevron-up" : "chevron-down"}
                         size={20}
                         color="#64748b"
                       />
                     </TouchableOpacity>
-                    {showTopServiceDropdown && (
+                    {showVisibilityDropdown && (
                       <View style={styles.visibilityDropdownMenu}>
-                        {topServiceOptions.map((option) => (
+                        {visibilityOptions.map((option) => (
                           <TouchableOpacity
                             key={option.value}
                             style={[
                               styles.visibilityDropdownItem,
-                              isTopService === option.value && styles.visibilityDropdownItemActive
+                              visibility === option.value && styles.visibilityDropdownItemActive
                             ]}
                             onPress={() => {
-                              setIsTopService(option.value);
-                              setShowTopServiceDropdown(false);
+                              setVisibility(option.value);
+                              setShowVisibilityDropdown(false);
                             }}
                           >
                             <Text style={[
                               styles.visibilityDropdownItemText,
-                              isTopService === option.value && styles.visibilityDropdownItemTextActive
+                              visibility === option.value && styles.visibilityDropdownItemTextActive
                             ]}>
                               {option.label}
                             </Text>
-                            {isTopService === option.value && (
+                            {visibility === option.value && (
                               <Ionicons name="checkmark" size={20} color="#06b6d4" />
                             )}
                           </TouchableOpacity>
@@ -1465,7 +1452,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                       onPress={() => {
                         setShowInstantServiceDropdown(!showInstantServiceDropdown);
                         setShowSubcategoryDropdown(false);
-                        setShowTopServiceDropdown(false);
+                        setShowVisibilityDropdown(false);
                       }}
                     >
                       <Text style={styles.visibilityDropdownText}>
@@ -1508,62 +1495,9 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                 </View>
               </View>
 
-              {/* Visibility */}
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Visibility</Text>
-                <View style={styles.visibilityDropdownWrapper}>
-                  <TouchableOpacity
-                    style={styles.visibilityDropdownButton}
-                    onPress={() => {
-                      setShowVisibilityDropdown(!showVisibilityDropdown);
-                      setShowSubcategoryDropdown(false);
-                      setShowTopServiceDropdown(false);
-                      setShowInstantServiceDropdown(false);
-                      setShowLocationSuggestions(false);
-                    }}
-                  >
-                    <Text style={styles.visibilityDropdownText}>
-                      {visibilityOptions.find(opt => opt.value === visibility)?.label || 'On'}
-                    </Text>
-                    <Ionicons
-                      name={showVisibilityDropdown ? "chevron-up" : "chevron-down"}
-                      size={20}
-                      color="#64748b"
-                    />
-                  </TouchableOpacity>
-                  {showVisibilityDropdown && (
-                    <View style={styles.visibilityDropdownMenu}>
-                      {visibilityOptions.map((option) => (
-                        <TouchableOpacity
-                          key={option.value}
-                          style={[
-                            styles.visibilityDropdownItem,
-                            visibility === option.value && styles.visibilityDropdownItemActive
-                          ]}
-                          onPress={() => {
-                            setVisibility(option.value);
-                            setShowVisibilityDropdown(false);
-                          }}
-                        >
-                          <Text style={[
-                            styles.visibilityDropdownItemText,
-                            visibility === option.value && styles.visibilityDropdownItemTextActive
-                          ]}>
-                            {option.label}
-                          </Text>
-                          {visibility === option.value && (
-                            <Ionicons name="checkmark" size={20} color="#06b6d4" />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              </View>
-
               {/* Available Locations */}
               <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Available Locations</Text>
+                <Text style={styles.modalLabel}>Available Locations <Text style={{color: '#ef4444'}}>*</Text></Text>
                 <View style={styles.locationInputWrapper}>
                   <TextInput
                     style={styles.modalInput}
@@ -1576,7 +1510,6 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                         setShowLocationSuggestions(true);
                       }
                       setShowSubcategoryDropdown(false);
-                      setShowTopServiceDropdown(false);
                       setShowInstantServiceDropdown(false);
                       setShowVisibilityDropdown(false);
                     }}
@@ -1653,10 +1586,10 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
               <TouchableOpacity
                 style={[
                   styles.modalSubmitButton, 
-                  (loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !price.trim() || !rating.trim()) && styles.modalSubmitButtonDisabled
+                  (loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !price.trim() || !rating.trim() || selectedLocations.length === 0) && styles.modalSubmitButtonDisabled
                 ]}
                 onPress={handleSubmitService}
-                disabled={loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !price.trim() || !rating.trim()}
+                disabled={loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !price.trim() || !rating.trim() || selectedLocations.length === 0}
               >
                 {loading ? (
                   <ActivityIndicator size="small" color="#ffffff" />
