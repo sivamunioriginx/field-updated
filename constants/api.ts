@@ -114,4 +114,7 @@ export const API_ENDPOINTS = {
 
 export const API_BASE_URL = getBaseUrl();
 
+// Base URL without /api suffix (for image/document URLs)
+export const BASE_URL = API_BASE_URL.replace('/api', '');
+
 export default getBaseUrl;

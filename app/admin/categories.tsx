@@ -17,7 +17,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Categorie {
   id: number;
@@ -259,7 +259,7 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
       let imageUrl = category.image;
       if (imageUrl && !imageUrl.startsWith('http')) {
         // If it's just a filename, construct full URL
-        imageUrl = `http://192.168.31.84:3001/uploads/categorys/${imageUrl}`;
+        imageUrl = `${BASE_URL}/uploads/categorys/${imageUrl}`;
       }
       const finalImageUrl = imageUrl || null;
       setCategoryImage(finalImageUrl);

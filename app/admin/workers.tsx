@@ -12,14 +12,9 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_BASE_URL, API_ENDPOINTS } from '../../constants/api';
+import { BASE_URL, API_ENDPOINTS } from '../../constants/api';
 import EditWorker from './editworker';
 import ViewWorker from './viewworker';
-
-// Construct base image URL from API base URL
-const getImageBaseUrl = () => {
-  return API_BASE_URL.replace('/api', '');
-};
 
 interface Worker {
   id: number;

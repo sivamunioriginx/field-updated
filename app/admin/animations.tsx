@@ -15,7 +15,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Animation {
   id: number;
@@ -205,7 +205,7 @@ export default function Animations({ searchQuery: externalSearchQuery, onSearchC
       // Construct video URL if exists
       let videoUrl = animation.video_url;
       if (videoUrl && !videoUrl.startsWith('http')) {
-        videoUrl = `http://192.168.31.84:3001/uploads/animations/${videoUrl}`;
+        videoUrl = `${BASE_URL}/uploads/animations/${videoUrl}`;
       }
       setAnimationVideo(videoUrl || null);
       setVideoError('');

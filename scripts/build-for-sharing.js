@@ -46,6 +46,20 @@ async function main() {
   const apiTsPath = path.join(__dirname, '..', 'constants', 'api.ts');
   let apiContent = fs.readFileSync(apiTsPath, 'utf8');
 
+  // Extract current base URL from the file for fallback
+  const urlMatch = apiContent.match(/return\s+['"](https?:\/\/[^'"]+)['"]/);
+  let currentBaseUrl = urlMatch ? urlMatch[1] : 'http://192.168.31.84:3001/api';
+  if (urlMatch && urlMatch[1].includes('ngrok')) {
+    // If ngrok URL found, look for the next URL (physical device IP)
+    const allMatches = apiContent.matchAll(/return\s+['"](https?:\/\/[^'"]+)['"]/g);
+    for (const match of allMatches) {
+      if (!match[1].includes('ngrok')) {
+        currentBaseUrl = match[1];
+        break;
+      }
+    }
+  }
+
   // Update the getBaseUrl function
   const updatedApiContent = apiContent.replace(
     /const getBaseUrl = \(\) => \{[\s\S]*?\};/,
@@ -56,7 +70,7 @@ async function main() {
   }
   
   // For local development on physical devices
-  return 'http://192.168.31.84:3001/api';
+  return '${currentBaseUrl}';
 };`
   );
 

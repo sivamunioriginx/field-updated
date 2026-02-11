@@ -12,12 +12,7 @@ import {
   View,
   useWindowDimensions
 } from 'react-native';
-import { API_BASE_URL, API_ENDPOINTS } from '../../constants/api';
-
-// Construct base image URL from API base URL
-const getImageBaseUrl = () => {
-  return API_BASE_URL.replace('/api', '');
-};
+import { BASE_URL, API_ENDPOINTS } from '../../constants/api';
 
 interface Worker {
   id: number;
@@ -114,8 +109,8 @@ export default function ViewWorker({ workerId, onBack }: ViewWorkerProps) {
         filename = parts[parts.length - 1];
       }
       
-      // Construct URL: http://192.168.31.84:3001/uploads/document1-xxx.jpg
-      const documentUrl = `${getImageBaseUrl()}/uploads/${filename}`;
+      // Construct URL using BASE_URL
+      const documentUrl = `${BASE_URL}/uploads/${filename}`;
       console.log('Opening document:', documentUrl);
       
       const supported = await Linking.canOpenURL(documentUrl);
@@ -179,7 +174,7 @@ export default function ViewWorker({ workerId, onBack }: ViewWorkerProps) {
           <View style={styles.profileImageContainer}>
             {worker.profile_image ? (
               <Image 
-                source={{ uri: `${getImageBaseUrl()}${worker.profile_image}` }} 
+                source={{ uri: `${BASE_URL}${worker.profile_image}` }} 
                 style={styles.profileImage}
                 resizeMode="cover"
               />

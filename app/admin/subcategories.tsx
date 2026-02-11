@@ -18,7 +18,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Subcategorie {
   id: number;
@@ -284,14 +284,14 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
       let imageUrl = subcategory.image;
       if (imageUrl && !imageUrl.startsWith('http')) {
         // If it's just a filename, construct full URL
-        imageUrl = `http://192.168.31.84:3001/uploads/subcategorys/${imageUrl}`;
+        imageUrl = `${BASE_URL}/uploads/subcategorys/${imageUrl}`;
       }
       const finalImageUrl = imageUrl || null;
       setSubcategoryImage(finalImageUrl);
       // Set video if exists
       const videoTitle = (subcategory as any).video_title;
       if (videoTitle) {
-        const videoUrl = `http://192.168.31.84:3001/uploads/subcategory_videos/${videoTitle}`;
+        const videoUrl = `${BASE_URL}/uploads/subcategory_videos/${videoTitle}`;
         setSubcategoryVideo({ uri: videoUrl, name: videoTitle, size: 0 });
       } else {
         setSubcategoryVideo(null);
@@ -596,7 +596,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
 
       // Handle video upload
       if (subcategoryVideo) {
-        const isNewVideo = subcategoryVideo.uri && !subcategoryVideo.uri.startsWith('http://192.168.31.84:3001/uploads/subcategory_videos/');
+        const isNewVideo = subcategoryVideo.uri && !subcategoryVideo.uri.startsWith(`${BASE_URL}/uploads/subcategory_videos/`);
         
         if (isNewVideo) {
           const uriParts = subcategoryVideo.name.split('.');

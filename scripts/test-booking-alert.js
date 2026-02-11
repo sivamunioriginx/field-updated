@@ -1,6 +1,24 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fs = require('fs');
+const path = require('path');
 
-const API_BASE_URL = 'http://192.168.31.84:3001/api';
+// Read BASE_URL from constants/api.ts
+function getBaseUrl() {
+  const apiTsPath = path.join(__dirname, '..', 'constants', 'api.ts');
+  const apiContent = fs.readFileSync(apiTsPath, 'utf8');
+  
+  // Extract BASE_URL which is defined as: export const BASE_URL = API_BASE_URL.replace('/api', '');
+  // We need to get the URL and remove /api suffix
+  const urlMatch = apiContent.match(/return\s+['"](https?:\/\/[^'"]+)['"]/);
+  if (urlMatch) {
+    return urlMatch[1].replace('/api', '');
+  }
+  
+  throw new Error('Could not read BASE_URL from constants/api.ts');
+}
+
+const BASE_URL = getBaseUrl();
+const API_BASE_URL = `${BASE_URL}/api`;
 
 async function sendBookingAlert() {
   try {

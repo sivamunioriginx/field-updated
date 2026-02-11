@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from '@/constants/api';
+import { API_ENDPOINTS, API_BASE_URL, BASE_URL } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -920,7 +920,7 @@ export default function EditServiceSeekerScreen() {
       // Get the current user's documents from the service seeker data
       if (userId) {
         // Use the correct API endpoint - we need to get user by ID
-        const response = await fetch(`http://192.168.31.84:3001/api/serviceseeker/${userId}`);
+        const response = await fetch(`${API_BASE_URL}/serviceseeker/${userId}`);
         const result = await response.json();
         
         if (result.success && result.data) {
@@ -943,7 +943,7 @@ export default function EditServiceSeekerScreen() {
                 id: `doc${index + 1}`,
                 name: `Document ${index + 1}`,
                 filename: docName,
-                uri: `http://192.168.31.84:3001/uploads/documents/${docName}`,
+                uri: `${BASE_URL}/uploads/documents/${docName}`,
                 isExisting: true,
                 serverPath: docName
               });

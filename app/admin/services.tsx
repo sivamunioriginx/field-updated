@@ -17,7 +17,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface LocationSuggestion {
   id: string;
@@ -484,7 +484,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       let imageUrl = service.image;
       if (imageUrl && !imageUrl.startsWith('http')) {
         // If it's just a filename, construct full URL
-        imageUrl = `http://192.168.31.84:3001/uploads/services/${imageUrl}`;
+        imageUrl = `${BASE_URL}/uploads/services/${imageUrl}`;
       }
       const finalImageUrl = imageUrl || null;
       setServiceImage(finalImageUrl);

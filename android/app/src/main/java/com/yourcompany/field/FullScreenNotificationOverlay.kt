@@ -24,6 +24,8 @@ class FullScreenNotificationOverlay(private val context: Context) {
     
     companion object {
         private const val OVERLAY_TAG = "FullScreenNotificationOverlay"
+        // NOTE: Keep DEV_API_BASE_URL in sync with BASE_URL in constants/api.ts
+        // Extract base URL from constants/api.ts: getBaseUrl() return value without /api suffix, then add /api
         private const val DEV_API_BASE_URL = "http://192.168.31.84:3001/api"
         private const val PROD_API_BASE_URL = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api"
 

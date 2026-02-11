@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from '@/constants/api';
+import { API_ENDPOINTS, BASE_URL } from '@/constants/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -379,7 +379,7 @@ export default function RegisterProfessionalScreen() {
               id: `personal_doc${index + 1}`,
               name: `Personal Document ${index + 1}`,
               filename: filename,
-              uri: `http://192.168.31.84:3001${docPath}`,
+              uri: `${BASE_URL}${docPath}`,
               isExisting: true,
               serverPath: filename
             });
@@ -413,7 +413,7 @@ export default function RegisterProfessionalScreen() {
               id: `professional_doc${index + 1}`,
               name: `Professional Document ${index + 1}`,
               filename: filename,
-              uri: `http://192.168.31.84:3001${docPath}`,
+              uri: `${BASE_URL}${docPath}`,
               isExisting: true,
               serverPath: filename
             });

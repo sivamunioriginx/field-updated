@@ -17,12 +17,7 @@ import {
   View
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_BASE_URL, API_ENDPOINTS } from '../../constants/api';
-
-// Construct base image URL from API base URL
-const getImageBaseUrl = () => {
-  return API_BASE_URL.replace('/api', '');
-};
+import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Worker {
   id: number;
@@ -1123,7 +1118,7 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
               />
             ) : worker.profile_image ? (
               <Image
-                source={{ uri: `${getImageBaseUrl()}${worker.profile_image}` }}
+                source={{ uri: `${BASE_URL}${worker.profile_image}` }}
                 style={styles.profileImage}
                 resizeMode="cover"
               />
