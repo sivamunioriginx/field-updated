@@ -1,7 +1,7 @@
 import { isCustomerApp, isWorkerApp } from '@/constants/features';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 
 export default function Index() {
   const router = useRouter();
@@ -18,6 +18,12 @@ export default function Index() {
 
   useEffect(() => {
     if (isReady) {
+      // Web platform - redirect to admin
+      if (Platform.OS === 'web') {
+        router.replace('/admin');
+        return;
+      }
+      
       // Redirect based on app type
       if (isCustomerApp()) {
         // Customer app - go to main tabs (which will handle auth checks)
