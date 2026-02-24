@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -47,6 +48,21 @@ export default function LoginScreen() {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [scaleAnim] = useState(new Animated.Value(0.8));
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Fix keyboard gap on Android
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   // Countdown timer for resend OTP
   useEffect(() => {
@@ -312,7 +328,8 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
         style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
       >
         <StatusBar barStyle="light-content" backgroundColor="#667eea" />
         
@@ -325,8 +342,13 @@ export default function LoginScreen() {
           <View style={[styles.floatingShape2, { width: width * 0.22, height: width * 0.22, borderRadius: width * 0.11 }]} />
         
         <ScrollView 
-          contentContainerStyle={styles.scrollContainer}
+          contentContainerStyle={[
+            styles.scrollContainer,
+            Platform.OS === 'android' && keyboardVisible && { paddingBottom: 0 }
+          ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <Animated.View 
             style={[
