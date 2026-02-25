@@ -1167,7 +1167,7 @@ export default function RegisterServiceSeekerScreen() {
         <TouchableWithoutFeedback onPress={handleOutsideTouch}>
           <KeyboardAvoidingView 
             style={styles.container} 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
           {/* Header - moved outside ScrollView */}
           <View style={styles.headerContainer}>
