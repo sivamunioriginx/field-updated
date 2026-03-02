@@ -278,8 +278,29 @@ useEffect(() => {
       const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        const ids = new Set(data.bookings.map((b: any) => b.booking_id ?? b.id ?? b.bookingId ?? b.bookingid));
-        if (!cancelled) setTotalBookingsCount(ids.size);
+        const filtered = data.bookings.filter((b: any) =>
+          b.payment_status === 1 &&
+          (b.status === 1 || b.status === 2 || b.status === 3 ||
+           b.status === 5 || b.status === 6 || b.status === 7 || b.status === 8)
+        );
+
+        // Deduplicate by booking_id - keep latest record per booking_id
+        const bookingsMap = new Map<string, any>();
+        filtered.forEach((b: any) => {
+          const key = b.booking_id ?? b.id ?? b.bookingId ?? b.bookingid;
+          const existing = bookingsMap.get(key);
+          if (!existing) {
+            bookingsMap.set(key, b);
+          } else {
+            const existingTime = new Date(existing.created_at).getTime();
+            const currentTime = new Date(b.created_at).getTime();
+            if (currentTime > existingTime) {
+              bookingsMap.set(key, b);
+            }
+          }
+        });
+
+        if (!cancelled) setTotalBookingsCount(bookingsMap.size);
       } else {
         if (!cancelled) setTotalBookingsCount(0);
       }
@@ -303,7 +324,7 @@ useEffect(() => {
       const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        const count = data.bookings.filter((b: any) => b.status === 1).length;
+        const count = data.bookings.filter((b: any) => b.status === 1 && b.payment_status === 1).length;
         if (!cancelled) setActiveBookingsCount(count);
       } else {
         if (!cancelled) setActiveBookingsCount(0);
@@ -328,7 +349,7 @@ useEffect(() => {
       const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        const count = data.bookings.filter((b: any) => b.status === 2).length;
+        const count = data.bookings.filter((b: any) => b.status === 2 && b.payment_status === 1).length;
         if (!cancelled) setInprogressBookingCount(count);
       } else {
         if (!cancelled) setInprogressBookingCount(0);
@@ -352,7 +373,7 @@ const fetchCompletedBookingsCount = async () => {
     const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
     const data = await res.json();
     if (data && data.success && Array.isArray(data.bookings)) {
-      const count = data.bookings.filter((b: any) => b.status === 3).length;
+      const count = data.bookings.filter((b: any) => b.status === 3 && b.payment_status === 1).length;
       if (!cancelled) setCompletedBookingsCount(count);
     } else {
       if (!cancelled) setCompletedBookingsCount(0);
@@ -376,7 +397,7 @@ const fetchCanceledBookingsCount = async () => {
     const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
     const data = await res.json();
     if (data && data.success && Array.isArray(data.bookings)) {
-      const count = data.bookings.filter((b: any) => b.status === 5).length;
+      const count = data.bookings.filter((b: any) => b.status === 5 && b.payment_status === 1).length;
       if (!cancelled) setCanceledBookingsCount(count);
     } else {
       if (!cancelled) setCanceledBookingsCount(0);
@@ -399,7 +420,7 @@ useEffect(() => {
       const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        const count = data.bookings.filter((b: any) => b.status === 6).length;
+        const count = data.bookings.filter((b: any) => b.status === 6 && b.payment_status === 1).length;
         if (!cancelled) setRescheduledBookingsCount(count);
       } else {
         if (!cancelled) setRescheduledBookingsCount(0);
