@@ -389,7 +389,7 @@ fetchCompletedBookingsCount();
 return () => { cancelled = true; };
 });
 
-// get Completed bookings count
+// get Canceled bookings count
 useEffect( () => {
 let cancelled = false;
 const fetchCanceledBookingsCount = async () => {
@@ -416,11 +416,12 @@ useEffect(() => {
   let cancelled = false;
 
   const fetchRescheduledBookingsCount = async () => {
-    try {
-      const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+     try {
+      // Use ?rescheduled=true so the backend applies: b.status=6 AND b.payment_status=1 AND r.status=1
+      const res = await fetch(`${API_ENDPOINTS.ADMIN_BOOKINGS}?rescheduled=true`);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        const count = data.bookings.filter((b: any) => b.status === 6 && b.payment_status === 1).length;
+        const count = data.bookings.length;
         if (!cancelled) setRescheduledBookingsCount(count);
       } else {
         if (!cancelled) setRescheduledBookingsCount(0);

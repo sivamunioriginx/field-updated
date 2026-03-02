@@ -4886,7 +4886,7 @@ app.get('/api/admin/bookings', async (req, res) => {
       
       console.log('🔍 Fetching cancel requests (b.status=5 AND c.status=0 AND b.payment_status=1)');
     } else if (reschedulereq === 'true') {
-      // Reschedule Requests: b.status = 6 AND r.status = 0 AND b.payment_status = 1 AND b.id = r.bookingid
+      // Reschedule Requests: b.status = 8 AND r.status = 0 AND b.payment_status = 1 AND b.id = r.bookingid
       query = `
         SELECT 
           b.id,
@@ -4912,7 +4912,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         INNER JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
-        WHERE b.status = 6 AND r.status = 0 AND b.payment_status = 1
+        WHERE b.status = 8 AND r.status = 0 AND b.payment_status = 1
         ORDER BY b.id DESC
       `;
       
