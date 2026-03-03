@@ -25,6 +25,7 @@ interface Booking {
   booking_time: string;
   status: number;
   payment_status: number;
+  amount?: number;
   created_at: string;
   description: string;
   worker_name: string;
@@ -900,6 +901,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                 <Ionicons name="information-circle" size={isDesktop ? 16 : 14} color="#ffffff" />
                 <Text style={styles.tableHeaderText}>Status</Text>
               </View>
+              <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 110 : isTablet ? 90 : 80 }]}>
+                <Ionicons name="cash-outline" size={isDesktop ? 16 : 14} color="#ffffff" />
+                <Text style={styles.tableHeaderText}>Amount</Text>
+              </View>
               <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 130 }]}>
                 <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
                 <Text style={styles.tableHeaderText}>Worker Name</Text>
@@ -922,6 +927,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Booking Date</Text>
                   </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Booking For</Text>
+                  </View>
                   <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 300 : isTablet ? 250 : 200 }]}>
                     <Ionicons name="document-text" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Description</Text>
@@ -943,6 +952,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     <Text style={styles.tableHeaderText}>Booking Date</Text>
                   </View>
                   <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Booking For</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                     <Ionicons name="close-circle" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Canceled Date</Text>
                   </View>
@@ -961,6 +974,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                     <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Booking Date</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                    <Ionicons name="calendar" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Booking For</Text>
                   </View>
                   <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                     <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#ffffff" />
@@ -1097,6 +1114,11 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                       </Text>
                     </View>
                   </View>
+                  <View style={[styles.tableCell, { width: isDesktop ? 110 : isTablet ? 90 : 80 }]}>
+                    <Text style={styles.tableCellText}>
+                      {booking.amount != null ? `₹${booking.amount}` : 'N/A'}
+                    </Text>
+                  </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 130 }]}>
                     <Text style={styles.tableCellText}>{booking.worker_name || 'N/A'}</Text>
                   </View>
@@ -1110,6 +1132,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     <>
                       <View style={[styles.tableCell, { width: isDesktop ? 250 : isTablet ? 200 : 180 }]}>
                         <Text style={styles.tableCellText}>{booking.work_location || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{formatDate(booking.created_at)}</Text>
                       </View>
                       <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                         <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
@@ -1130,6 +1155,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                         </Text>
                       </View>
                       <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{formatDate(booking.created_at)}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                         <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
                       </View>
                       <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
@@ -1146,6 +1174,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                         <Text style={[styles.tableCellText, { flexWrap: 'wrap', width: '100%' }]} numberOfLines={undefined}>
                           {booking.reschedule_reason || 'N/A'}
                         </Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
+                        <Text style={styles.tableCellText}>{formatDate(booking.created_at)}</Text>
                       </View>
                       <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 140 }]}>
                         <Text style={styles.tableCellText}>{formatDate(booking.booking_time)}</Text>
