@@ -5086,6 +5086,8 @@ app.get('/api/admin/customers', async (req, res) => {
         district,
         state,
         country,
+        profile_image,
+        document1,
         created_at
       FROM tbl_serviceseeker
       ORDER BY id DESC
@@ -5105,6 +5107,20 @@ app.get('/api/admin/customers', async (req, res) => {
       message: 'Failed to fetch customers',
       error: error.message
     });
+  }
+});
+
+app.delete('/api/admin/customers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.query('DELETE FROM tbl_serviceseeker WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+    res.json({ success: true, message: 'Customer deleted successfully' });
+  } catch (error) {
+    console.error('❌ Error deleting customer:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete customer', error: error.message });
   }
 });
 
