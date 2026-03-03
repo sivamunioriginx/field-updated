@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
+  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -13,7 +15,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Booking {
   id: number;
@@ -42,6 +44,45 @@ interface Booking {
   reschedule_status?: number; // Status from tbl_rescheduledbookings
 }
 
+interface WorkerDetails {
+  id: number;
+  name: string;
+  mobile: string;
+  email?: string;
+  price?: number;
+  skill_id?: string;
+  pincode?: string;
+  mandal?: string;
+  city?: string;
+  district?: string;
+  state?: string;
+  country?: string;
+  address?: string;
+  profile_image?: string;
+  document1?: string[];
+  document2?: string[];
+  status?: number;
+  created_at?: string;
+}
+
+interface CustomerDetails {
+  id: number;
+  name: string;
+  mobile: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  mandal?: string;
+  district?: string;
+  state?: string;
+  country?: string;
+  pincode?: string;
+  profile_image?: string;
+  document1?: string[];
+  status?: number;
+  created_at?: string;
+}
+
 interface BookingsProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -67,6 +108,26 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   
+  // Worker details popup state
+  const [showWorkerPopup, setShowWorkerPopup] = useState(false);
+  const [selectedWorker, setSelectedWorker] = useState<WorkerDetails | null>(null);
+  const [workerDetailsLoading, setWorkerDetailsLoading] = useState(false);
+  // Worker popup section toggles (all closed by default)
+  const [showPersonalInfo, setShowPersonalInfo] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
+  const [showInvolvedBookings, setShowInvolvedBookings] = useState(false);
+  const [workerBookings, setWorkerBookings] = useState<Booking[]>([]);
+  const [workerBookingsLoading, setWorkerBookingsLoading] = useState(false);
+
+  // Customer details popup state
+  const [showCustomerPopup, setShowCustomerPopup] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetails | null>(null);
+  const [customerDetailsLoading, setCustomerDetailsLoading] = useState(false);
+  const [showCustomerPersonalInfo, setShowCustomerPersonalInfo] = useState(false);
+  const [showCustomerInvolvedBookings, setShowCustomerInvolvedBookings] = useState(false);
+  const [customerBookings, setCustomerBookings] = useState<Booking[]>([]);
+  const [customerBookingsLoading, setCustomerBookingsLoading] = useState(false);
+
   // Polling popup state
   const [showPollingPopup, setShowPollingPopup] = useState(false);
   const [pollingMessage, setPollingMessage] = useState('Waiting for worker to accept...');
@@ -474,6 +535,113 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       }
     };
   }, []);
+
+  const fetchWorkerDetails = async (workerId: number) => {
+    if (!workerId) return;
+    // Reset all sections to closed
+    setShowPersonalInfo(false);
+    setShowDocuments(false);
+    setShowInvolvedBookings(false);
+    setWorkerBookings([]);
+    try {
+      setWorkerDetailsLoading(true);
+      setShowWorkerPopup(true);
+      setSelectedWorker(null);
+      const response = await fetch(API_ENDPOINTS.WORKER_BY_ID(String(workerId)));
+      const data = await response.json();
+      if (data.success) {
+        const worker = data.data;
+        // Backend returns "/uploads/documents/file1.jpg,file2.jpg" (comma-separated, wrong subfolder)
+        // Strip the prefix, split by comma, rebuild with correct /uploads/ root path
+        const parseDocPaths = (docString: string | null | undefined): string[] => {
+          if (!docString) return [];
+          const raw = docString.replace(/^\/uploads\/documents\//, '');
+          return raw.split(',').map((f: string) => f.trim()).filter(Boolean).map((f: string) => `/uploads/${f}`);
+        };
+        worker.document1 = parseDocPaths(worker.document1);
+        worker.document2 = parseDocPaths(worker.document2);
+        setSelectedWorker(worker);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching worker details:', error);
+    } finally {
+      setWorkerDetailsLoading(false);
+    }
+    // Fetch this worker's involved bookings (status != 4, payment_status = 1)
+    try {
+      setWorkerBookingsLoading(true);
+      const bRes = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const bData = await bRes.json();
+      if (bData.success) {
+        const all: Booking[] = bData.bookings;
+        // Deduplicate by booking_id, keep latest
+        const map = new Map<string, Booking>();
+        all
+          .filter(b => b.worker_id === workerId && b.status !== 4 && b.payment_status === 1)
+          .forEach(b => {
+            const existing = map.get(b.booking_id);
+            if (!existing || new Date(b.created_at) > new Date(existing.created_at)) {
+              map.set(b.booking_id, b);
+            }
+          });
+        setWorkerBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
+      }
+    } catch (error) {
+      console.error('❌ Error fetching worker bookings:', error);
+    } finally {
+      setWorkerBookingsLoading(false);
+    }
+  };
+
+  const fetchCustomerDetails = async (userId: number) => {
+    if (!userId) return;
+    setShowCustomerPersonalInfo(false);
+    setShowCustomerInvolvedBookings(false);
+    setCustomerBookings([]);
+    try {
+      setCustomerDetailsLoading(true);
+      setShowCustomerPopup(true);
+      setSelectedCustomer(null);
+      const response = await fetch(API_ENDPOINTS.UPDATE_SERVICESEEKER(String(userId)));
+      const data = await response.json();
+      if (data.success) {
+        const customer = data.data;
+        const parseDocPaths = (docString: string | null | undefined): string[] => {
+          if (!docString) return [];
+          const raw = docString.replace(/^\/uploads\/documents\//, '');
+          return raw.split(',').map((f: string) => f.trim()).filter(Boolean).map((f: string) => `/uploads/${f}`);
+        };
+        customer.document1 = parseDocPaths(customer.document1);
+        setSelectedCustomer(customer);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching customer details:', error);
+    } finally {
+      setCustomerDetailsLoading(false);
+    }
+    try {
+      setCustomerBookingsLoading(true);
+      const bRes = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const bData = await bRes.json();
+      if (bData.success) {
+        const all: Booking[] = bData.bookings;
+        const map = new Map<string, Booking>();
+        all
+          .filter(b => b.user_id === userId && b.status !== 4 && b.payment_status === 1)
+          .forEach(b => {
+            const existing = map.get(b.booking_id);
+            if (!existing || new Date(b.created_at) > new Date(existing.created_at)) {
+              map.set(b.booking_id, b);
+            }
+          });
+        setCustomerBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
+      }
+    } catch (error) {
+      console.error('❌ Error fetching customer bookings:', error);
+    } finally {
+      setCustomerBookingsLoading(false);
+    }
+  };
 
   const handleAssignWorker = async (booking: Booking) => {
     try {
@@ -1120,10 +1288,22 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     </Text>
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 130 }]}>
-                    <Text style={styles.tableCellText}>{booking.worker_name || 'N/A'}</Text>
+                    {booking.worker_id ? (
+                      <TouchableOpacity onPress={() => fetchWorkerDetails(booking.worker_id)}>
+                        <Text style={[styles.tableCellText, styles.workerNameLink]}>{booking.worker_name || 'N/A'}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={styles.tableCellText}>{booking.worker_name || 'N/A'}</Text>
+                    )}
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 130 }]}>
-                    <Text style={styles.tableCellText}>{booking.customer_name || 'N/A'}</Text>
+                    {booking.user_id ? (
+                      <TouchableOpacity onPress={() => fetchCustomerDetails(booking.user_id)}>
+                        <Text style={[styles.tableCellText, styles.workerNameLink]}>{booking.customer_name || 'N/A'}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={styles.tableCellText}>{booking.customer_name || 'N/A'}</Text>
+                    )}
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
                     <Text style={styles.tableCellText}>{booking.contact_number || 'N/A'}</Text>
@@ -1247,6 +1427,631 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         </View>
         </View>
       </TouchableWithoutFeedback>
+
+      {/* Worker Details Modal */}
+      <Modal
+        visible={showWorkerPopup}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => setShowWorkerPopup(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowWorkerPopup(false)}>
+          <View style={styles.workerModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.workerModalContent}>
+
+                {/* ── Gradient Header ── */}
+                <View style={styles.workerModalHeader}>
+                  {/* decorative blobs */}
+                  <View style={styles.workerHeaderBlob1} />
+                  <View style={styles.workerHeaderBlob2} />
+                  <View style={styles.workerModalHeaderTitleRow}>
+                    <Text style={styles.workerModalTitle}>Worker Details</Text>
+                    <TouchableOpacity onPress={() => setShowWorkerPopup(false)} style={styles.workerModalClose}>
+                      <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── Floating Avatar ── */}
+                <View style={styles.workerAvatarOuter}>
+                  {workerDetailsLoading ? (
+                    <View style={[styles.workerProfilePlaceholder, { borderWidth: 0 }]}>
+                      <ActivityIndicator size="small" color="#6366f1" />
+                    </View>
+                  ) : selectedWorker?.profile_image ? (
+                    <Image
+                      source={{ uri: `${BASE_URL}${selectedWorker.profile_image}` }}
+                      style={styles.workerProfileImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.workerProfilePlaceholder}>
+                      <Ionicons name="person" size={isDesktop ? 44 : 38} color="#c7d2fe" />
+                    </View>
+                  )}
+                </View>
+
+                {workerDetailsLoading ? (
+                  <View style={styles.workerModalLoading}>
+                    <Text style={styles.workerModalLoadingText}>Loading worker details...</Text>
+                  </View>
+                ) : selectedWorker ? (
+                  <>
+                    {/* ── Name + Status (fixed, outside scroll) ── */}
+                    <View style={styles.workerProfileNameSection}>
+                      <Text style={styles.workerProfileName}>{selectedWorker.name}</Text>
+                      <View style={[styles.workerStatusBadge, {
+                        backgroundColor: selectedWorker.status === 1 ? '#dcfce7' : '#fee2e2',
+                        borderColor: selectedWorker.status === 1 ? '#86efac' : '#fca5a5'
+                      }]}>
+                        <Text style={[styles.workerStatusText, { color: selectedWorker.status === 1 ? '#16a34a' : '#dc2626' }]}>
+                          {selectedWorker.status === 1 ? '● Active' : '● Inactive'}
+                        </Text>
+                      </View>
+                    </View>
+
+                  <ScrollView showsVerticalScrollIndicator={false} style={styles.workerModalScroll}>
+                    <View style={styles.workerSectionsWrapper}>
+
+                    {/* ── Personal Info & Documents Section ── */}
+                    <View style={styles.workerSection}>
+                      <TouchableOpacity
+                        style={styles.workerSectionHeader}
+                        onPress={() => setShowPersonalInfo(v => !v)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.workerSectionHeaderLeft}>
+                          <View style={styles.workerSectionIconBox}>
+                            <Ionicons name="person-outline" size={16} color="#6366f1" />
+                          </View>
+                          <Text style={styles.workerSectionTitle}>Personal Info</Text>
+                        </View>
+                        <Ionicons
+                          name={showPersonalInfo ? 'chevron-up' : 'chevron-down'}
+                          size={18} color="#6366f1"
+                        />
+                      </TouchableOpacity>
+
+                      {showPersonalInfo && (
+                        <View style={styles.workerSectionContent}>
+                          {/* — Contact & Basic Details — */}
+                          <View style={styles.workerDetailRow}>
+                            <View style={styles.workerDetailIconWrap}>
+                              <Ionicons name="call-outline" size={15} color="#6366f1" />
+                            </View>
+                            <View style={styles.workerDetailContent}>
+                              <Text style={styles.workerDetailLabel}>Mobile</Text>
+                              <Text style={styles.workerDetailValue}>{selectedWorker.mobile || 'N/A'}</Text>
+                            </View>
+                          </View>
+
+                          {selectedWorker.email ? (
+                            <View style={styles.workerDetailRow}>
+                              <View style={styles.workerDetailIconWrap}>
+                                <Ionicons name="mail-outline" size={15} color="#6366f1" />
+                              </View>
+                              <View style={styles.workerDetailContent}>
+                                <Text style={styles.workerDetailLabel}>Email</Text>
+                                <Text style={styles.workerDetailValue}>{selectedWorker.email}</Text>
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {selectedWorker.price != null ? (
+                            <View style={styles.workerDetailRow}>
+                              <View style={styles.workerDetailIconWrap}>
+                                <Ionicons name="cash-outline" size={15} color="#6366f1" />
+                              </View>
+                              <View style={styles.workerDetailContent}>
+                                <Text style={styles.workerDetailLabel}>Price</Text>
+                                <Text style={styles.workerDetailValue}>₹{selectedWorker.price}</Text>
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {(selectedWorker.address || selectedWorker.city || selectedWorker.mandal || selectedWorker.district || selectedWorker.state || selectedWorker.country || selectedWorker.pincode) ? (
+                            <View style={styles.workerDetailRow}>
+                              <View style={styles.workerDetailIconWrap}>
+                                <Ionicons name="location-outline" size={15} color="#6366f1" />
+                              </View>
+                              <View style={styles.workerDetailContent}>
+                                <Text style={styles.workerDetailLabel}>Address</Text>
+                                <Text style={styles.workerDetailValue}>
+                                  {[
+                                    selectedWorker.address,
+                                    selectedWorker.city,
+                                    selectedWorker.mandal,
+                                    selectedWorker.district,
+                                    selectedWorker.state,
+                                    selectedWorker.country,
+                                  ].filter(Boolean).join(', ')}
+                                  {selectedWorker.pincode ? ` - ${selectedWorker.pincode}` : ''}
+                                </Text>
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {selectedWorker.created_at ? (
+                            <View style={styles.workerDetailRow}>
+                              <View style={styles.workerDetailIconWrap}>
+                                <Ionicons name="calendar-outline" size={15} color="#6366f1" />
+                              </View>
+                              <View style={styles.workerDetailContent}>
+                                <Text style={styles.workerDetailLabel}>Joined On</Text>
+                                <Text style={styles.workerDetailValue}>{formatDate(selectedWorker.created_at)}</Text>
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {/* — Documents sub-section — */}
+                          <View style={styles.workerDocDivider}>
+                            <Ionicons name="document-text-outline" size={14} color="#6366f1" />
+                            <Text style={styles.workerDocDividerText}>
+                              Documents
+                              {((selectedWorker.document1?.length ?? 0) + (selectedWorker.document2?.length ?? 0)) > 0
+                                ? ` (${(selectedWorker.document1?.length ?? 0) + (selectedWorker.document2?.length ?? 0)})`
+                                : ''}
+                            </Text>
+                          </View>
+
+                          {/* Personal Documents */}
+                          {selectedWorker.document1 && selectedWorker.document1.length > 0 ? (
+                            <View style={styles.workerDocSection}>
+                              <View style={styles.workerDocSectionHeader}>
+                                <View style={styles.workerDetailIconWrap}>
+                                  <Ionicons name="document-outline" size={14} color="#6366f1" />
+                                </View>
+                                <Text style={styles.workerDocSectionTitle}>
+                                  Personal Documents ({selectedWorker.document1.length})
+                                </Text>
+                              </View>
+                              {selectedWorker.document1.map((docPath, docIdx) => (
+                                <View key={`doc1-${docIdx}`} style={styles.workerDocRow}>
+                                  <View style={styles.workerDocIndexBadge}>
+                                    <Text style={styles.workerDocIndexText}>{docIdx + 1}</Text>
+                                  </View>
+                                  <Image
+                                    source={{ uri: `${BASE_URL}${docPath}` }}
+                                    style={styles.workerDocThumb}
+                                    resizeMode="cover"
+                                  />
+                                  <TouchableOpacity
+                                    style={styles.workerDocViewBtn}
+                                    onPress={() => Linking.openURL(`${BASE_URL}${docPath}`)}
+                                  >
+                                    <Ionicons name="eye-outline" size={14} color="#ffffff" />
+                                    <Text style={styles.workerDocViewText}>View</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+
+                          {/* Professional Documents */}
+                          {selectedWorker.document2 && selectedWorker.document2.length > 0 ? (
+                            <View style={[styles.workerDocSection, { borderBottomWidth: 0 }]}>
+                              <View style={styles.workerDocSectionHeader}>
+                                <View style={styles.workerDetailIconWrap}>
+                                  <Ionicons name="document-text-outline" size={14} color="#6366f1" />
+                                </View>
+                                <Text style={styles.workerDocSectionTitle}>
+                                  Professional Documents ({selectedWorker.document2.length})
+                                </Text>
+                              </View>
+                              {selectedWorker.document2.map((docPath, docIdx) => (
+                                <View key={`doc2-${docIdx}`} style={styles.workerDocRow}>
+                                  <View style={styles.workerDocIndexBadge}>
+                                    <Text style={styles.workerDocIndexText}>{docIdx + 1}</Text>
+                                  </View>
+                                  <Image
+                                    source={{ uri: `${BASE_URL}${docPath}` }}
+                                    style={styles.workerDocThumb}
+                                    resizeMode="cover"
+                                  />
+                                  <TouchableOpacity
+                                    style={styles.workerDocViewBtn}
+                                    onPress={() => Linking.openURL(`${BASE_URL}${docPath}`)}
+                                  >
+                                    <Ionicons name="eye-outline" size={14} color="#ffffff" />
+                                    <Text style={styles.workerDocViewText}>View</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+
+                          {(!selectedWorker.document1 || selectedWorker.document1.length === 0) &&
+                           (!selectedWorker.document2 || selectedWorker.document2.length === 0) ? (
+                            <Text style={styles.workerSectionEmpty}>No documents uploaded.</Text>
+                          ) : null}
+                        </View>
+                      )}
+                    </View>
+
+                    {/* ── Previously Involved Bookings Section ── */}
+                    <View style={styles.workerSection}>
+                      <TouchableOpacity
+                        style={styles.workerSectionHeader}
+                        onPress={() => setShowInvolvedBookings(v => !v)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.workerSectionHeaderLeft}>
+                          <View style={styles.workerSectionIconBox}>
+                            <Ionicons name="calendar-outline" size={16} color="#6366f1" />
+                          </View>
+                          <Text style={styles.workerSectionTitle}>Involved Bookings</Text>
+                          {workerBookings.length > 0 && (
+                            <View style={styles.workerSectionBadge}>
+                              <Text style={styles.workerSectionBadgeText}>{workerBookings.length}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Ionicons
+                          name={showInvolvedBookings ? 'chevron-up' : 'chevron-down'}
+                          size={18} color="#6366f1"
+                        />
+                      </TouchableOpacity>
+
+                      {showInvolvedBookings && (
+                        <View style={styles.workerSectionContent}>
+                          {workerBookingsLoading ? (
+                            <View style={styles.workerBookingLoadingRow}>
+                              <ActivityIndicator size="small" color="#6366f1" />
+                              <Text style={styles.workerBookingLoadingText}>Loading bookings...</Text>
+                            </View>
+                          ) : workerBookings.length === 0 ? (
+                            <Text style={styles.workerSectionEmpty}>No bookings found.</Text>
+                          ) : (
+                            workerBookings.map((b, idx) => {
+                              const sc = getStatusColor(b.status);
+                              return (
+                                <View key={b.id} style={[styles.workerBookingItem, idx === workerBookings.length - 1 && { borderBottomWidth: 0 }]}>
+                                  {/* Row 1: Booking ID + Status badge */}
+                                  <View style={styles.workerBookingRow1}>
+                                    <Text style={styles.workerBookingId}>#{b.booking_id}</Text>
+                                    <View style={[styles.workerBookingBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
+                                      <Text style={[styles.workerBookingBadgeText, { color: sc.text }]}>
+                                        {getStatusLabel(b.status)}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                  {/* Booking Time */}
+                                  {b.booking_time ? (
+                                    <View style={styles.workerBookingField}>
+                                      <Ionicons name="time-outline" size={12} color="#94a3b8" />
+                                      <Text style={styles.workerBookingFieldText}>{formatDate(b.booking_time)}</Text>
+                                    </View>
+                                  ) : null}
+                                  {/* Row 2: Amount + Customer */}
+                                  <View style={styles.workerBookingRow2}>
+                                    <View style={styles.workerBookingField}>
+                                      <Ionicons name="cash-outline" size={12} color="#94a3b8" />
+                                      <Text style={styles.workerBookingFieldText}>
+                                        {b.amount != null ? `₹${b.amount}` : 'N/A'}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.workerBookingField}>
+                                      <Ionicons name="person-outline" size={12} color="#94a3b8" />
+                                      <Text style={styles.workerBookingFieldText} numberOfLines={1}>
+                                        {b.customer_name || 'N/A'}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                  {/* Row 3: Work Location */}
+                                  {b.work_location ? (
+                                    <View style={styles.workerBookingField}>
+                                      <Ionicons name="location-outline" size={12} color="#94a3b8" />
+                                      <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={1}>
+                                        {b.work_location}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  {/* Row 4: Description */}
+                                  {b.description ? (
+                                    <View style={styles.workerBookingField}>
+                                      <Ionicons name="document-text-outline" size={12} color="#94a3b8" />
+                                      <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={2}>
+                                        {b.description}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                              );
+                            })
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    </View>
+                  </ScrollView>
+                  </>
+                ) : (
+                  <View style={styles.workerModalLoading}>
+                    <Text style={styles.workerModalLoadingText}>Worker details not found.</Text>
+                  </View>
+                )}
+
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Customer Details Modal */}
+      <Modal
+        visible={showCustomerPopup}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => setShowCustomerPopup(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowCustomerPopup(false)}>
+          <View style={styles.workerModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.workerModalContent}>
+
+                {/* Header */}
+                <View style={styles.workerModalHeader}>
+                  <View style={styles.workerHeaderBlob1} />
+                  <View style={styles.workerHeaderBlob2} />
+                  <View style={styles.workerModalHeaderTitleRow}>
+                    <Text style={styles.workerModalTitle}>Customer Details</Text>
+                    <TouchableOpacity onPress={() => setShowCustomerPopup(false)} style={styles.workerModalClose}>
+                      <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Floating Avatar */}
+                <View style={styles.workerAvatarOuter}>
+                  {customerDetailsLoading ? (
+                    <View style={[styles.workerProfilePlaceholder, { borderWidth: 0 }]}>
+                      <ActivityIndicator size="small" color="#6366f1" />
+                    </View>
+                  ) : selectedCustomer?.profile_image ? (
+                    <Image
+                      source={{ uri: `${BASE_URL}${selectedCustomer.profile_image}` }}
+                      style={styles.workerProfileImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.workerProfilePlaceholder}>
+                      <Ionicons name="person" size={isDesktop ? 44 : 38} color="#c7d2fe" />
+                    </View>
+                  )}
+                </View>
+
+                {customerDetailsLoading ? (
+                  <View style={styles.workerModalLoading}>
+                    <Text style={styles.workerModalLoadingText}>Loading customer details...</Text>
+                  </View>
+                ) : selectedCustomer ? (
+                  <>
+                    {/* Name */}
+                    <View style={styles.workerProfileNameSection}>
+                      <Text style={styles.workerProfileName}>{selectedCustomer.name}</Text>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false} style={styles.workerModalScroll}>
+                      <View style={styles.workerSectionsWrapper}>
+
+                        {/* Personal Info Section */}
+                        <View style={styles.workerSection}>
+                          <TouchableOpacity
+                            style={styles.workerSectionHeader}
+                            onPress={() => setShowCustomerPersonalInfo(v => !v)}
+                            activeOpacity={0.75}
+                          >
+                            <View style={styles.workerSectionHeaderLeft}>
+                              <View style={styles.workerSectionIconBox}>
+                                <Ionicons name="person-outline" size={16} color="#6366f1" />
+                              </View>
+                              <Text style={styles.workerSectionTitle}>Personal Info</Text>
+                            </View>
+                            <Ionicons
+                              name={showCustomerPersonalInfo ? 'chevron-up' : 'chevron-down'}
+                              size={18} color="#6366f1"
+                            />
+                          </TouchableOpacity>
+
+                          {showCustomerPersonalInfo && (
+                            <View style={styles.workerSectionContent}>
+                              <View style={styles.workerDetailRow}>
+                                <View style={styles.workerDetailIconWrap}>
+                                  <Ionicons name="call-outline" size={15} color="#6366f1" />
+                                </View>
+                                <View style={styles.workerDetailContent}>
+                                  <Text style={styles.workerDetailLabel}>Mobile</Text>
+                                  <Text style={styles.workerDetailValue}>{selectedCustomer.mobile || 'N/A'}</Text>
+                                </View>
+                              </View>
+
+                              {selectedCustomer.email ? (
+                                <View style={styles.workerDetailRow}>
+                                  <View style={styles.workerDetailIconWrap}>
+                                    <Ionicons name="mail-outline" size={15} color="#6366f1" />
+                                  </View>
+                                  <View style={styles.workerDetailContent}>
+                                    <Text style={styles.workerDetailLabel}>Email</Text>
+                                    <Text style={styles.workerDetailValue}>{selectedCustomer.email}</Text>
+                                  </View>
+                                </View>
+                              ) : null}
+
+                              {(selectedCustomer.address || selectedCustomer.city || selectedCustomer.mandal || selectedCustomer.district || selectedCustomer.state || selectedCustomer.country || selectedCustomer.pincode) ? (
+                                <View style={styles.workerDetailRow}>
+                                  <View style={styles.workerDetailIconWrap}>
+                                    <Ionicons name="location-outline" size={15} color="#6366f1" />
+                                  </View>
+                                  <View style={styles.workerDetailContent}>
+                                    <Text style={styles.workerDetailLabel}>Address</Text>
+                                    <Text style={styles.workerDetailValue}>
+                                      {[
+                                        selectedCustomer.address,
+                                        selectedCustomer.city,
+                                        selectedCustomer.mandal,
+                                        selectedCustomer.district,
+                                        selectedCustomer.state,
+                                        selectedCustomer.country,
+                                      ].filter(Boolean).join(', ')}
+                                      {selectedCustomer.pincode ? ` - ${selectedCustomer.pincode}` : ''}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ) : null}
+
+                              {selectedCustomer.created_at ? (
+                                <View style={styles.workerDetailRow}>
+                                  <View style={styles.workerDetailIconWrap}>
+                                    <Ionicons name="calendar-outline" size={15} color="#6366f1" />
+                                  </View>
+                                  <View style={styles.workerDetailContent}>
+                                    <Text style={styles.workerDetailLabel}>Joined On</Text>
+                                    <Text style={styles.workerDetailValue}>{formatDate(selectedCustomer.created_at)}</Text>
+                                  </View>
+                                </View>
+                              ) : null}
+
+                              {/* Personal Documents */}
+                              {selectedCustomer.document1 && selectedCustomer.document1.length > 0 ? (
+                                <>
+                                  <View style={styles.workerDocDivider}>
+                                    <Ionicons name="document-text-outline" size={14} color="#6366f1" />
+                                    <Text style={styles.workerDocDividerText}>
+                                      Documents ({selectedCustomer.document1.length})
+                                    </Text>
+                                  </View>
+                                  <View style={[styles.workerDocSection, { borderBottomWidth: 0 }]}>
+                                    {selectedCustomer.document1.map((docPath, docIdx) => (
+                                      <View key={`cdoc-${docIdx}`} style={styles.workerDocRow}>
+                                        <View style={styles.workerDocIndexBadge}>
+                                          <Text style={styles.workerDocIndexText}>{docIdx + 1}</Text>
+                                        </View>
+                                        <Image
+                                          source={{ uri: `${BASE_URL}${docPath}` }}
+                                          style={styles.workerDocThumb}
+                                          resizeMode="cover"
+                                        />
+                                        <TouchableOpacity
+                                          style={styles.workerDocViewBtn}
+                                          onPress={() => Linking.openURL(`${BASE_URL}${docPath}`)}
+                                        >
+                                          <Ionicons name="eye-outline" size={14} color="#ffffff" />
+                                          <Text style={styles.workerDocViewText}>View</Text>
+                                        </TouchableOpacity>
+                                      </View>
+                                    ))}
+                                  </View>
+                                </>
+                              ) : null}
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Involved Bookings Section */}
+                        <View style={styles.workerSection}>
+                          <TouchableOpacity
+                            style={styles.workerSectionHeader}
+                            onPress={() => setShowCustomerInvolvedBookings(v => !v)}
+                            activeOpacity={0.75}
+                          >
+                            <View style={styles.workerSectionHeaderLeft}>
+                              <View style={styles.workerSectionIconBox}>
+                                <Ionicons name="calendar-outline" size={16} color="#6366f1" />
+                              </View>
+                              <Text style={styles.workerSectionTitle}>Involved Bookings</Text>
+                              {customerBookings.length > 0 && (
+                                <View style={styles.workerSectionBadge}>
+                                  <Text style={styles.workerSectionBadgeText}>{customerBookings.length}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Ionicons
+                              name={showCustomerInvolvedBookings ? 'chevron-up' : 'chevron-down'}
+                              size={18} color="#6366f1"
+                            />
+                          </TouchableOpacity>
+
+                          {showCustomerInvolvedBookings && (
+                            <View style={styles.workerSectionContent}>
+                              {customerBookingsLoading ? (
+                                <View style={styles.workerBookingLoadingRow}>
+                                  <ActivityIndicator size="small" color="#6366f1" />
+                                  <Text style={styles.workerBookingLoadingText}>Loading bookings...</Text>
+                                </View>
+                              ) : customerBookings.length === 0 ? (
+                                <Text style={styles.workerSectionEmpty}>No bookings found.</Text>
+                              ) : (
+                                customerBookings.map((b) => {
+                                  const sc = getStatusColor(b.status);
+                                  return (
+                                    <View key={b.id} style={styles.workerBookingItem}>
+                                      <View style={styles.workerBookingRow1}>
+                                        <Text style={styles.workerBookingId}>#{b.booking_id}</Text>
+                                        <View style={[styles.workerBookingBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
+                                          <Text style={[styles.workerBookingBadgeText, { color: sc.text }]}>
+                                            {getStatusLabel(b.status)}
+                                          </Text>
+                                        </View>
+                                      </View>
+                                      {b.booking_time ? (
+                                        <View style={styles.workerBookingField}>
+                                          <Ionicons name="time-outline" size={12} color="#94a3b8" />
+                                          <Text style={styles.workerBookingFieldText}>{formatDate(b.booking_time)}</Text>
+                                        </View>
+                                      ) : null}
+                                      <View style={styles.workerBookingRow2}>
+                                        <View style={styles.workerBookingField}>
+                                          <Ionicons name="cash-outline" size={12} color="#94a3b8" />
+                                          <Text style={styles.workerBookingFieldText}>
+                                            {b.amount != null ? `₹${b.amount}` : 'N/A'}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.workerBookingField}>
+                                          <Ionicons name="construct-outline" size={12} color="#94a3b8" />
+                                          <Text style={styles.workerBookingFieldText} numberOfLines={1}>
+                                            {b.worker_name || 'N/A'}
+                                          </Text>
+                                        </View>
+                                      </View>
+                                      {b.work_location ? (
+                                        <View style={styles.workerBookingField}>
+                                          <Ionicons name="location-outline" size={12} color="#94a3b8" />
+                                          <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={1}>
+                                            {b.work_location}
+                                          </Text>
+                                        </View>
+                                      ) : null}
+                                      {b.description ? (
+                                        <View style={styles.workerBookingField}>
+                                          <Ionicons name="document-text-outline" size={12} color="#94a3b8" />
+                                          <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={2}>
+                                            {b.description}
+                                          </Text>
+                                        </View>
+                                      ) : null}
+                                    </View>
+                                  );
+                                })
+                              )}
+                            </View>
+                          )}
+                        </View>
+
+                      </View>
+                    </ScrollView>
+                  </>
+                ) : (
+                  <View style={styles.workerModalLoading}>
+                    <Text style={styles.workerModalLoadingText}>Customer details not found.</Text>
+                  </View>
+                )}
+
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* Polling Popup Modal */}
       <Modal
@@ -1796,6 +2601,395 @@ const createStyles = (width: number, height: number) => {
       fontSize: isDesktop ? 15 : isTablet ? 14 : 13,
       fontWeight: '600',
       textAlign: 'center',
+    },
+    // Worker Name Link
+    workerNameLink: {
+      color: '#6366f1',
+      textDecorationLine: 'underline',
+    },
+    // ── Worker Details Modal (modern redesign) ──
+    workerModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(15,23,42,0.65)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    workerModalContent: {
+      backgroundColor: '#ffffff',
+      borderRadius: isDesktop ? 24 : 18,
+      width: isDesktop ? 620 : isTablet ? 520 : '95%',
+      maxWidth: 640,
+      maxHeight: isDesktop ? '88%' : '90%',
+      shadowColor: '#6366f1',
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.25,
+      shadowRadius: 32,
+      elevation: 20,
+      overflow: 'hidden',
+    },
+    // Gradient-style header with decorative blobs
+    workerModalHeader: {
+      backgroundColor: '#6366f1',
+      paddingTop: isDesktop ? 20 : 16,
+      paddingHorizontal: isDesktop ? 24 : 18,
+      paddingBottom: isDesktop ? 56 : 48,
+      overflow: 'hidden',
+    },
+    workerHeaderBlob1: {
+      position: 'absolute',
+      width: 160,
+      height: 160,
+      borderRadius: 80,
+      backgroundColor: 'rgba(139,92,246,0.4)',
+      top: -60,
+      right: -40,
+    },
+    workerHeaderBlob2: {
+      position: 'absolute',
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: 'rgba(99,102,241,0.3)',
+      bottom: -20,
+      left: 20,
+    },
+    workerModalHeaderTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    workerModalTitle: {
+      fontSize: isDesktop ? 18 : 16,
+      fontWeight: '800',
+      color: '#ffffff',
+      letterSpacing: 0.3,
+    },
+    workerModalClose: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    // Floating avatar — overlaps header via negative marginTop
+    workerAvatarOuter: {
+      alignSelf: 'center',
+      marginTop: isDesktop ? -48 : -40,
+      width: isDesktop ? 96 : 80,
+      height: isDesktop ? 96 : 80,
+      borderRadius: isDesktop ? 48 : 40,
+      borderWidth: 4,
+      borderColor: '#ffffff',
+      backgroundColor: '#eef2ff',
+      overflow: 'hidden',
+      shadowColor: '#6366f1',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+      elevation: 10,
+    },
+    workerProfileImage: {
+      width: '100%',
+      height: '100%',
+    },
+    workerProfilePlaceholder: {
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#eef2ff',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    // Name + status below avatar
+    workerProfileNameSection: {
+      alignItems: 'center',
+      paddingTop: isDesktop ? 12 : 10,
+      paddingBottom: isDesktop ? 20 : 16,
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+      gap: 8,
+    },
+    workerProfileName: {
+      fontSize: isDesktop ? 22 : 18,
+      fontWeight: '800',
+      color: '#0f172a',
+      textAlign: 'center',
+      letterSpacing: 0.2,
+    },
+    workerStatusBadge: {
+      paddingHorizontal: 14,
+      paddingVertical: 5,
+      borderRadius: 20,
+      borderWidth: 1,
+    },
+    workerStatusText: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    workerModalScroll: {
+      maxHeight: isDesktop ? 480 : 400,
+    },
+    workerSectionsWrapper: {
+      paddingHorizontal: isDesktop ? 20 : 14,
+      paddingVertical: isDesktop ? 14 : 10,
+      gap: isDesktop ? 10 : 8,
+    },
+    workerModalLoading: {
+      paddingVertical: 40,
+      alignItems: 'center',
+      gap: 12,
+    },
+    workerModalLoadingText: {
+      fontSize: isDesktop ? 14 : 13,
+      color: '#64748b',
+      marginTop: 8,
+    },
+    // Section cards
+    workerSection: {
+      backgroundColor: '#ffffff',
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      overflow: 'hidden',
+      shadowColor: '#94a3b8',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    workerSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: isDesktop ? 18 : 14,
+      paddingVertical: isDesktop ? 14 : 12,
+      backgroundColor: '#fafbff',
+    },
+    workerSectionHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    workerSectionIconBox: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: '#eef2ff',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    workerSectionTitle: {
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '700',
+      color: '#1e293b',
+    },
+    workerSectionBadge: {
+      backgroundColor: '#6366f1',
+      borderRadius: 10,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      marginLeft: 4,
+    },
+    workerSectionBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#ffffff',
+    },
+    workerSectionContent: {
+      paddingHorizontal: isDesktop ? 18 : 14,
+      paddingTop: isDesktop ? 4 : 2,
+      paddingBottom: isDesktop ? 14 : 10,
+      backgroundColor: '#ffffff',
+    },
+    workerSectionEmpty: {
+      fontSize: isDesktop ? 13 : 12,
+      color: '#94a3b8',
+      textAlign: 'center',
+      paddingVertical: 14,
+      fontStyle: 'italic',
+    },
+    // Detail rows inside sections
+    workerDetailRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingVertical: isDesktop ? 10 : 9,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f8fafc',
+      gap: 12,
+    },
+    workerDetailIconWrap: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: '#eef2ff',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 1,
+    },
+    workerDetailContent: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    workerDetailLabel: {
+      fontSize: isDesktop ? 10 : 9,
+      fontWeight: '700',
+      color: '#94a3b8',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: 3,
+    },
+    workerDetailValue: {
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '600',
+      color: '#1e293b',
+      lineHeight: isDesktop ? 20 : 18,
+    },
+    // Documents sub-section
+    workerDocDivider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: isDesktop ? 14 : 10,
+      marginBottom: isDesktop ? 10 : 8,
+      paddingTop: isDesktop ? 14 : 10,
+      borderTopWidth: 1,
+      borderTopColor: '#e2e8f0',
+    },
+    workerDocDividerText: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: '800',
+      color: '#6366f1',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    workerDocSection: {
+      paddingVertical: isDesktop ? 8 : 6,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    workerDocSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: isDesktop ? 10 : 8,
+    },
+    workerDocSectionTitle: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: '700',
+      color: '#475569',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    workerDocRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: isDesktop ? 6 : 5,
+      paddingLeft: isDesktop ? 8 : 4,
+    },
+    workerDocIndexBadge: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: '#6366f1',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    workerDocIndexText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: '#ffffff',
+    },
+    workerDocThumb: {
+      flex: 1,
+      height: isDesktop ? 70 : 58,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#f8fafc',
+    },
+    workerDocViewBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: '#6366f1',
+      paddingHorizontal: isDesktop ? 14 : 11,
+      paddingVertical: isDesktop ? 9 : 7,
+      borderRadius: 10,
+    },
+    workerDocViewText: {
+      color: '#ffffff',
+      fontSize: isDesktop ? 13 : 12,
+      fontWeight: '700',
+    },
+    // Booking cards
+    workerBookingLoadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 14,
+      justifyContent: 'center',
+    },
+    workerBookingLoadingText: {
+      fontSize: isDesktop ? 13 : 12,
+      color: '#64748b',
+    },
+    workerBookingItem: {
+      backgroundColor: '#f8fafc',
+      borderRadius: 12,
+      padding: isDesktop ? 14 : 11,
+      marginBottom: isDesktop ? 8 : 6,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      gap: 8,
+    },
+    workerBookingRow1: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    workerBookingRow2: {
+      flexDirection: 'row',
+      gap: 16,
+      flexWrap: 'wrap',
+    },
+    workerBookingLeft: {
+      flex: 1,
+    },
+    workerBookingId: {
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '800',
+      color: '#6366f1',
+    },
+    workerBookingDate: {
+      fontSize: isDesktop ? 11 : 10,
+      color: '#94a3b8',
+    },
+    workerBookingField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    workerBookingFieldText: {
+      fontSize: isDesktop ? 13 : 12,
+      color: '#475569',
+      fontWeight: '500',
+    },
+    workerBookingBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    workerBookingBadgeText: {
+      fontSize: isDesktop ? 11 : 10,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
     },
   });
 };
