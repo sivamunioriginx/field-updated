@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -33,6 +34,31 @@ interface Customer {
   document1?: string;
 }
 
+interface CustomerBooking {
+  id: number;
+  booking_id: string;
+  worker_name: string;
+  work_location: string;
+  booking_time: string;
+  status: number;
+  payment_status: number;
+  amount?: number;
+  created_at: string;
+  description: string;
+  user_id: number;
+}
+
+interface CustomerReview {
+  booking_id: string;
+  user_id: number;
+  customer_name: string;
+  worker_name: string;
+  booking_for: string;
+  rating: number;
+  review: string;
+  created_at: string;
+}
+
 interface CustomersProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -58,6 +84,13 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
   const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
   const [deleteConfirmCustomer, setDeleteConfirmCustomer] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showViewPersonalInfo, setShowViewPersonalInfo] = useState(false);
+  const [showViewInvolvedBookings, setShowViewInvolvedBookings] = useState(false);
+  const [cvBookings, setCvBookings] = useState<CustomerBooking[]>([]);
+  const [cvBookingsLoading, setCvBookingsLoading] = useState(false);
+  const [showViewReviews, setShowViewReviews] = useState(false);
+  const [cvReviews, setCvReviews] = useState<CustomerReview[]>([]);
+  const [cvReviewsLoading, setCvReviewsLoading] = useState(false);
   const paginatedCustomersRef = useRef<Customer[]>([]);
 
   // Sync external search query if provided
@@ -132,6 +165,55 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
     fetchCustomers();
   }, []);
 
+  useEffect(() => {
+    if (!viewingCustomer) return;
+    const fetchCvBookings = async () => {
+      try {
+        setCvBookingsLoading(true);
+        const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+        const data = await res.json();
+        if (data.success) {
+          const all: CustomerBooking[] = data.bookings;
+          const map = new Map<string, CustomerBooking>();
+          all
+            .filter(b => b.user_id === viewingCustomer.id && b.status !== 4 && b.payment_status === 1)
+            .forEach(b => {
+              const existing = map.get(b.booking_id);
+              if (!existing || new Date(b.created_at) > new Date(existing.created_at)) {
+                map.set(b.booking_id, b);
+              }
+            });
+          setCvBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
+        }
+      } catch (e) {
+        console.error('❌ Error fetching customer bookings:', e);
+      } finally {
+        setCvBookingsLoading(false);
+      }
+    };
+
+    const fetchCvReviews = async () => {
+      try {
+        setCvReviewsLoading(true);
+        const res = await fetch(API_ENDPOINTS.ADMIN_REVIEWS_RATINGS);
+        const data = await res.json();
+        if (data.success) {
+          const filtered = (data.reviews as CustomerReview[]).filter(
+            r => r.user_id === viewingCustomer.id
+          );
+          setCvReviews(filtered);
+        }
+      } catch (e) {
+        console.error('❌ Error fetching customer reviews:', e);
+      } finally {
+        setCvReviewsLoading(false);
+      }
+    };
+
+    fetchCvBookings();
+    fetchCvReviews();
+  }, [viewingCustomer]);
+
   const formatAddress = (customer: Customer) => {
     const parts = [];
     if (customer.address) parts.push(customer.address);
@@ -205,8 +287,49 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
     }
   };
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  };
+
+  const getStatusLabel = (status: number) => {
+    switch (status) {
+      case 1: return 'Accepted';
+      case 2: return 'In Progress';
+      case 3: return 'Completed';
+      case 4: return 'Reject';
+      case 5: return 'Canceled';
+      case 6: return 'Rescheduled';
+      case 7: return 'Cancel Request';
+      case 8: return 'Reschedule Request';
+      default: return 'Unknown';
+    }
+  };
+
+  const getStatusColor = (status: number) => {
+    switch (status) {
+      case 1: return { bg: '#dcfce7', border: '#86efac', text: '#16a34a' };
+      case 2: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' };
+      case 3: return { bg: '#f3e8ff', border: '#c084fc', text: '#9333ea' };
+      case 4: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' };
+      case 5: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' };
+      case 6: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' };
+      case 7: return { bg: '#fed7aa', border: '#fdba74', text: '#ea580c' };
+      case 8: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' };
+      default: return { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' };
+    }
+  };
+
   const handleView = (customer: Customer) => {
     setViewingCustomer(customer);
+    setShowViewPersonalInfo(false);
+    setShowViewInvolvedBookings(false);
+    setCvBookings([]);
+    setShowViewReviews(false);
+    setCvReviews([]);
     setOpenMenuId(null);
   };
 
@@ -554,102 +677,316 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
       <Modal
         visible={viewingCustomer !== null}
         transparent={true}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setViewingCustomer(null)}
       >
         <TouchableWithoutFeedback onPress={() => setViewingCustomer(null)}>
-          <View style={styles.modalOverlay}>
+          <View style={styles.cvModalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={styles.modalContainer}>
-                {/* Close Button */}
-                <TouchableOpacity onPress={() => setViewingCustomer(null)} style={styles.modalCloseButton}>
-                  <Ionicons name="close" size={isDesktop ? 22 : 20} color="#ffffff" />
-                </TouchableOpacity>
+              <View style={styles.cvModalContent}>
 
-                {/* Profile Section */}
-                <View style={styles.modalProfileSection}>
+                {/* Header */}
+                <View style={styles.cvModalHeader}>
+                  <View style={styles.cvHeaderBlob1} />
+                  <View style={styles.cvHeaderBlob2} />
+                  <View style={styles.cvModalHeaderTitleRow}>
+                    <Text style={styles.cvModalTitle}>Customer Details</Text>
+                    <TouchableOpacity onPress={() => setViewingCustomer(null)} style={styles.cvModalClose}>
+                      <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Floating Avatar */}
+                <View style={styles.cvAvatarOuter}>
                   {viewingCustomer?.profile_image ? (
                     <Image
                       source={{ uri: `${BASE_URL}/uploads/profiles/${viewingCustomer.profile_image}` }}
-                      style={styles.modalAvatarImage}
+                      style={styles.cvProfileImage}
+                      resizeMode="cover"
                     />
                   ) : (
-                    <View style={styles.modalAvatar}>
-                      <Text style={styles.modalAvatarText}>
-                        {viewingCustomer?.name ? viewingCustomer.name.charAt(0).toUpperCase() : '?'}
-                      </Text>
+                    <View style={styles.cvProfilePlaceholder}>
+                      <Ionicons name="person" size={isDesktop ? 44 : 38} color="#c7d2fe" />
                     </View>
                   )}
-                  <Text style={styles.modalCustomerName}>{viewingCustomer?.name || 'N/A'}</Text>
-                  <Text style={styles.modalCustomerMobile}>{viewingCustomer?.mobile || ''}</Text>
                 </View>
 
-                {/* Info Rows */}
-                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                  {viewingCustomer && (() => {
-                    const addrParts = [
-                      viewingCustomer.address,
-                      viewingCustomer.mandal,
-                      viewingCustomer.city,
-                      viewingCustomer.district,
-                      viewingCustomer.state,
-                      viewingCustomer.country,
-                    ].filter(Boolean);
-                    const fullAddress = addrParts.length > 0
-                      ? addrParts.join(', ') + (viewingCustomer.pincode ? ` - ${viewingCustomer.pincode}` : '')
-                      : 'N/A';
-                    return (
-                      <>
-                        <View style={styles.modalRow}>
-                          <View style={styles.modalRowIcon}>
-                            <Ionicons name="mail-outline" size={isDesktop ? 16 : 14} color="#6366f1" />
+                {/* Name */}
+                <View style={styles.cvProfileNameSection}>
+                  <Text style={styles.cvProfileName}>{viewingCustomer?.name || 'N/A'}</Text>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} style={styles.cvModalScroll}>
+                  <View style={styles.cvSectionsWrapper}>
+
+                    {/* Personal Info Section */}
+                    <View style={styles.cvSection}>
+                      <TouchableOpacity
+                        style={styles.cvSectionHeader}
+                        onPress={() => setShowViewPersonalInfo(v => !v)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.cvSectionHeaderLeft}>
+                          <View style={styles.cvSectionIconBox}>
+                            <Ionicons name="person-outline" size={16} color="#6366f1" />
                           </View>
-                          <View style={styles.modalRowContent}>
-                            <Text style={styles.modalRowLabel}>Email</Text>
-                            <Text style={styles.modalRowValue}>{viewingCustomer.email || 'N/A'}</Text>
-                          </View>
+                          <Text style={styles.cvSectionTitle}>Personal Info</Text>
                         </View>
-                        <View style={styles.modalRow}>
-                          <View style={styles.modalRowIcon}>
-                            <Ionicons name="location-outline" size={isDesktop ? 16 : 14} color="#6366f1" />
+                        <Ionicons
+                          name={showViewPersonalInfo ? 'chevron-up' : 'chevron-down'}
+                          size={18} color="#6366f1"
+                        />
+                      </TouchableOpacity>
+
+                      {showViewPersonalInfo && viewingCustomer && (
+                        <View style={styles.cvSectionContent}>
+                          <View style={styles.cvDetailRow}>
+                            <View style={styles.cvDetailIconWrap}>
+                              <Ionicons name="call-outline" size={15} color="#6366f1" />
+                            </View>
+                            <View style={styles.cvDetailContent}>
+                              <Text style={styles.cvDetailLabel}>Mobile</Text>
+                              <Text style={styles.cvDetailValue}>{viewingCustomer.mobile || 'N/A'}</Text>
+                            </View>
                           </View>
-                          <View style={styles.modalRowContent}>
-                            <Text style={styles.modalRowLabel}>Address</Text>
-                            <Text style={styles.modalRowValue}>{fullAddress}</Text>
-                          </View>
-                        </View>
-                        {viewingCustomer.document1 && (() => {
-                          const firstDoc = viewingCustomer.document1!.split(',')[0].trim();
-                          const docUri = `${BASE_URL}/uploads/${firstDoc}`;
-                          return (
-                            <View style={[styles.modalRow, { borderBottomWidth: 0 }]}>
-                              <View style={styles.modalRowIcon}>
-                                <Ionicons name="document-outline" size={isDesktop ? 16 : 14} color="#6366f1" />
+
+                          {viewingCustomer.email ? (
+                            <View style={styles.cvDetailRow}>
+                              <View style={styles.cvDetailIconWrap}>
+                                <Ionicons name="mail-outline" size={15} color="#6366f1" />
                               </View>
-                              <View style={styles.modalRowContent}>
-                                <Text style={styles.modalRowLabel}>Document</Text>
-                                <View style={styles.docPreviewRow}>
-                                  <Image
-                                    source={{ uri: docUri }}
-                                    style={styles.docThumb}
-                                    resizeMode="cover"
-                                  />
-                                  <TouchableOpacity
-                                    style={styles.docViewBtn}
-                                    onPress={() => setViewingDocUrl(docUri)}
-                                  >
-                                    <Ionicons name="eye-outline" size={isDesktop ? 14 : 13} color="#ffffff" />
-                                    <Text style={styles.docViewBtnText}>View</Text>
-                                  </TouchableOpacity>
-                                </View>
+                              <View style={styles.cvDetailContent}>
+                                <Text style={styles.cvDetailLabel}>Email</Text>
+                                <Text style={styles.cvDetailValue}>{viewingCustomer.email}</Text>
                               </View>
                             </View>
-                          );
-                        })()}
-                      </>
-                    );
-                  })()}
+                          ) : null}
+
+                          {(viewingCustomer.address || viewingCustomer.city || viewingCustomer.mandal || viewingCustomer.district || viewingCustomer.state || viewingCustomer.country || viewingCustomer.pincode) ? (
+                            <View style={styles.cvDetailRow}>
+                              <View style={styles.cvDetailIconWrap}>
+                                <Ionicons name="location-outline" size={15} color="#6366f1" />
+                              </View>
+                              <View style={styles.cvDetailContent}>
+                                <Text style={styles.cvDetailLabel}>Address</Text>
+                                <Text style={styles.cvDetailValue}>
+                                  {[viewingCustomer.address, viewingCustomer.city, viewingCustomer.mandal, viewingCustomer.district, viewingCustomer.state, viewingCustomer.country].filter(Boolean).join(', ')}
+                                  {viewingCustomer.pincode ? ` - ${viewingCustomer.pincode}` : ''}
+                                </Text>
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {/* Documents */}
+                          {viewingCustomer.document1 ? (() => {
+                            const docs = viewingCustomer.document1!
+                              .split(',')
+                              .map(f => f.trim())
+                              .filter(Boolean);
+                            return docs.length > 0 ? (
+                              <>
+                                <View style={styles.cvDocDivider}>
+                                  <Ionicons name="document-text-outline" size={14} color="#6366f1" />
+                                  <Text style={styles.cvDocDividerText}>Documents ({docs.length})</Text>
+                                </View>
+                                {docs.map((doc, idx) => {
+                                  const docUri = `${BASE_URL}/uploads/${doc}`;
+                                  return (
+                                    <View key={`cvdoc-${idx}`} style={styles.cvDocRow}>
+                                      <View style={styles.cvDocIndexBadge}>
+                                        <Text style={styles.cvDocIndexText}>{idx + 1}</Text>
+                                      </View>
+                                      <Image source={{ uri: docUri }} style={styles.cvDocThumb} resizeMode="cover" />
+                                      <TouchableOpacity style={styles.cvDocViewBtn} onPress={() => Linking.openURL(docUri)}>
+                                        <Ionicons name="eye-outline" size={14} color="#ffffff" />
+                                        <Text style={styles.cvDocViewText}>View</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  );
+                                })}
+                              </>
+                            ) : null;
+                          })() : null}
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Involved Bookings Section */}
+                    <View style={styles.cvSection}>
+                      <TouchableOpacity
+                        style={styles.cvSectionHeader}
+                        onPress={() => setShowViewInvolvedBookings(v => !v)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.cvSectionHeaderLeft}>
+                          <View style={styles.cvSectionIconBox}>
+                            <Ionicons name="calendar-outline" size={16} color="#6366f1" />
+                          </View>
+                          <Text style={styles.cvSectionTitle}>Involved Bookings</Text>
+                          {cvBookings.length > 0 && (
+                            <View style={styles.cvSectionBadge}>
+                              <Text style={styles.cvSectionBadgeText}>{cvBookings.length}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Ionicons
+                          name={showViewInvolvedBookings ? 'chevron-up' : 'chevron-down'}
+                          size={18} color="#6366f1"
+                        />
+                      </TouchableOpacity>
+
+                      {showViewInvolvedBookings && (
+                        <View style={styles.cvSectionContent}>
+                          {cvBookingsLoading ? (
+                            <View style={styles.cvBookingLoadingRow}>
+                              <ActivityIndicator size="small" color="#6366f1" />
+                              <Text style={styles.cvBookingLoadingText}>Loading bookings...</Text>
+                            </View>
+                          ) : cvBookings.length === 0 ? (
+                            <Text style={styles.cvSectionEmpty}>No bookings found.</Text>
+                          ) : (
+                            cvBookings.map((b) => {
+                              const sc = getStatusColor(b.status);
+                              return (
+                                <View key={b.id} style={styles.cvBookingItem}>
+                                  <View style={styles.cvBookingRow1}>
+                                    <Text style={styles.cvBookingId}>#{b.booking_id}</Text>
+                                    <View style={[styles.cvBookingBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
+                                      <Text style={[styles.cvBookingBadgeText, { color: sc.text }]}>
+                                        {getStatusLabel(b.status)}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                  {b.booking_time ? (
+                                    <View style={styles.cvBookingField}>
+                                      <Ionicons name="time-outline" size={12} color="#94a3b8" />
+                                      <Text style={styles.cvBookingFieldText}>{formatDate(b.booking_time)}</Text>
+                                    </View>
+                                  ) : null}
+                                  <View style={styles.cvBookingRow2}>
+                                    <View style={styles.cvBookingField}>
+                                      <Ionicons name="cash-outline" size={12} color="#94a3b8" />
+                                      <Text style={styles.cvBookingFieldText}>
+                                        {b.amount != null ? `₹${b.amount}` : 'N/A'}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.cvBookingField}>
+                                      <Ionicons name="construct-outline" size={12} color="#94a3b8" />
+                                      <Text style={styles.cvBookingFieldText} numberOfLines={1}>
+                                        {b.worker_name || 'N/A'}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                  {b.work_location ? (
+                                    <View style={styles.cvBookingField}>
+                                      <Ionicons name="location-outline" size={12} color="#94a3b8" />
+                                      <Text style={[styles.cvBookingFieldText, { flex: 1 }]} numberOfLines={1}>
+                                        {b.work_location}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  {b.description ? (
+                                    <View style={styles.cvBookingField}>
+                                      <Ionicons name="document-text-outline" size={12} color="#94a3b8" />
+                                      <Text style={[styles.cvBookingFieldText, { flex: 1 }]} numberOfLines={2}>
+                                        {b.description}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                              );
+                            })
+                          )}
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Posted Reviews & Ratings Section */}
+                    <View style={styles.cvSection}>
+                      <TouchableOpacity
+                        style={styles.cvSectionHeader}
+                        onPress={() => setShowViewReviews(v => !v)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.cvSectionHeaderLeft}>
+                          <View style={styles.cvSectionIconBox}>
+                            <Ionicons name="star-outline" size={16} color="#6366f1" />
+                          </View>
+                          <Text style={styles.cvSectionTitle}>Posted Reviews & Ratings</Text>
+                          {cvReviews.length > 0 && (
+                            <View style={styles.cvSectionBadge}>
+                              <Text style={styles.cvSectionBadgeText}>{cvReviews.length}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Ionicons
+                          name={showViewReviews ? 'chevron-up' : 'chevron-down'}
+                          size={18} color="#6366f1"
+                        />
+                      </TouchableOpacity>
+
+                      {showViewReviews && (
+                        <View style={styles.cvSectionContent}>
+                          {cvReviewsLoading ? (
+                            <View style={styles.cvBookingLoadingRow}>
+                              <ActivityIndicator size="small" color="#6366f1" />
+                              <Text style={styles.cvBookingLoadingText}>Loading reviews...</Text>
+                            </View>
+                          ) : cvReviews.length === 0 ? (
+                            <Text style={styles.cvSectionEmpty}>No reviews found.</Text>
+                          ) : (
+                            cvReviews.map((r, idx) => (
+                              <View key={`cvr-${idx}`} style={styles.cvReviewItem}>
+                                <View style={styles.cvReviewRow1}>
+                                  <Text style={styles.cvReviewBookingId}>#{r.booking_id}</Text>
+                                  <View style={styles.cvStarsRow}>
+                                    {[1, 2, 3, 4, 5].map(star => (
+                                      <Ionicons
+                                        key={star}
+                                        name={star <= r.rating ? 'star' : 'star-outline'}
+                                        size={14}
+                                        color={star <= r.rating ? '#f59e0b' : '#d1d5db'}
+                                      />
+                                    ))}
+                                    <Text style={styles.cvRatingText}>{r.rating}/5</Text>
+                                  </View>
+                                </View>
+                                {r.worker_name ? (
+                                  <View style={styles.cvBookingField}>
+                                    <Ionicons name="construct-outline" size={12} color="#94a3b8" />
+                                    <Text style={styles.cvBookingFieldText} numberOfLines={1}>
+                                      Worker: {r.worker_name}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                                {r.booking_for ? (
+                                  <View style={styles.cvBookingField}>
+                                    <Ionicons name="briefcase-outline" size={12} color="#94a3b8" />
+                                    <Text style={[styles.cvBookingFieldText, { flex: 1 }]} numberOfLines={1}>
+                                      {r.booking_for}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                                {r.review ? (
+                                  <View style={styles.cvReviewTextBox}>
+                                    <Text style={styles.cvReviewText}>{r.review}</Text>
+                                  </View>
+                                ) : null}
+                                <View style={styles.cvBookingField}>
+                                  <Ionicons name="time-outline" size={12} color="#94a3b8" />
+                                  <Text style={styles.cvBookingFieldText}>{formatDate(r.created_at)}</Text>
+                                </View>
+                              </View>
+                            ))
+                          )}
+                        </View>
+                      )}
+                    </View>
+
+                  </View>
                 </ScrollView>
+
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -1087,149 +1424,375 @@ const createStyles = (width: number, height: number) => {
       marginHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
     },
     // Modal Styles
-    modalOverlay: {
+    // Customer View Modal (modern design)
+    cvModalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.45)',
+      backgroundColor: 'rgba(15,23,42,0.65)',
       justifyContent: 'center',
       alignItems: 'center',
-      padding: isDesktop ? 40 : 20,
     },
-    modalContainer: {
+    cvModalContent: {
       backgroundColor: '#ffffff',
-      borderRadius: 20,
-      width: isDesktop ? 420 : isTablet ? 380 : '100%',
-      maxHeight: isDesktop ? 560 : 500,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.2,
-      shadowRadius: 24,
+      borderRadius: isDesktop ? 24 : 18,
+      width: isDesktop ? 560 : isTablet ? 480 : '95%',
+      maxWidth: 580,
+      maxHeight: isDesktop ? '85%' : '88%',
+      shadowColor: '#6366f1',
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.25,
+      shadowRadius: 32,
       elevation: 20,
       overflow: 'hidden',
     },
-    modalCloseButton: {
-      position: 'absolute',
-      top: isDesktop ? 14 : 12,
-      right: isDesktop ? 14 : 12,
-      zIndex: 10,
-      padding: 6,
-      borderRadius: 20,
-      backgroundColor: 'rgba(255,255,255,0.2)',
-    },
-    modalProfileSection: {
-      alignItems: 'center',
-      paddingTop: isDesktop ? 22 : 18,
-      paddingBottom: isDesktop ? 14 : 12,
+    cvModalHeader: {
       backgroundColor: '#6366f1',
-      borderBottomWidth: 0,
+      paddingTop: isDesktop ? 20 : 16,
+      paddingHorizontal: isDesktop ? 24 : 18,
+      paddingBottom: isDesktop ? 56 : 48,
+      overflow: 'hidden',
     },
-    modalAvatarImage: {
-      width: isDesktop ? 60 : 52,
-      height: isDesktop ? 60 : 52,
-      borderRadius: isDesktop ? 30 : 26,
-      marginBottom: isDesktop ? 8 : 6,
-      borderWidth: 3,
-      borderColor: '#ffffff',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.2,
-      shadowRadius: 8,
-      elevation: 6,
+    cvHeaderBlob1: {
+      position: 'absolute',
+      width: 160,
+      height: 160,
+      borderRadius: 80,
+      backgroundColor: 'rgba(139,92,246,0.4)',
+      top: -60,
+      right: -40,
     },
-    modalAvatar: {
-      width: isDesktop ? 60 : 52,
-      height: isDesktop ? 60 : 52,
-      borderRadius: isDesktop ? 30 : 26,
-      backgroundColor: '#8b5cf6',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: isDesktop ? 8 : 6,
-      shadowColor: '#6366f1',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 6,
+    cvHeaderBlob2: {
+      position: 'absolute',
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: 'rgba(99,102,241,0.3)',
+      bottom: -20,
+      left: 20,
     },
-    modalAvatarText: {
-      fontSize: isDesktop ? 24 : 20,
-      fontWeight: '700',
-      color: '#ffffff',
-    },
-    modalCustomerName: {
-      fontSize: isDesktop ? 17 : 15,
-      fontWeight: '700',
-      color: '#ffffff',
-      marginBottom: 2,
-    },
-    modalCustomerMobile: {
-      fontSize: isDesktop ? 13 : 12,
-      color: 'rgba(255,255,255,0.8)',
-      fontWeight: '500',
-    },
-    modalBody: {
-      paddingHorizontal: isDesktop ? 24 : 20,
-      paddingVertical: isDesktop ? 12 : 10,
-    },
-    modalRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      paddingVertical: isDesktop ? 12 : 10,
-      borderBottomWidth: 1,
-      borderBottomColor: '#f1f5f9',
-      gap: 12,
-    },
-    modalRowIcon: {
-      width: isDesktop ? 34 : 30,
-      height: isDesktop ? 34 : 30,
-      borderRadius: isDesktop ? 17 : 15,
-      backgroundColor: '#eef2ff',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 2,
-    },
-    modalRowContent: {
-      flex: 1,
-    },
-    modalRowLabel: {
-      fontSize: isDesktop ? 11 : 10,
-      fontWeight: '600',
-      color: '#94a3b8',
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginBottom: 3,
-    },
-    modalRowValue: {
-      fontSize: isDesktop ? 14 : 13,
-      fontWeight: '500',
-      color: '#0f172a',
-      lineHeight: isDesktop ? 20 : 18,
-    },
-    docPreviewRow: {
+    cvModalHeaderTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginTop: 6,
     },
-    docThumb: {
-      width: isDesktop ? 220 : 200,
-      height: isDesktop ? 50 : 60,
-      borderRadius: 8,
-      backgroundColor: '#f1f5f9',
+    cvModalTitle: {
+      fontSize: isDesktop ? 18 : 16,
+      fontWeight: '800',
+      color: '#ffffff',
+      letterSpacing: 0.3,
+    },
+    cvModalClose: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cvAvatarOuter: {
+      alignSelf: 'center',
+      marginTop: isDesktop ? -48 : -40,
+      width: isDesktop ? 96 : 80,
+      height: isDesktop ? 96 : 80,
+      borderRadius: isDesktop ? 48 : 40,
+      borderWidth: 4,
+      borderColor: '#ffffff',
+      backgroundColor: '#eef2ff',
+      overflow: 'hidden',
+      shadowColor: '#6366f1',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+      elevation: 10,
+    },
+    cvProfileImage: {
+      width: '100%',
+      height: '100%',
+    },
+    cvProfilePlaceholder: {
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#eef2ff',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cvProfileNameSection: {
+      alignItems: 'center',
+      paddingTop: isDesktop ? 12 : 10,
+      paddingBottom: isDesktop ? 16 : 14,
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    cvProfileName: {
+      fontSize: isDesktop ? 22 : 18,
+      fontWeight: '800',
+      color: '#0f172a',
+      textAlign: 'center',
+      letterSpacing: 0.2,
+    },
+    cvModalScroll: {
+      maxHeight: isDesktop ? 400 : 340,
+    },
+    cvSectionsWrapper: {
+      paddingHorizontal: isDesktop ? 20 : 14,
+      paddingVertical: isDesktop ? 14 : 10,
+      gap: isDesktop ? 10 : 8,
+    },
+    cvSection: {
+      backgroundColor: '#ffffff',
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: '#e2e8f0',
+      overflow: 'hidden',
+      shadowColor: '#94a3b8',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 6,
+      elevation: 2,
     },
-    docViewBtn: {
+    cvSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: isDesktop ? 18 : 14,
+      paddingVertical: isDesktop ? 14 : 12,
+      backgroundColor: '#fafbff',
+    },
+    cvSectionHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    cvSectionIconBox: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: '#eef2ff',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cvSectionTitle: {
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '700',
+      color: '#1e293b',
+    },
+    cvSectionContent: {
+      paddingHorizontal: isDesktop ? 18 : 14,
+      paddingTop: isDesktop ? 4 : 2,
+      paddingBottom: isDesktop ? 14 : 10,
+      backgroundColor: '#ffffff',
+    },
+    cvDetailRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingVertical: isDesktop ? 10 : 9,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f8fafc',
+      gap: 12,
+    },
+    cvDetailIconWrap: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: '#eef2ff',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 1,
+    },
+    cvDetailContent: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    cvDetailLabel: {
+      fontSize: isDesktop ? 10 : 9,
+      fontWeight: '700',
+      color: '#94a3b8',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: 3,
+    },
+    cvDetailValue: {
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '600',
+      color: '#1e293b',
+      lineHeight: isDesktop ? 20 : 18,
+    },
+    cvDocDivider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: isDesktop ? 14 : 10,
+      marginBottom: isDesktop ? 10 : 8,
+      paddingTop: isDesktop ? 14 : 10,
+      borderTopWidth: 1,
+      borderTopColor: '#e2e8f0',
+    },
+    cvDocDividerText: {
+      fontSize: isDesktop ? 12 : 11,
+      fontWeight: '800',
+      color: '#6366f1',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    cvDocRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: isDesktop ? 6 : 5,
+    },
+    cvDocIndexBadge: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: '#6366f1',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cvDocIndexText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: '#ffffff',
+    },
+    cvDocThumb: {
+      flex: 1,
+      height: isDesktop ? 70 : 58,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#f8fafc',
+    },
+    cvDocViewBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
       backgroundColor: '#6366f1',
-      paddingHorizontal: isDesktop ? 14 : 12,
-      paddingVertical: isDesktop ? 7 : 6,
-      borderRadius: 8,
+      paddingHorizontal: isDesktop ? 14 : 11,
+      paddingVertical: isDesktop ? 9 : 7,
+      borderRadius: 10,
     },
-    docViewBtnText: {
-      fontSize: isDesktop ? 13 : 12,
-      fontWeight: '600',
+    cvDocViewText: {
       color: '#ffffff',
+      fontSize: isDesktop ? 13 : 12,
+      fontWeight: '700',
+    },
+    cvSectionBadge: {
+      minWidth: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: '#6366f1',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 6,
+    },
+    cvSectionBadgeText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: '#ffffff',
+    },
+    cvSectionEmpty: {
+      fontSize: isDesktop ? 13 : 12,
+      color: '#94a3b8',
+      textAlign: 'center',
+      paddingVertical: isDesktop ? 14 : 10,
+    },
+    cvBookingLoadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: isDesktop ? 14 : 10,
+    },
+    cvBookingLoadingText: {
+      fontSize: isDesktop ? 13 : 12,
+      color: '#64748b',
+    },
+    cvBookingItem: {
+      backgroundColor: '#f8fafc',
+      borderRadius: 12,
+      padding: isDesktop ? 12 : 10,
+      marginBottom: isDesktop ? 8 : 6,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      gap: 6,
+    },
+    cvBookingRow1: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    cvBookingId: {
+      fontSize: isDesktop ? 13 : 12,
+      fontWeight: '800',
+      color: '#6366f1',
+    },
+    cvBookingBadge: {
+      paddingHorizontal: isDesktop ? 10 : 8,
+      paddingVertical: 3,
+      borderRadius: 20,
+      borderWidth: 1,
+    },
+    cvBookingBadgeText: {
+      fontSize: isDesktop ? 11 : 10,
+      fontWeight: '700',
+    },
+    cvBookingRow2: {
+      flexDirection: 'row',
+      gap: isDesktop ? 12 : 10,
+      flexWrap: 'wrap',
+    },
+    cvBookingField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    cvBookingFieldText: {
+      fontSize: isDesktop ? 12 : 11,
+      color: '#475569',
+      fontWeight: '500',
+    },
+    cvReviewItem: {
+      backgroundColor: '#f8fafc',
+      borderRadius: 12,
+      padding: isDesktop ? 12 : 10,
+      marginBottom: isDesktop ? 8 : 6,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      gap: 6,
+    },
+    cvReviewRow1: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    cvReviewBookingId: {
+      fontSize: isDesktop ? 13 : 12,
+      fontWeight: '800',
+      color: '#6366f1',
+    },
+    cvStarsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
+    cvRatingText: {
+      fontSize: isDesktop ? 11 : 10,
+      fontWeight: '700',
+      color: '#f59e0b',
+      marginLeft: 4,
+    },
+    cvReviewTextBox: {
+      backgroundColor: '#eef2ff',
+      borderRadius: 8,
+      paddingHorizontal: isDesktop ? 10 : 8,
+      paddingVertical: isDesktop ? 7 : 5,
+    },
+    cvReviewText: {
+      fontSize: isDesktop ? 12 : 11,
+      color: '#1e293b',
+      lineHeight: isDesktop ? 18 : 16,
+      fontStyle: 'italic',
     },
     docViewerOverlay: {
       flex: 1,

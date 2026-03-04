@@ -6458,6 +6458,8 @@ app.get('/api/admin/reviews-ratings', async (req, res) => {
     const query = `
       SELECT 
         b.booking_id,
+        b.user_id,
+        b.worker_id,
         s.name AS customer_name,
         w.name AS worker_name,
         b.description AS booking_for,
