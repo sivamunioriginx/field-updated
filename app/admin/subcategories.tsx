@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Subcategorie {
@@ -33,9 +34,10 @@ interface Subcategorie {
 interface SubcategoriesProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Subcategories({ searchQuery: externalSearchQuery, onSearchChange }: SubcategoriesProps) {
+export default function Subcategories({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: SubcategoriesProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -64,6 +66,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
   const [subcategoryToDelete, setSubcategoryToDelete] = useState<{ id: number; name: string } | null>(null);
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [subcategoryToActivate, setSubcategoryToActivate] = useState<{ id: number; name: string } | null>(null);
+  const paginatedSubcategoriesRef = useRef<Subcategorie[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -71,6 +74,27 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedSubcategoriesRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((s, i) => ({
+      'S.No': i + 1,
+      'Subcategory Name': s.name,
+      'Category Name': s.title,
+      'Status': s.status === 1 ? 'Active' : 'Inactive',
+      'Created At': s.created_at ? new Date(s.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Subcategories');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 24 }, { wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `subcategories_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
    const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -699,6 +723,7 @@ export default function Subcategories({ searchQuery: externalSearchQuery, onSear
 
   const filteredSubcategories = getFilteredAndSortedSubcategories();
   const paginatedSubcategories = getPaginatedSubcategories();
+  paginatedSubcategoriesRef.current = paginatedSubcategories;
 
   return (
     <View style={{ flex: 1 }}>

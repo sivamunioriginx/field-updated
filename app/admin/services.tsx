@@ -17,6 +17,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface LocationSuggestion {
@@ -52,9 +53,10 @@ interface Service {
 interface ServicesProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Services({ searchQuery: externalSearchQuery, onSearchChange }: ServicesProps) {
+export default function Services({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: ServicesProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -92,6 +94,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [selectedLocations, setSelectedLocations] = useState<SelectedLocation[]>([]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paginatedServicesRef = useRef<Service[]>([]);
 
   // Google Places API function (using backend proxy to avoid CORS)
   const fetchPlaceSuggestions = async (input: string) => {
@@ -242,6 +245,32 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedServicesRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((s, i) => ({
+      'S.No': i + 1,
+      'Service Name': s.name,
+      'Category Name': s.category_name || 'N/A',
+      'Subcategory Name': s.subcaregory_name || 'N/A',
+      'Price (₹)': s.price,
+      'Rating': s.rating,
+      'Instant Service': s.instant_service === 1 ? 'Yes' : 'No',
+      'Status': s.status === 1 ? 'Active' : 'Inactive',
+      'Created At': s.created_at ? new Date(s.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Services');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 24 }, { wch: 20 }, { wch: 20 }, { wch: 12 },
+      { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `services_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
    const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -903,6 +932,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
 
   const filteredServices = getFilteredAndSortedServices();
   const paginatedServices = getPaginatedServices();
+  paginatedServicesRef.current = paginatedServices;
 
   return (
     <View style={{ flex: 1 }}>

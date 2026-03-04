@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -14,6 +14,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Customer {
@@ -35,9 +36,10 @@ interface Customer {
 interface CustomersProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Customers({ searchQuery: externalSearchQuery, onSearchChange }: CustomersProps) {
+export default function Customers({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: CustomersProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -56,6 +58,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
   const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
   const [deleteConfirmCustomer, setDeleteConfirmCustomer] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const paginatedCustomersRef = useRef<Customer[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -63,6 +66,27 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedCustomersRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((c, i) => ({
+      'S.No': i + 1,
+      'Name': c.name,
+      'Mobile': c.mobile,
+      'Email': c.email || 'N/A',
+      'Address': [c.address, c.city, c.mandal, c.district, c.state, c.country].filter(Boolean).join(', ') + (c.pincode ? ` - ${c.pincode}` : ''),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 50 },
+    ];
+    XLSX.writeFile(wb, `customer_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
   const fetchCustomers = async () => {
     try {
@@ -238,6 +262,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
 
   const filteredCustomers = getFilteredAndSortedCustomers();
   const paginatedCustomers = getPaginatedCustomers();
+  paginatedCustomersRef.current = paginatedCustomers;
 
   return (
     <ScrollView 

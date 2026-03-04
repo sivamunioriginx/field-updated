@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Categorie {
@@ -31,9 +32,10 @@ interface Categorie {
 interface CategoriesProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Categories({ searchQuery: externalSearchQuery, onSearchChange }: CategoriesProps) {
+export default function Categories({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: CategoriesProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -63,6 +65,7 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: number; title: string } | null>(null);
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [categoryToActivate, setCategoryToActivate] = useState<{ id: number; title: string } | null>(null);
+  const paginatedCategoriesRef = useRef<Categorie[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -70,6 +73,26 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedCategoriesRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((c, i) => ({
+      'S.No': i + 1,
+      'Title': c.title,
+      'Status': c.status === 1 ? 'Active' : 'Inactive',
+      'Created At': c.created_at ? new Date(c.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Categories');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `categories_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
    const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -653,6 +676,7 @@ export default function Categories({ searchQuery: externalSearchQuery, onSearchC
 
   const filteredCategories = getFilteredAndSortedCategories();
   const paginatedCategories = getPaginatedCategories();
+  paginatedCategoriesRef.current = paginatedCategories;
 
   return (
     <View style={{ flex: 1 }}>

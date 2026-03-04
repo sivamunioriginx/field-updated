@@ -5133,20 +5133,23 @@ app.get('/api/admin/workers', async (req, res) => {
   try {
     const query = `
       SELECT 
-        id,
-        name,
-        mobile,
-        email,
-        pincode,
-        address,
-        district,
-        state,
-        country,
-        profile_image,
-        status,
-        created_at
-      FROM tbl_workers
-      ORDER BY id DESC
+        w.id,
+        w.name,
+        w.mobile,
+        w.email,
+        w.pincode,
+        w.address,
+        w.district,
+        w.state,
+        w.country,
+        w.profile_image,
+        w.status,
+        w.created_at,
+        w.skill_id,
+        c.title AS category_title
+      FROM tbl_workers w
+      LEFT JOIN tbl_category c ON w.skill_id = c.id
+      ORDER BY w.id DESC
     `;
 
     const [workers] = await pool.query(query);

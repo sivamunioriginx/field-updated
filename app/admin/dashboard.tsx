@@ -35,6 +35,7 @@ export default function AdminIndexScreen() {
   const isMobile = width <= 600;
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+  const [exportTrigger, setExportTrigger] = useState(0);
 
   const [newBookingsCount, setNewBookingsCount] = useState<number | null>(null);
   const [requestedWorkersCount, setRequestedWorkersCount] = useState<number | null>(null);
@@ -704,6 +705,14 @@ const menuItems = [
                   </View>
                   <Ionicons name="notifications-outline" size={isDesktop ? 20 : isTablet ? 18 : 16} color="#64748b" />
                 </TouchableOpacity>
+                {(activeMenu === 'bookings' || activeMenu === 'payments' || activeMenu === 'customers' || activeMenu === 'workers' || activeMenu === 'categories' || activeMenu === 'subcategories' || activeMenu === 'services' || activeMenu === 'quote' || activeMenu === 'topdeals' || activeMenu === 'reviewsratings') && (
+                  <TouchableOpacity
+                    style={styles.iconButton}
+                    onPress={() => setExportTrigger(v => v + 1)}
+                  >
+                    <Ionicons name="cloud-download-outline" size={isDesktop ? 20 : isTablet ? 18 : 16} color="#64748b" />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={styles.profileButton}>
                   <View style={styles.profileAvatar}>
                     <Ionicons name="person" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#6366f1" />
@@ -721,6 +730,7 @@ const menuItems = [
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 initialStatus={bookingsStatus}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'payments' ? (
@@ -728,6 +738,7 @@ const menuItems = [
               <Payments 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'customers' ? (
@@ -735,6 +746,7 @@ const menuItems = [
               <Customers 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'workers' ? (
@@ -742,6 +754,7 @@ const menuItems = [
               <Workers 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'categories' ? (
@@ -749,6 +762,7 @@ const menuItems = [
               <Categories
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'subcategories' ? (
@@ -756,6 +770,7 @@ const menuItems = [
               <Subcategories
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           )  : activeMenu === 'services' ? (
@@ -763,6 +778,7 @@ const menuItems = [
               <Services
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'quote' ? (
@@ -770,6 +786,7 @@ const menuItems = [
               <Quote 
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'animations' ? (
@@ -784,6 +801,7 @@ const menuItems = [
               <TopDeals
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'reviewsratings' ? (
@@ -791,6 +809,7 @@ const menuItems = [
               <ReviewsRatings
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                exportTrigger={exportTrigger}
               />
             </View>
           ) : activeMenu === 'fags' ? (

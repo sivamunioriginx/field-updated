@@ -1,19 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions
+  ActivityIndicator,
+  Alert,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS } from '../../constants/api';
 
 interface Deal {
@@ -36,9 +37,10 @@ interface Service {
 interface TopDealsProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function TopDeals({ searchQuery: externalSearchQuery, onSearchChange }: TopDealsProps) {
+export default function TopDeals({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: TopDealsProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -71,6 +73,7 @@ export default function TopDeals({ searchQuery: externalSearchQuery, onSearchCha
   const [dealToDelete, setDealToDelete] = useState<{ id: number; service_name: string } | null>(null);
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [dealToActivate, setDealToActivate] = useState<{ id: number; service_name: string } | null>(null);
+  const paginatedDealsRef = useRef<Deal[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -78,6 +81,29 @@ export default function TopDeals({ searchQuery: externalSearchQuery, onSearchCha
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedDealsRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((d, i) => ({
+      'S.No': i + 1,
+      'Service Name': d.service_name,
+      'Discount': d.discount || 'N/A',
+      'Original Price (₹)': d.original_price,
+      'Deal Price (₹)': d.deal_price,
+      'Status': d.is_active === 1 ? 'Active' : 'Inactive',
+      'Created At': d.created_at ? new Date(d.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'TopDeals');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `topdeals_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -469,6 +495,7 @@ export default function TopDeals({ searchQuery: externalSearchQuery, onSearchCha
 
   const filteredDeals = getFilteredAndSortedDeals();
   const paginatedDeals = getPaginatedDeals();
+  paginatedDealsRef.current = paginatedDeals;
 
   return (
     <View style={{ flex: 1 }}>

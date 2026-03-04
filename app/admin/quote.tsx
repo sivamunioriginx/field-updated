@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    useWindowDimensions
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS } from '../../constants/api';
 
 interface Quote {
@@ -25,9 +26,10 @@ interface Quote {
 interface QuoteProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Quotes({ searchQuery: externalSearchQuery, onSearchChange }: QuoteProps) {
+export default function Quotes({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: QuoteProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -41,6 +43,7 @@ export default function Quotes({ searchQuery: externalSearchQuery, onSearchChang
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const paginatedQuotesRef = useRef<Quote[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -48,6 +51,29 @@ export default function Quotes({ searchQuery: externalSearchQuery, onSearchChang
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedQuotesRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((q, i) => ({
+      'S.No': i + 1,
+      'Name': q.name || 'N/A',
+      'Mobile': q.mobile || 'N/A',
+      'Email': q.email || 'N/A',
+      'Work Description': q.work_description || 'N/A',
+      'Location': q.location || 'N/A',
+      'Created At': q.created_at ? new Date(q.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Quotes');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 35 }, { wch: 30 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `quotes_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
    const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -192,6 +218,7 @@ export default function Quotes({ searchQuery: externalSearchQuery, onSearchChang
 
   const filteredQuotes = getFilteredAndSortedQuotes();
   const paginatedQuotes = getPaginatedQuotes();
+  paginatedQuotesRef.current = paginatedQuotes;
 
   return (
     <ScrollView 

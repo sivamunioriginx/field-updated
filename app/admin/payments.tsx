@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -10,6 +10,7 @@ import {
   View,
   useWindowDimensions
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS } from '../../constants/api';
 
 interface Payment {
@@ -24,9 +25,10 @@ interface Payment {
 interface PaymentsProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Payments({ searchQuery: externalSearchQuery, onSearchChange }: PaymentsProps) {
+export default function Payments({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: PaymentsProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -40,6 +42,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const paginatedPaymentsRef = useRef<Payment[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -47,6 +50,27 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedPaymentsRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((p, i) => ({
+      'S.No': i + 1,
+      'Payment ID': p.payment_id,
+      'Booking ID': p.booking_id,
+      'Amount (₹)': p.amount,
+      'Payment Date': p.payment_date ? new Date(p.payment_date).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Payments');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 22 }, { wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `payment_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
   const fetchPayments = async () => {
     try {
@@ -192,6 +216,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
 
   const filteredPayments = getFilteredAndSortedPayments();
   const paginatedPayments = getPaginatedPayments();
+  paginatedPaymentsRef.current = paginatedPayments;
 
   return (
     <ScrollView 

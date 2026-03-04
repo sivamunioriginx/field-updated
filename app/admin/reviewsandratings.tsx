@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -10,6 +10,7 @@ import {
   View,
   useWindowDimensions
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS } from '../../constants/api';
 
 interface ReviewRating {
@@ -25,9 +26,10 @@ interface ReviewRating {
 interface ReviewsRatingsProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function ReviewsRatings({ searchQuery: externalSearchQuery, onSearchChange }: ReviewsRatingsProps) {
+export default function ReviewsRatings({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: ReviewsRatingsProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -41,6 +43,7 @@ export default function ReviewsRatings({ searchQuery: externalSearchQuery, onSea
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const paginatedReviewsRef = useRef<ReviewRating[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -48,6 +51,30 @@ export default function ReviewsRatings({ searchQuery: externalSearchQuery, onSea
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedReviewsRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((r, i) => ({
+      'S.No': i + 1,
+      'Booking ID': r.booking_id,
+      'Customer Name': r.customer_name,
+      'Worker Name': r.worker_name,
+      'Booking For': r.booking_for || 'N/A',
+      'Rating': r.rating,
+      'Review': r.review || 'N/A',
+      'Created At': r.created_at ? new Date(r.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Reviews & Ratings');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 24 }, { wch: 8 }, { wch: 35 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `reviews_ratings_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -192,6 +219,7 @@ export default function ReviewsRatings({ searchQuery: externalSearchQuery, onSea
 
   const filteredReviews = getFilteredAndSortedReviews();
   const paginatedReviews = getPaginatedReviews();
+  paginatedReviewsRef.current = paginatedReviews;
 
   const renderStars = (rating: number) => {
     const stars = [];

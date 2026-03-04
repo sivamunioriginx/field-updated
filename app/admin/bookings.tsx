@@ -15,6 +15,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
 
 interface Booking {
@@ -86,11 +87,11 @@ interface CustomerDetails {
 interface BookingsProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
-  // optional initial status to show when component mounts or when changed by parent
   initialStatus?: string;
+  exportTrigger?: number;
 }
 
-export default function Bookings({ searchQuery: externalSearchQuery, onSearchChange, initialStatus }: BookingsProps) {
+export default function Bookings({ searchQuery: externalSearchQuery, onSearchChange, initialStatus, exportTrigger }: BookingsProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -135,9 +136,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [acceptedWorkerName, setAcceptedWorkerName] = useState('');
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentBookingIdRef = useRef<string>('');
-  const currentRecordIdRef = useRef<number>(0); // Store the clicked record's id
+  const currentRecordIdRef = useRef<number>(0);
   const currentRequestTypeRef = useRef<'cancel' | 'reschedule'>('cancel');
   const currentRescheduleDateRef = useRef<string>('');
+  const paginatedBookingsRef = useRef<Booking[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -154,6 +156,37 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialStatus]);
+
+  // Export current page records to Excel when triggered from parent
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedBookingsRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((b, i) => ({
+      'S.No': i + 1,
+      'Booking ID': b.booking_id,
+      'Status': getStatusLabel(b.status),
+      'Amount (₹)': b.amount != null ? b.amount : 'N/A',
+      'Payment Status': b.payment_status === 1 ? 'Paid' : 'Unpaid',
+      'Worker Name': b.worker_name || 'N/A',
+      'Customer Name': b.customer_name || 'N/A',
+      'Contact Number': b.contact_number || 'N/A',
+      'Work Location': b.work_location || 'N/A',
+      'Booked On': b.created_at ? formatDate(b.created_at) : 'N/A',
+      'Booking For': b.booking_time ? formatDate(b.booking_time) : 'N/A',
+      'Description': b.description || 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Bookings');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 16 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 30 },
+      { wch: 22 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `booking_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
   const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false, isCancelReq: boolean = false, isRescheduleReq: boolean = false) => {
     try {
@@ -871,6 +904,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
   const filteredBookings = getFilteredAndSortedBookings();
   const paginatedBookings = getPaginatedBookings();
+  paginatedBookingsRef.current = paginatedBookings;
 
   return (
     <ScrollView 

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -12,7 +12,8 @@ import {
   useWindowDimensions
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { BASE_URL, API_ENDPOINTS } from '../../constants/api';
+import * as XLSX from 'xlsx';
+import { API_ENDPOINTS } from '../../constants/api';
 import EditWorker from './editworker';
 import ViewWorker from './viewworker';
 
@@ -44,9 +45,10 @@ interface Worker {
 interface WorkersProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  exportTrigger?: number;
 }
 
-export default function Workers({ searchQuery: externalSearchQuery, onSearchChange }: WorkersProps) {
+export default function Workers({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: WorkersProps) {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
@@ -63,6 +65,7 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [viewingWorkerId, setViewingWorkerId] = useState<number | null>(null);
   const [editingWorkerId, setEditingWorkerId] = useState<number | null>(null);
+  const paginatedWorkersRef = useRef<Worker[]>([]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -70,6 +73,31 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    if (!exportTrigger || exportTrigger <= 0) return;
+    const records = paginatedWorkersRef.current;
+    if (records.length === 0) return;
+    const rows = records.map((w, i) => ({
+      'S.No': i + 1,
+      'Name': w.name,
+      'Mobile': w.mobile,
+      'Email': w.email || 'N/A',
+      'Category': w.category_title || w.skill_id || 'N/A',
+      'Status': w.status === 1 ? 'Active' : 'Inactive',
+      'Address': [w.address, w.city, w.mandal, w.district, w.state, w.country].filter(Boolean).join(', ') + (w.pincode ? ` - ${w.pincode}` : ''),
+      'joined At': w.created_at ? new Date(w.created_at).toLocaleString() : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Workers');
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 20 },
+      { wch: 12 }, { wch: 10 }, { wch: 50 }, { wch: 22 },
+    ];
+    XLSX.writeFile(wb, `workers_records.xlsx`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportTrigger]);
 
   const fetchWorkers = async () => {
     try {
@@ -283,6 +311,7 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
 
   const filteredWorkers = getFilteredAndSortedWorkers();
   const paginatedWorkers = getPaginatedWorkers();
+  paginatedWorkersRef.current = paginatedWorkers;
 
   return (
     <ScrollView 
