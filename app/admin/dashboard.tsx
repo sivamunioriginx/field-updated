@@ -56,7 +56,7 @@ export default function AdminIndexScreen() {
 
   const quickCards = [
     { id: 'total-bookings', label: 'Total Bookings', value: '1,234', icon: 'cart-outline', bg: '#fef3c7', iconBg: '#f59e0b', change: '+3.4%', changeColor: '#10b981' },
-    { id: 'active', label: 'Active Bookings', value: '12', icon: 'play-circle-outline', bg: '#fef9c3', iconBg: '#f59e0b', change: '-1.0%', changeColor: '#ef4444' },
+    { id: 'active', label: 'Accepted Bookings', value: '12', icon: 'play-circle-outline', bg: '#fef9c3', iconBg: '#f59e0b', change: '-1.0%', changeColor: '#ef4444' },
     { id: 'inprogress', label: 'In Progress Bookings', value: '567', icon: 'sync-outline', bg: '#dbeafe', iconBg: '#06b6d4', change: '+8.2%', changeColor: '#10b981' },
     { id: 'complete', label: 'Completed Bookings', value: '1,234', icon: 'checkmark-done-outline', bg: '#ede9fe', iconBg: '#6366f1', change: '+12.5%', changeColor: '#10b981' },
     { id: 'cancele', label: 'Canceled Bookings', value: '89%', icon: 'close-circle-outline', bg: '#d1fae5', iconBg: '#10b981', change: '+5.1%', changeColor: '#10b981' },
@@ -363,7 +363,7 @@ useEffect(() => {
   };
   fetchInprogressBookingsCount();
   return () => { cancelled = true; };
-});
+}, []);
 
 // get Completed bookings count
 useEffect(() => {
@@ -388,7 +388,7 @@ const fetchCompletedBookingsCount = async () => {
 };
 fetchCompletedBookingsCount();
 return () => { cancelled = true; };
-});
+}, []);
 
 // get Canceled bookings count
 useEffect(() => {
@@ -435,7 +435,7 @@ useEffect(() => {
   };
   fetchRescheduledBookingsCount();
   return () => { cancelled = true; };
-});
+}, []);
 
 // get Customers count
 useEffect(() => {
@@ -458,7 +458,7 @@ useEffect(() => {
   };
   fetchCustomersCount();
   return () => { cancelled = true; };
-});
+}, []);
 
 // get Active Workers count
 useEffect(() => {
@@ -481,7 +481,7 @@ useEffect(() => {
   };
   fetchActiveWorkersCount();
   return () => { cancelled = true; };
-});
+}, []);
 
 // get Total paymentamount
 useEffect(() => {
@@ -623,7 +623,14 @@ const menuItems = [
                     styles.menuItem,
                     activeMenu === item.id && styles.menuItemActive
                   ]}
-                  onPress={() => setActiveMenu(item.id)}
+                  onPress={() => {
+                    // If user opens Bookings from sidebar, reset to default ("all").
+                    // Dashboard quick-cards still set a specific status via handleQuickActionPress.
+                    if (item.id === 'bookings' && activeMenu !== 'bookings') {
+                      setBookingsStatus('all');
+                    }
+                    setActiveMenu(item.id);
+                  }}
                 >
                   <View style={[
                     styles.iconContainer,
