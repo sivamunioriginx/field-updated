@@ -350,7 +350,25 @@ useEffect(() => {
       const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
       const data = await res.json();
       if (data && data.success && Array.isArray(data.bookings)) {
-        const count = data.bookings.filter((b: any) => b.status === 2 && b.payment_status === 1).length;
+        // Production DB can return duplicate rows per booking_id (due to LEFT JOINs).
+        // Dedupe by booking identifier before counting.
+        const paid = data.bookings.filter((b: any) => b.payment_status === 1);
+        const bookingsMap = new Map<any, any>();
+        paid.forEach((b: any) => {
+          const key = b.booking_id ?? b.id ?? b.bookingId ?? b.bookingid;
+          if (key == null) return;
+          const existing = bookingsMap.get(key);
+          if (!existing) {
+            bookingsMap.set(key, b);
+            return;
+          }
+          const existingTime = new Date(existing.created_at ?? 0).getTime();
+          const currentTime = new Date(b.created_at ?? 0).getTime();
+          if (currentTime > existingTime) bookingsMap.set(key, b);
+        });
+
+        const uniquePaid = Array.from(bookingsMap.values());
+        const count = uniquePaid.filter((b: any) => b.status === 2).length;
         if (!cancelled) setInprogressBookingCount(count);
       } else {
         if (!cancelled) setInprogressBookingCount(0);
