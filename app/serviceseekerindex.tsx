@@ -1064,7 +1064,7 @@ export default function Index() {
       }
       // Customer cancel request (type = 2) - show as cancel request
       if (cancelStatus === 0 && cancelType === 2) {
-        return 'Cancel request submitted - waiting for admin approval';
+        return 'Your Cancel request submitted - waiting for admin approval';
       }
       // Check if it's Canceled (status 5 with cancel_status = 1) - for Total Bookings tab
       if (cancelStatus === 1) {
@@ -1092,7 +1092,7 @@ export default function Index() {
       }
       // Customer reschedule request (type = 2) - show as reschedule request
       if (rescheduleStatus === 0 && rescheduleType === 2) {
-        return 'Reschedule request submitted - waiting for admin approval';
+        return 'Your Reschedule request submitted - waiting for admin approval';
       }
       // Check if it's Rescheduled (status 6 with reschedule_status = 1) - for Total Bookings tab
       if (rescheduleStatus === 1 && booking.reschedule_date) {

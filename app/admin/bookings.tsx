@@ -5,10 +5,12 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
@@ -108,6 +110,11 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [statusDropdownBookingId, setStatusDropdownBookingId] = useState<number | null>(null);
+  const [statusDropdownPosition, setStatusDropdownPosition] = useState<{ x: number; y: number; openUpward?: boolean } | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelModalBooking, setCancelModalBooking] = useState<Booking | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   
   // Worker details popup state
   const [showWorkerPopup, setShowWorkerPopup] = useState(false);
@@ -141,6 +148,24 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const currentRescheduleDateRef = useRef<string>('');
   const paginatedBookingsRef = useRef<Booking[]>([]);
 
+  // Inject thin scrollbar style for status dropdown (web only)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const styleId = 'status-dropdown-scrollbar-style';
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      #status-dropdown-scroll::-webkit-scrollbar { width: 6px; }
+      #status-dropdown-scroll::-webkit-scrollbar-track { background: transparent; }
+      #status-dropdown-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+      #status-dropdown-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      #status-dropdown-scroll { scrollbar-width: thin; }
+    `;
+    document.head.appendChild(style);
+    return () => { document.getElementById(styleId)?.remove(); };
+  }, []);
+
   // Sync external search query if provided
   useEffect(() => {
     if (externalSearchQuery !== undefined) {
@@ -165,7 +190,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     const rows = records.map((b, i) => ({
       'S.No': i + 1,
       'Booking ID': b.booking_id,
-      'Status': getStatusLabel(b.status),
+      'Status': getStatusLabel(b.status, b),
       'Amount (₹)': b.amount != null ? b.amount : 'N/A',
       'Payment Status': b.payment_status === 1 ? 'Paid' : 'Unpaid',
       'Worker Name': b.worker_name || 'N/A',
@@ -251,8 +276,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     });
   };
 
-  // Get status label
-  const getStatusLabel = (status: number) => {
+  // Get status label (when statusFilter is 'all', use cancel_status/reschedule_status for status 5/6)
+  const getStatusLabel = (status: number, booking?: Booking) => {
+    if (booking) {
+      if (status === 5) return booking.cancel_status === 1 ? 'Canceled' : 'CANCEL REQUESTED';
+      if (status === 6) return booking.reschedule_status === 1 ? 'Rescheduled' : 'RESCHEDULE REQUESTED';
+    }
     switch (status) {
       case 1: return 'Accepted';
       case 2: return 'In Progress';
@@ -266,8 +295,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
-  // Get status color
-  const getStatusColor = (status: number) => {
+  // Get status color (when booking provided, status 5 with cancel_status=0 / 6 with reschedule_status=0 use request colors)
+  const getStatusColor = (status: number, booking?: Booking) => {
+    if (booking) {
+      if (status === 5 && booking.cancel_status === 0) return { bg: '#fed7aa', border: '#fdba74', text: '#ea580c' }; // Orange for Cancel Requested
+      if (status === 6 && booking.reschedule_status === 0) return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; // Yellow for Reschedule Requested
+    }
     switch (status) {
       case 1: return { bg: '#dcfce7', border: '#86efac', text: '#16a34a' }; // Green for Accepted
       case 2: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' }; // Blue for In Progress
@@ -285,6 +318,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const getCanceledByLabel = (type?: number) => {
     if (type === 1) return 'Worker';
     if (type === 2) return 'Customer';
+    if (type === 3) return 'Admin';
     return 'N/A';
   };
 
@@ -292,6 +326,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const getRescheduledByLabel = (type?: number) => {
     if (type === 1) return 'Worker';
     if (type === 2) return 'Customer';
+    if (type === 3) return 'Admin';
     return 'N/A';
   };
 
@@ -437,6 +472,13 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     { value: 'reschedule', label: 'Reschedule' },
     { value: 'cancelreq', label: 'Cancel Requests' },
     { value: 'reschedulereq', label: 'Reschedule Requests' },
+  ];
+
+  const statusChangeOptions = [
+    { value: 1, label: 'Accept', icon: 'checkmark-circle' as const, color: '#10b981' },
+    { value: 2, label: 'Start', icon: 'play-circle' as const, color: '#3b82f6' },
+    { value: 3, label: 'Complete', icon: 'checkmark-done' as const, color: '#8b5cf6' },
+    { value: 5, label: 'Cancel', icon: 'trash-outline' as const, color: '#dc2626' },
   ];
 
   const sortOptions = [
@@ -872,6 +914,63 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
+  const handleStatusChange = async (booking: Booking, newStatus: number) => {
+    try {
+      setStatusDropdownBookingId(null);
+      setStatusDropdownPosition(null);
+      const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(booking.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        const toastMessage = newStatus === 1 ? 'Status updated to Active' : newStatus === 2 ? 'Status updated to Start' : newStatus === 3 ? 'Status updated to Complete' : newStatus === 5 ? 'Status updated to Cancel' : 'Status updated successfully';
+        Toast.show({ type: 'success', text1: 'Success', text2: toastMessage });
+        const isCanceled = statusFilter === 'cancel';
+        const isRescheduled = statusFilter === 'reschedule';
+        const isCancelReq = statusFilter === 'cancelreq';
+        const isRescheduleReq = statusFilter === 'reschedulereq';
+        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+      } else {
+        Toast.show({ type: 'error', text1: 'Error', text2: data.message || 'Failed to update status' });
+      }
+    } catch (error) {
+      console.error('❌ Error updating status:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'An error occurred while updating status' });
+    }
+  };
+
+  const handleCancelWithReason = async () => {
+    if (!cancelModalBooking || !cancelReason.trim()) {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter reason for cancellation' });
+      return;
+    }
+    try {
+      setShowCancelModal(false);
+      const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(cancelModalBooking.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 5, cancel_reason: cancelReason.trim(), cancel_type: 3 }), // 3 = Admin -> tbl_canceledbookings.type=3, status=1
+      });
+      const data = await response.json();
+      if (data.success) {
+        Toast.show({ type: 'success', text1: 'Success', text2: 'Status updated to Cancel' });
+        setCancelModalBooking(null);
+        setCancelReason('');
+        const isCanceled = statusFilter === 'cancel';
+        const isRescheduled = statusFilter === 'reschedule';
+        const isCancelReq = statusFilter === 'cancelreq';
+        const isRescheduleReq = statusFilter === 'reschedulereq';
+        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+      } else {
+        Toast.show({ type: 'error', text1: 'Error', text2: data.message || 'Failed to update status' });
+      }
+    } catch (error) {
+      console.error('❌ Error cancelling booking:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'An error occurred while cancelling' });
+    }
+  };
 
   const styles = createStyles(width, height);
 
@@ -920,12 +1019,16 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         onScroll={() => {
           setOpenMenuId(null);
           setMenuPosition(null);
+          setStatusDropdownBookingId(null);
+          setStatusDropdownPosition(null);
         }}
       scrollEventThrottle={16}
     >
       <TouchableWithoutFeedback onPress={() => {
         setOpenMenuId(null);
         setMenuPosition(null);
+        setStatusDropdownBookingId(null);
+        setStatusDropdownPosition(null);
       }}>
         <View style={styles.bookingsContainer}>
           <View style={styles.bookingsHeader}>
@@ -1195,7 +1298,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                 ? getStatusColor(7) // Orange for Cancel Request
                 : statusFilter === 'reschedulereq'
                 ? getStatusColor(8) // Yellow for Reschedule Request
-                : getStatusColor(booking.status);
+                : getStatusColor(booking.status, booking);
               const serialNumber = recordsPerPage === 'ALL' 
                 ? index + 1 
                 : (currentPage - 1) * recordsPerPage + index + 1;
@@ -1305,16 +1408,125 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     <Text style={styles.tableCellText}>#{booking.booking_id}</Text>
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
-                    <View style={[styles.tableStatusBadge, { 
-                      backgroundColor: statusColors.bg,
-                      borderColor: statusColors.border
-                    }]}>
-                      <Text style={[styles.tableStatusText, { color: statusColors.text }]}>
-                        {statusFilter === 'cancelreq' ? 'Cancel Requested' : 
-                         statusFilter === 'reschedulereq' ? 'Reschedule Requested' : 
-                         getStatusLabel(booking.status)}
-                      </Text>
-                    </View>
+                    {(statusFilter === 'reject' || statusFilter === 'reschedule' || statusFilter === 'cancelreq' || statusFilter === 'reschedulereq') ? (
+                      <View style={[styles.tableStatusBadge, { 
+                        backgroundColor: statusColors.bg,
+                        borderColor: statusColors.border
+                      }]}>
+                        <Text style={[styles.tableStatusText, { color: statusColors.text }]}>
+                          {statusFilter === 'cancelreq' ? 'Cancel Requested' : 
+                           statusFilter === 'reschedulereq' ? 'Reschedule Requested' : 
+                           getStatusLabel(booking.status, booking)}
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          ref={(ref) => {
+                            if (ref && statusDropdownBookingId === booking.id && !statusDropdownPosition) {
+                              ref.measureInWindow((x, y, w, h) => {
+                                const DROPDOWN_HEIGHT = 340;
+                                const spaceBelow = height - (y + h + 4);
+                                const openUpward = spaceBelow < DROPDOWN_HEIGHT;
+                                setStatusDropdownPosition({
+                                  x: x,
+                                  y: openUpward ? Math.max(8, y - DROPDOWN_HEIGHT) : y + h + 4,
+                                  openUpward,
+                                });
+                              });
+                            }
+                          }}
+                          style={[styles.tableStatusBadge, styles.statusBadgeClickable, { 
+                            backgroundColor: statusColors.bg,
+                            borderColor: statusColors.border
+                          }]}
+                          onPress={() => {
+                            if (statusDropdownBookingId === booking.id) {
+                              setStatusDropdownBookingId(null);
+                              setStatusDropdownPosition(null);
+                            } else {
+                              setStatusDropdownPosition(null);
+                              setStatusDropdownBookingId(booking.id);
+                            }
+                          }}
+                        >
+                          <Text style={[styles.tableStatusText, { color: statusColors.text }]}>
+                            {getStatusLabel(booking.status, booking)}
+                          </Text>
+                          <Ionicons name="chevron-down" size={isDesktop ? 12 : 10} color={statusColors.text} style={{ opacity: 0.8, marginLeft: 4 }} />
+                        </TouchableOpacity>
+                        <Modal
+                          visible={statusDropdownBookingId === booking.id}
+                          transparent={true}
+                          animationType="none"
+                          onRequestClose={() => {
+                            setStatusDropdownBookingId(null);
+                            setStatusDropdownPosition(null);
+                          }}
+                        >
+                          <TouchableWithoutFeedback onPress={() => {
+                            setStatusDropdownBookingId(null);
+                            setStatusDropdownPosition(null);
+                          }}>
+                            <View style={styles.statusDropdownOverlay}>
+                              <TouchableWithoutFeedback>
+                                <View style={[
+                                  styles.statusDropdownPanel,
+                                  statusDropdownPosition && {
+                                    position: 'absolute',
+                                    left: statusDropdownPosition.x,
+                                    top: statusDropdownPosition.y,
+                                  }
+                                ]}>
+                                  <View style={styles.statusDropdownHeader}>
+                                    <Ionicons name="swap-horizontal" size={18} color="#f59e0b" />
+                                    <Text style={styles.statusDropdownTitle}>Change Status</Text>
+                                  </View>
+                                  <View style={styles.statusDropdownDivider} />
+                                  <ScrollView {...(statusDropdownBookingId === booking.id && Platform.OS === 'web' ? { nativeID: 'status-dropdown-scroll' } : {})} style={styles.statusDropdownScroll} showsVerticalScrollIndicator={true}>
+                                    {statusChangeOptions.map((option) => (
+                                      <TouchableOpacity
+                                        key={option.value}
+                                        style={[
+                                          styles.statusDropdownItem,
+                                          option.value === 5 && styles.statusDropdownItemLast,
+                                          booking.status === option.value && styles.statusDropdownItemActive
+                                        ]}
+                                        onPress={() => {
+                                          if (option.value === 5) {
+                                            setStatusDropdownBookingId(null);
+                                            setStatusDropdownPosition(null);
+                                            setCancelModalBooking(booking);
+                                            setCancelReason('');
+                                            setShowCancelModal(true);
+                                          } else {
+                                            handleStatusChange(booking, option.value);
+                                          }
+                                        }}
+                                        activeOpacity={0.7}
+                                      >
+                                        <View style={[styles.statusDropdownIconWrap, { backgroundColor: option.color + '20' }]}>
+                                          <Ionicons name={option.icon} size={isDesktop ? 18 : 16} color={option.color} />
+                                        </View>
+                                        <Text style={[
+                                          styles.statusDropdownItemText,
+                                          booking.status === option.value && { color: option.color, fontWeight: '700' }
+                                        ]}>
+                                          {option.label}
+                                        </Text>
+                                        {booking.status === option.value && (
+                                          <Ionicons name="checkmark-circle" size={18} color={option.color} />
+                                        )}
+                                      </TouchableOpacity>
+                                    ))}
+                                  </ScrollView>
+                                </View>
+                              </TouchableWithoutFeedback>
+                            </View>
+                          </TouchableWithoutFeedback>
+                        </Modal>
+                      </>
+                    )}
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 110 : isTablet ? 90 : 80 }]}>
                     <Text style={styles.tableCellText}>
@@ -1461,6 +1673,49 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         </View>
         </View>
       </TouchableWithoutFeedback>
+
+      {/* Cancel Booking Modal */}
+      <Modal
+        visible={showCancelModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => { setShowCancelModal(false); setCancelModalBooking(null); setCancelReason(''); }}
+      >
+        <View style={styles.workerModalOverlay}>
+          <View style={styles.workerModalContent}>
+            <View style={styles.workerModalHeader}>
+              <View style={styles.workerModalHeaderTitleRow}>
+                <Text style={styles.workerModalTitle}>Cancel Booking</Text>
+                <TouchableOpacity onPress={() => { setShowCancelModal(false); setCancelModalBooking(null); setCancelReason(''); }} style={styles.workerModalClose}>
+                  <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={{ padding: 20 }}>
+              <Text style={[styles.tableCellText, { marginBottom: 6 }]}>Booking ID</Text>
+              <Text style={[styles.tableCellText, { fontWeight: '700', marginBottom: 16 }]}>{cancelModalBooking?.booking_id || ''}</Text>
+              <Text style={[styles.tableCellText, { marginBottom: 6 }]}>Reason for cancellation</Text>
+              <TextInput
+                style={styles.cancelReasonInput}
+                placeholder="Enter reason..."
+                placeholderTextColor="#94a3b8"
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                multiline
+                numberOfLines={3}
+              />
+              <View style={styles.cancelModalButtons}>
+                <TouchableOpacity style={styles.cancelModalButtonCancel} onPress={() => { setShowCancelModal(false); setCancelModalBooking(null); setCancelReason(''); }}>
+                  <Text style={styles.cancelModalButtonCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cancelModalButtonSubmit} onPress={handleCancelWithReason}>
+                  <Text style={styles.cancelModalButtonSubmitText}>Submit</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Worker Details Modal */}
       <Modal
@@ -2508,6 +2763,118 @@ const createStyles = (width: number, height: number) => {
       borderRadius: 12,
       borderWidth: 1,
       alignSelf: 'flex-start',
+    },
+    statusBadgeClickable: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    statusDropdownOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(15, 23, 42, 0.25)',
+    },
+    statusDropdownPanel: {
+      backgroundColor: '#ffffff',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: 'rgba(226, 232, 240, 0.9)',
+      shadowColor: '#0f172a',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.15,
+      shadowRadius: 24,
+      elevation: 24,
+      minWidth: isDesktop ? 260 : isTablet ? 240 : 220,
+      maxHeight: 340,
+      overflow: 'hidden',
+    },
+    statusDropdownHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: isDesktop ? 18 : 16,
+      paddingVertical: 14,
+      backgroundColor: 'rgba(245, 158, 11, 0.06)',
+    },
+    statusDropdownTitle: {
+      fontSize: isDesktop ? 15 : 14,
+      fontWeight: '700',
+      color: '#0f172a',
+      letterSpacing: 0.3,
+    },
+    statusDropdownDivider: {
+      height: 1,
+      backgroundColor: '#e2e8f0',
+      marginHorizontal: 12,
+    },
+    statusDropdownScroll: {
+      maxHeight: 260,
+      paddingVertical: 8,
+    },
+    statusDropdownItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: isDesktop ? 18 : 16,
+      paddingVertical: isDesktop ? 12 : 11,
+      gap: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    statusDropdownItemLast: {
+      borderBottomWidth: 0,
+    },
+    statusDropdownItemActive: {
+      backgroundColor: 'rgba(245, 158, 11, 0.04)',
+    },
+    statusDropdownIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    statusDropdownItemText: {
+      flex: 1,
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '600',
+      color: '#334155',
+    },
+    cancelReasonInput: {
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: isDesktop ? 14 : 13,
+      color: '#0f172a',
+      minHeight: 80,
+      textAlignVertical: 'top',
+    },
+    cancelModalButtons: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+      marginTop: 20,
+    },
+    cancelModalButtonCancel: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 10,
+      backgroundColor: '#f1f5f9',
+    },
+    cancelModalButtonCancelText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#64748b',
+    },
+    cancelModalButtonSubmit: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 10,
+      backgroundColor: '#dc2626',
+    },
+    cancelModalButtonSubmitText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#ffffff',
     },
     tableStatusText: {
       fontSize: isDesktop ? 11 : isTablet ? 10 : 9,

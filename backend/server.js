@@ -1405,12 +1405,14 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
        const [result] = await pool.execute(query, params);
 
       if (result.affectedRows > 0) {
-        // If status is 5 (cancel request), insert into tbl_canceledbookings with status = 0
+        // If status is 5 (cancel request), insert into tbl_canceledbookings
         if (status === 5 && cancel_reason) {
-          const cancelType = cancel_type !== undefined ? cancel_type : 1;
-          const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type, status) VALUES (?, ?, ?, 0)';
-          await pool.execute(insertCancelQuery, [bookingId, cancel_reason, cancelType]);
-          console.log(`✅ Inserted cancel request into tbl_canceledbookings with status = 0 for bookingid: ${bookingId}`);
+          const cancelType = cancel_type !== undefined ? cancel_type : (req.body.type !== undefined ? req.body.type : 1);
+          // When type = 3 (Admin), use status = 1; otherwise status = 0
+          const cancelStatus = cancelType === 3 ? 1 : 0;
+          const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type, status) VALUES (?, ?, ?, ?)';
+          await pool.execute(insertCancelQuery, [bookingId, cancel_reason, cancelType, cancelStatus]);
+          console.log(`✅ Inserted cancel into tbl_canceledbookings (type=${cancelType}, status=${cancelStatus}) for bookingid: ${bookingId}`);
         }
         
         // If status is 6 (reschedule request), insert into tbl_rescheduledbookings with status = 0
@@ -4851,7 +4853,7 @@ app.get('/api/admin/bookings', async (req, res) => {
     let query;
     
     if (cancelreq === 'true') {
-      // Cancel Requests: b.status = 5 AND c.status = 0 AND b.payment_status = 1 AND b.id = c.bookingid
+      // Cancel Requests: b.status = 5 AND c.status = 0 AND b.payment_status = 1; one row per booking (dedupe by c.id)
       query = `
         SELECT 
           b.id,
@@ -4882,12 +4884,17 @@ app.get('/api/admin/bookings', async (req, res) => {
           OR b.booking_id = c.bookingid
         )
         WHERE b.status = 5 AND c.status = 0 AND b.payment_status = 1
+        AND c.id = (
+          SELECT MIN(c2.id) FROM tbl_canceledbookings c2
+          WHERE c2.status = 0
+          AND (b.id = CAST(TRIM(c2.bookingid) AS UNSIGNED) OR b.booking_id = c2.bookingid)
+        )
         ORDER BY b.id DESC
       `;
       
       console.log('🔍 Fetching cancel requests (b.status=5 AND c.status=0 AND b.payment_status=1)');
     } else if (reschedulereq === 'true') {
-      // Reschedule Requests: b.status = 8 AND r.status = 0 AND b.payment_status = 1 AND b.id = r.bookingid
+      // Reschedule Requests: b.status = 6 AND r.status = 0 AND b.payment_status = 1 AND b.id = r.bookingid
       query = `
         SELECT 
           b.id,
@@ -4914,7 +4921,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         INNER JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
-        WHERE b.status = 8 AND r.status = 0 AND b.payment_status = 1
+        WHERE b.status = 6 AND r.status = 0 AND b.payment_status = 1
         ORDER BY b.id DESC
       `;
       
@@ -4941,7 +4948,8 @@ app.get('/api/admin/bookings', async (req, res) => {
           s.mobile as customer_mobile,
           c.type as canceled_by,
           c.cancel_reason,
-          c.created_at as canceled_date
+          c.created_at as canceled_date,
+          c.status as cancel_status
         FROM tbl_bookings b
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
@@ -4976,7 +4984,8 @@ app.get('/api/admin/bookings', async (req, res) => {
           s.mobile as customer_mobile,
           r.type as rescheduled_by,
           r.reschedule_reason,
-          r.created_at as reschedule_date
+          r.created_at as reschedule_date,
+          r.status as reschedule_status
         FROM tbl_bookings b
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
@@ -4990,7 +4999,7 @@ app.get('/api/admin/bookings', async (req, res) => {
       
       console.log('🔍 Fetching rescheduled bookings (b.status=6 AND b.payment_status=1 AND r.status=1 AND b.id=r.bookingid)');
     } else {
-      // Regular bookings query
+      // Regular bookings query (All) - include cancel_status and reschedule_status for status 5/6 display
       query = `
         SELECT 
           b.id,
@@ -5008,10 +5017,14 @@ app.get('/api/admin/bookings', async (req, res) => {
           w.name as worker_name,
           w.mobile as worker_mobile,
           s.name as customer_name,
-          s.mobile as customer_mobile
+          s.mobile as customer_mobile,
+          c.status as cancel_status,
+          r.status as reschedule_status
         FROM tbl_bookings b
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        LEFT JOIN tbl_canceledbookings c ON b.id = CAST(TRIM(c.bookingid) AS UNSIGNED)
+        LEFT JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
         ORDER BY b.id DESC
       `;
     }

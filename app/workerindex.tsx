@@ -1945,7 +1945,7 @@ export default function Index() {
                                          });
                                          return `Rescheduled For ${formattedDate}`;
                                        })() : 'Rescheduled') : 
-                                       effectiveStatus === 7 ? 'Cancel request submitted - waiting for admin approval' : 
+                                       effectiveStatus === 7 ? 'Your Cancel request submitted - waiting for admin approval' : 
                                        effectiveStatus === 8 ? (booking.reschedule_date ? (() => {
                                          const rescheduleDate = new Date(booking.reschedule_date);
                                          const formattedDate = rescheduleDate.toLocaleString("en-GB", {
@@ -1956,8 +1956,8 @@ export default function Index() {
                                            minute: '2-digit',
                                            hour12: true
                                          });
-                                         return `Reschedule request submitted for ${formattedDate} - waiting for admin approval`;
-                                       })() : 'Reschedule request submitted - waiting for admin approval') : 
+                                         return `Your Reschedule request submitted for ${formattedDate} - waiting for admin approval`;
+                                       })() : 'Your Reschedule request submitted - waiting for admin approval') : 
                                        'Job Completed'}
                                     </Text>
                                   </View>
