@@ -43,7 +43,7 @@ app.get('/api/test-profile-image/:filename', async (req, res) => {
   try {
     const { filename } = req.params;
     const filePath = path.join(__dirname, 'uploads', 'profiles', filename);
-    
+
     try {
       await fs.access(filePath);
       res.json({
@@ -271,19 +271,19 @@ app.post('/api/request-quote', async (req, res) => {
   try {
     connection = await pool.getConnection();
 
-      const [customers] = await connection.execute(
-        'SELECT mobile, email FROM tbl_serviceseeker WHERE id = ? LIMIT 1',
-        [parseInt(customer_id, 10)]
-      );
+    const [customers] = await connection.execute(
+      'SELECT mobile, email FROM tbl_serviceseeker WHERE id = ? LIMIT 1',
+      [parseInt(customer_id, 10)]
+    );
 
-      if (!customers || customers.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Customer not found',
-        });
-      }
+    if (!customers || customers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+      });
+    }
 
-      const { mobile, email } = customers[0];
+    const { mobile, email } = customers[0];
 
     const [result] = await connection.execute(
       `INSERT INTO tbl_requestquote 
@@ -499,7 +499,7 @@ app.get('/api/workers', async (req, res) => {
 app.get('/api/workers/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const [workers] = await pool.execute(
       'SELECT * FROM tbl_workers WHERE id = ?',
       [id]
@@ -653,7 +653,7 @@ app.put('/api/workers/:id', upload.fields([
     } else {
       // No files uploaded, keep existing profile image and documents
       profileImagePath = existingWorker.profile_image;
-      
+
       if (existingPersonalDocuments) {
         const existingDocs = JSON.parse(existingPersonalDocuments);
         if (Array.isArray(existingDocs) && existingDocs.length > 0) {
@@ -998,7 +998,7 @@ app.put('/api/admin/workers/:id', upload.fields([
 app.get('/api/workers/mobile/:mobile', async (req, res) => {
   try {
     const { mobile } = req.params;
-    
+
     const [workers] = await pool.execute(
       'SELECT * FROM tbl_workers WHERE mobile = ?',
       [mobile]
@@ -1021,7 +1021,7 @@ app.get('/api/workers/mobile/:mobile', async (req, res) => {
       success: true,
       data: worker
     };
-    
+
     res.json(responseData);
   } catch (error) {
     res.status(500).json({
@@ -1051,12 +1051,12 @@ app.get('/api/serviceseeker/mobile/:mobile', async (req, res) => {
     const seeker = seekers[0];
     // Add full image URLs
     seeker.profile_image = seeker.profile_image ? `/uploads/profiles/${seeker.profile_image}` : null;
-    
+
     const responseData = {
       success: true,
       data: seeker
     };
-    
+
     res.json(responseData);
   } catch (error) {
     console.error('❌ Error fetching service seeker by mobile:', error);
@@ -1071,21 +1071,21 @@ app.get('/api/serviceseeker/mobile/:mobile', async (req, res) => {
 // Create booking endpoint
 app.post('/api/bookings', async (req, res) => {
   try {
-    const { 
-      booking_id, 
-      worker_id, 
-      user_id, 
+    const {
+      booking_id,
+      worker_id,
+      user_id,
       contact_number,
       contact_name,
       work_location,
       work_location_lat,
       work_location_lng,
-      booking_time, 
-      status, 
-      description, 
-      work_documents 
+      booking_time,
+      status,
+      description,
+      work_documents
     } = req.body;
-    
+
     // Basic validation - only check required fields
     if (!booking_id || !worker_id || !user_id || !booking_time) {
       return res.status(400).json({
@@ -1093,7 +1093,7 @@ app.post('/api/bookings', async (req, res) => {
         message: 'Required fields are missing: booking_id, worker_id, user_id, booking_time'
       });
     }
-    
+
     const normalizedContactName =
       typeof contact_name === 'string' && contact_name.trim()
         ? contact_name.trim()
@@ -1105,22 +1105,22 @@ app.post('/api/bookings', async (req, res) => {
         booking_id, worker_id, user_id, contact_number, contact_name, work_location, work_location_lat, work_location_lng, booking_time, status, description, work_documents, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `;
-    
+
     const [result] = await pool.execute(insertQuery, [
-      booking_id, 
-      worker_id, 
-      user_id, 
+      booking_id,
+      worker_id,
+      user_id,
       contact_number || null, // Use input contact number directly
       normalizedContactName,
       work_location || null,
       work_location_lat || null,
       work_location_lng || null,
-      booking_time, 
+      booking_time,
       status || 0,
       description || null,
       work_documents || null
     ]);
-    
+
     // Fetch stored location coordinates to ensure we always have the latest values
     const [storedBookingRows] = await pool.execute(
       'SELECT work_location_lat, work_location_lng FROM tbl_bookings WHERE id = ? LIMIT 1',
@@ -1129,30 +1129,30 @@ app.post('/api/bookings', async (req, res) => {
     const storedBooking = storedBookingRows.length > 0 ? storedBookingRows[0] : {};
     const normalizedWorkLat = storedBooking.work_location_lat ?? work_location_lat ?? null;
     const normalizedWorkLng = storedBooking.work_location_lng ?? work_location_lng ?? null;
-        
+
     // If booking status is 0 (pending), automatically send notification to worker
     if ((status || 0) === 0) {
       try {
         console.log(`🚨 New pending booking created (ID: ${booking_id}) - sending notification to worker ${worker_id}`);
-        
+
         // Get worker details from tbl_workers
         const [workers] = await pool.execute(
           'SELECT mobile, name FROM tbl_workers WHERE id = ? LIMIT 1',
           [worker_id]
         );
-        
+
         if (workers.length > 0) {
           const worker = workers[0];
           console.log(`👤 Found worker: ${worker.name} (Mobile: ${worker.mobile})`);
-          
+
           // Get customer name from tbl_serviceseeker table
           const [customers] = await pool.execute(
             'SELECT name, mobile FROM tbl_serviceseeker WHERE id = ?',
             [user_id]
           );
-          
+
           const customer = customers.length > 0 ? customers[0] : { name: 'Customer', mobile: contact_number || 'N/A' };
-          
+
           // Prepare booking data for notification
           const bookingData = {
             booking_id: booking_id,
@@ -1165,10 +1165,10 @@ app.post('/api/bookings', async (req, res) => {
             booking_time: booking_time ? new Date(booking_time).toISOString() : new Date().toISOString(),
             work_type: 'Service Request'
           };
-          
+
           // Send notification to worker
           const notificationResult = await sendBookingAlertNotification(worker_id, bookingData);
-          
+
           if (notificationResult.success) {
             console.log(`✅ Notification sent successfully to worker ${worker_id} (${worker.mobile})`);
           } else {
@@ -1182,7 +1182,7 @@ app.post('/api/bookings', async (req, res) => {
         // Don't fail the booking creation if notification fails
       }
     }
-    
+
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
@@ -1200,10 +1200,10 @@ app.post('/api/bookings', async (req, res) => {
         work_documents: work_documents || null
       }
     });
-    
+
   } catch (error) {
     console.error('Booking creation error:', error);
-    
+
     // Check if it's a foreign key constraint error
     if (error.code === 'ER_NO_REFERENCED_ROW_2') {
       res.status(400).json({
@@ -1232,7 +1232,7 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
   try {
     const { workerId } = req.params;
     const { status } = req.query;
-    
+
     if (!workerId) {
       return res.status(400).json({
         success: false,
@@ -1271,9 +1271,9 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
       LEFT JOIN tbl_canceledbookings c ON b.id = CAST(TRIM(c.bookingid) AS UNSIGNED)
       WHERE b.worker_id = ?
     `;
-    
+
     let params = [workerId];
-    
+
     // Handle multiple status values (comma-separated)
     if (status !== undefined && status !== '') {
       if (status.includes(',')) {
@@ -1292,9 +1292,9 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
     } else {
       console.log(`📊 No status filter applied - fetching all bookings for worker`);
     }
-    
+
     query += ' AND (b.payment_status = 1 OR b.status = 4)';
-    
+
     query += ' ORDER BY b.created_at DESC';
 
     console.log(`🔍 Executing query: ${query}`);
@@ -1315,7 +1315,7 @@ app.get('/api/bookings/worker/:workerId', async (req, res) => {
         params: params
       }
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching worker bookings:', error);
     res.status(500).json({
@@ -1331,9 +1331,9 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
   try {
     const { bookingId } = req.params;
     const { status } = req.body;
-    
+
     console.log(`🔧 Updating booking ${bookingId} status to ${status}`);
-    
+
     if (!bookingId || status === undefined) {
       return res.status(400).json({
         success: false,
@@ -1353,35 +1353,35 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
     // First, get the current booking to find the booking_id
     const getBookingQuery = 'SELECT booking_id FROM tbl_bookings WHERE id = ?';
     const [bookingResult] = await pool.execute(getBookingQuery, [bookingId]);
-    
+
     if (bookingResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
+
     const currentBooking = bookingResult[0];
     const currentBookingId = currentBooking.booking_id;
-    
+
     // If status is being set to 1 (Accepted), update other workers with same booking_id to status 4 (Missed)
     if (status === 1) {
       // Update the current booking to accepted
       const updateCurrentQuery = 'UPDATE tbl_bookings SET status = ? WHERE id = ?';
       const [updateResult] = await pool.execute(updateCurrentQuery, [status, bookingId]);
-      
+
       if (updateResult.affectedRows > 0) {
         // Update all other workers with the same booking_id to status 4 (Missed)
         const updateOthersQuery = 'UPDATE tbl_bookings SET status = 4 WHERE booking_id = ? AND id != ? AND status = 0';
         const [updateOthersResult] = await pool.execute(updateOthersQuery, [currentBookingId, bookingId]);
-        
+
         console.log(`📝 Updated ${updateOthersResult.affectedRows} other workers to missed status`);
-        
+
         res.json({
           success: true,
           message: 'Booking accepted successfully. Other workers notified as missed.',
-          data: { 
-            bookingId, 
+          data: {
+            bookingId,
             status,
             otherWorkersUpdated: updateOthersResult.affectedRows
           }
@@ -1392,37 +1392,56 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
           message: 'Failed to update booking status'
         });
       }
-         } else {
-       // For other status updates, just update the current booking
-       let query = 'UPDATE tbl_bookings SET status = ?';
-       let params = [status];
-       
+    } else {
+      // For other status updates, just update the current booking
+      let query = 'UPDATE tbl_bookings SET status = ?';
+      let params = [status];
+
       const { reschedule_date, reschedule_reason, cancel_reason, reschedule_type, cancel_type } = req.body;
-      
+
       query += ' WHERE id = ?';
-       params.push(bookingId);
-       
-       const [result] = await pool.execute(query, params);
+      params.push(bookingId);
+
+      const [result] = await pool.execute(query, params);
 
       if (result.affectedRows > 0) {
-        // If status is 5 (cancel request), insert into tbl_canceledbookings
+        // If status is 5 (cancel request), upsert into tbl_canceledbookings
         if (status === 5 && cancel_reason) {
           const cancelType = cancel_type !== undefined ? cancel_type : (req.body.type !== undefined ? req.body.type : 1);
           // When type = 3 (Admin), use status = 1; otherwise status = 0
           const cancelStatus = cancelType === 3 ? 1 : 0;
-          const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type, status) VALUES (?, ?, ?, ?)';
-          await pool.execute(insertCancelQuery, [bookingId, cancel_reason, cancelType, cancelStatus]);
-          console.log(`✅ Inserted cancel into tbl_canceledbookings (type=${cancelType}, status=${cancelStatus}) for bookingid: ${bookingId}`);
+
+          const [existingCancels] = await pool.query(
+            'SELECT id FROM tbl_canceledbookings WHERE bookingid = ? LIMIT 1',
+            [bookingId]
+          );
+
+          if (Array.isArray(existingCancels) && existingCancels.length > 0) {
+            const updateCancelQuery = 'UPDATE tbl_canceledbookings SET cancel_reason = ?, type = ?, status = ? WHERE bookingid = ?';
+            await pool.execute(updateCancelQuery, [cancel_reason, cancelType, cancelStatus, bookingId]);
+          } else {
+            const insertCancelQuery = 'INSERT INTO tbl_canceledbookings (bookingid, cancel_reason, type, status) VALUES (?, ?, ?, ?)';
+            await pool.execute(insertCancelQuery, [bookingId, cancel_reason, cancelType, cancelStatus]);
+          }
         }
-        
-        // If status is 6 (reschedule request), insert into tbl_rescheduledbookings with status = 0
+        // If status is 6 (reschedule request), upsert into tbl_rescheduledbookings with status = 0
         if (status === 6 && reschedule_date && reschedule_reason) {
           const rescheduleType = reschedule_type !== undefined ? reschedule_type : 1;
-          const insertRescheduleQuery = 'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_date, reschedule_reason, type, status) VALUES (?, ?, ?, ?, 0)';
-          await pool.execute(insertRescheduleQuery, [bookingId, reschedule_date, reschedule_reason, rescheduleType]);
-          console.log(`✅ Inserted reschedule request into tbl_rescheduledbookings with status = 0 for bookingid: ${bookingId}`);
+
+          const [existingReschedules] = await pool.query(
+            'SELECT id FROM tbl_rescheduledbookings WHERE bookingid = ? LIMIT 1',
+            [bookingId]
+          );
+
+          if (Array.isArray(existingReschedules) && existingReschedules.length > 0) {
+            const updateRescheduleQuery = 'UPDATE tbl_rescheduledbookings SET reschedule_date = ?, reschedule_reason = ?, type = ?, status = 0 WHERE bookingid = ?';
+            await pool.execute(updateRescheduleQuery, [reschedule_date, reschedule_reason, rescheduleType, bookingId]);
+          } else {
+            const insertRescheduleQuery = 'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_date, reschedule_reason, type, status) VALUES (?, ?, ?, ?, 0)';
+            await pool.execute(insertRescheduleQuery, [bookingId, reschedule_date, reschedule_reason, rescheduleType]);
+          }
         }
-        
+
         res.json({
           success: true,
           message: 'Booking status updated successfully',
@@ -1448,7 +1467,7 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
 app.post('/api/customer-ratings', async (req, res) => {
   try {
     const { bookingid, rating, description } = req.body;
-    
+
     // Validation
     if (!bookingid || !rating || !description) {
       return res.status(400).json({
@@ -1456,7 +1475,7 @@ app.post('/api/customer-ratings', async (req, res) => {
         message: 'Required fields are missing: bookingid, rating, description'
       });
     }
-    
+
     // Validate rating is between 1 and 5
     const ratingValue = parseInt(rating);
     if (isNaN(ratingValue) || ratingValue < 1 || ratingValue > 5) {
@@ -1465,7 +1484,7 @@ app.post('/api/customer-ratings', async (req, res) => {
         message: 'Rating must be between 1 and 5'
       });
     }
-    
+
     // Validate description is not empty
     if (!description.trim()) {
       return res.status(400).json({
@@ -1473,20 +1492,20 @@ app.post('/api/customer-ratings', async (req, res) => {
         message: 'Description cannot be empty'
       });
     }
-    
+
     // Check if booking exists and get description
     const checkBookingQuery = 'SELECT id, description FROM tbl_bookings WHERE id = ?';
     const [bookingResult] = await pool.execute(checkBookingQuery, [bookingid]);
-    
+
     if (bookingResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
+
     const bookingDescription = bookingResult[0].description || '';
-    
+
     // Extract service names from booking description
     // Format: "Booking for Service1, Service2" or "Booking for Service1"
     let serviceNames = [];
@@ -1496,7 +1515,7 @@ app.post('/api/customer-ratings', async (req, res) => {
       // Split by comma to get individual service names
       serviceNames = cleanedDescription.split(',').map(name => name.trim()).filter(name => name.length > 0);
     }
-    
+
     // Get service IDs from service names
     let serviceIds = [];
     if (serviceNames.length > 0) {
@@ -1506,7 +1525,7 @@ app.post('/api/customer-ratings', async (req, res) => {
       const [serviceResults] = await pool.execute(getServiceIdsQuery, serviceNames);
       serviceIds = serviceResults.map(row => row.id);
     }
-    
+
     // If no services found, insert one record without service_id (or use 0 as fallback)
     // But according to schema, service_id is NOT NULL, so we need to handle this
     if (serviceIds.length === 0) {
@@ -1517,23 +1536,23 @@ app.post('/api/customer-ratings', async (req, res) => {
         message: 'No services found for this booking'
       });
     }
-    
+
     // Insert one rating record per service_id
     const insertQuery = `
       INSERT INTO tbl_customerratings (bookingid, service_id, rating, description, created_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
-    
+
     // Insert multiple records - one for each service
     for (const serviceId of serviceIds) {
       await pool.execute(insertQuery, [bookingid, serviceId, ratingValue, description.trim()]);
     }
-    
+
     return res.status(200).json({
       success: true,
       message: `Rating submitted successfully for ${serviceIds.length} service(s)`
     });
-    
+
   } catch (error) {
     console.error('Error submitting rating:', error);
     return res.status(500).json({
@@ -1547,35 +1566,35 @@ app.post('/api/customer-ratings', async (req, res) => {
 app.get('/api/customer-ratings', async (req, res) => {
   try {
     const { bookingids } = req.query;
-    
+
     if (!bookingids) {
       return res.status(400).json({
         success: false,
         message: 'bookingids parameter is required'
       });
     }
-    
+
     // Parse booking IDs (comma-separated)
     const bookingIdArray = bookingids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-    
+
     if (bookingIdArray.length === 0) {
       return res.status(200).json({
         success: true,
         data: []
       });
     }
-    
+
     // Get ratings for the specified booking IDs
     const placeholders = bookingIdArray.map(() => '?').join(',');
     const query = `SELECT bookingid FROM tbl_customerratings WHERE bookingid IN (${placeholders})`;
-    
+
     const [results] = await pool.execute(query, bookingIdArray);
-    
+
     return res.status(200).json({
       success: true,
       data: results.map(row => row.bookingid)
     });
-    
+
   } catch (error) {
     console.error('Error fetching ratings:', error);
     return res.status(500).json({
@@ -1590,9 +1609,9 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
   try {
     const { bookingId } = req.params;
     const { requestType, reschedule_date } = req.body; // requestType: 'cancel' or 'reschedule'
-    
+
     console.log(`🔄 Assigning booking ${bookingId} to other worker (type: ${requestType})`);
-    
+
     if (!bookingId) {
       return res.status(400).json({
         success: false,
@@ -1603,43 +1622,43 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
     // First, get the current booking to find the booking_id
     const getBookingQuery = 'SELECT booking_id FROM tbl_bookings WHERE id = ?';
     const [bookingResult] = await pool.execute(getBookingQuery, [bookingId]);
-    
+
     if (bookingResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
+
     const currentBooking = bookingResult[0];
     const currentBookingId = currentBooking.booking_id;
-    
+
     // Determine status and update query based on request type
     let updateCurrentQuery;
     let statusValue;
-    
+
     let rescheduleType = null;
     let rescheduleDate = null;
-    
+
     if (requestType === 'reschedule') {
       // For reschedule requests: Check if rescheduled by customer (type=2) or worker (type=1)
       // First, get the reschedule type from tbl_rescheduledbookings
       const getRescheduleQuery = 'SELECT type, reschedule_date FROM tbl_rescheduledbookings WHERE bookingid = ?';
       const [rescheduleResult] = await pool.execute(getRescheduleQuery, [bookingId]);
-      
+
       if (rescheduleResult.length === 0) {
         return res.status(404).json({
           success: false,
           message: 'Reschedule request not found'
         });
       }
-      
+
       const rescheduleData = rescheduleResult[0];
       rescheduleType = rescheduleData.type; // 1 = Worker, 2 = Customer
       rescheduleDate = rescheduleData.reschedule_date;
-      
+
       statusValue = 6;
-      
+
       if (rescheduleType === 2) {
         // Rescheduled by Customer: Update booking_time to reschedule_date
         updateCurrentQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?';
@@ -1655,13 +1674,13 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
       updateCurrentQuery = 'UPDATE tbl_bookings SET status = 5, payment_status = 0 WHERE id = ?';
       var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [bookingId]);
     }
-    
+
     if (updateCurrentResult.affectedRows > 0) {
       // Update all other workers with the same booking_id to status = 0 and payment_status = 1
       // For reschedule requests by customer (type=2), also update booking_time to reschedule_date
       let updateOthersQuery;
       let updateOthersParams;
-      
+
       if (requestType === 'reschedule' && rescheduleType === 2 && rescheduleDate) {
         // Rescheduled by Customer: Update other workers' booking_time too
         updateOthersQuery = 'UPDATE tbl_bookings SET status = 0, payment_status = 1, booking_time = ? WHERE booking_id = ? AND id != ?';
@@ -1671,11 +1690,11 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
         updateOthersQuery = 'UPDATE tbl_bookings SET status = 0, payment_status = 1 WHERE booking_id = ? AND id != ?';
         updateOthersParams = [currentBookingId, bookingId];
       }
-      
+
       const [updateOthersResult] = await pool.execute(updateOthersQuery, updateOthersParams);
-      
+
       console.log(`📝 Updated ${updateOthersResult.affectedRows} other workers for reassignment`);
-      
+
       // For cancel requests, update status in tbl_canceledbookings to 1
       // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID), not booking_id
       if (requestType === 'cancel') {
@@ -1683,7 +1702,7 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
         const [updateCancelStatusResult] = await pool.execute(updateCancelStatusQuery, [bookingId]);
         console.log(`✅ Updated tbl_canceledbookings status to 1 for bookingid (tbl_bookings.id): ${bookingId}`);
       }
-      
+
       // For reschedule requests, update status in tbl_rescheduledbookings to 1
       // Note: tbl_rescheduledbookings.bookingid refers to tbl_bookings.id (record ID), not booking_id
       if (requestType === 'reschedule') {
@@ -1691,16 +1710,16 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
         const [updateRescheduleStatusResult] = await pool.execute(updateRescheduleStatusQuery, [bookingId]);
         console.log(`✅ Updated tbl_rescheduledbookings status to 1 for bookingid (tbl_bookings.id): ${bookingId}`);
       }
-      
-      const message = requestType === 'reschedule' 
+
+      const message = requestType === 'reschedule'
         ? 'Booking reassigned successfully. Worker marked as reschedule request, others reset for reassignment.'
         : 'Booking reassigned successfully. Worker marked as canceled, others reset for reassignment.';
-      
+
       res.json({
         success: true,
         message: message,
-        data: { 
-          bookingId, 
+        data: {
+          bookingId,
           otherWorkersUpdated: updateOthersResult.affectedRows
         }
       });
@@ -1723,7 +1742,7 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
 app.get('/api/bookings/check-status/:bookingId', async (req, res) => {
   try {
     const { bookingId } = req.params;
-    
+
     if (!bookingId) {
       return res.status(400).json({
         success: false,
@@ -1743,9 +1762,9 @@ app.get('/api/bookings/check-status/:bookingId', async (req, res) => {
       LEFT JOIN tbl_workers w ON b.worker_id = w.id
       WHERE b.booking_id = ?
     `;
-    
+
     const [bookings] = await pool.execute(query, [bookingId]);
-    
+
     if (bookings.length === 0) {
       return res.status(404).json({
         success: false,
@@ -1755,10 +1774,10 @@ app.get('/api/bookings/check-status/:bookingId', async (req, res) => {
 
     // Check if any booking has status = 0 (still pending)
     const hasPending = bookings.some(b => b.status === 0);
-    
+
     // Check if any booking has status = 1 (accepted)
     const acceptedBooking = bookings.find(b => b.status === 1 && b.payment_status === 1);
-    
+
     // Check if all bookings have status != 0 and status != 1 (all busy/rejected)
     const allBusy = bookings.every(b => b.status !== 0 && b.status !== 1);
 
@@ -1785,9 +1804,9 @@ app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) =>
   try {
     const { bookingId } = req.params;
     const { requestType, reschedule_date } = req.body; // requestType: 'cancel' or 'reschedule'
-    
+
     console.log(`🔄 Reverting booking ${bookingId} to ${requestType} request (all workers busy)`);
-    
+
     if (!bookingId) {
       return res.status(400).json({
         success: false,
@@ -1798,7 +1817,7 @@ app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) =>
     // Determine status based on request type
     let updateQuery;
     let statusValue;
-    
+
     if (requestType === 'reschedule') {
       // For reschedule requests: status = 6, update booking_time to reschedule_date
       statusValue = 6;
@@ -1818,7 +1837,7 @@ app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) =>
       updateQuery = 'UPDATE tbl_bookings SET status = 1, payment_status = 1 WHERE id = ?';
       var [result] = await pool.execute(updateQuery, [bookingId]);
     }
-    
+
     if (result.affectedRows > 0) {
       // For cancel requests, also update tbl_canceledbookings.status = 0
       // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID)
@@ -1827,10 +1846,10 @@ app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) =>
         const [updateCancelStatusResult] = await pool.execute(updateCancelStatusQuery, [bookingId]);
         console.log(`✅ Updated tbl_canceledbookings status to 0 for bookingid (tbl_bookings.id): ${bookingId}`);
       }
-      
+
       const requestTypeLabel = requestType === 'reschedule' ? 'reschedule request' : 'cancel request';
       console.log(`✅ Booking ${bookingId} reverted to ${requestTypeLabel} status`);
-      
+
       res.json({
         success: true,
         message: `Booking reverted to ${requestTypeLabel} status`,
@@ -1855,9 +1874,9 @@ app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) =>
 app.put('/api/bookings/:bookingId/accept-cancel-request', async (req, res) => {
   try {
     const { bookingId } = req.params;
-    
+
     console.log(`✅ Accepting cancel request for booking ${bookingId}`);
-    
+
     if (!bookingId) {
       return res.status(400).json({
         success: false,
@@ -1868,16 +1887,16 @@ app.put('/api/bookings/:bookingId/accept-cancel-request', async (req, res) => {
     // Update the booking to canceled (status = 5)
     const updateQuery = 'UPDATE tbl_bookings SET status = 5 WHERE id = ?';
     const [result] = await pool.execute(updateQuery, [bookingId]);
-    
+
     if (result.affectedRows > 0) {
       // Update tbl_canceledbookings.status = 1
       // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID)
       const updateCancelStatusQuery = 'UPDATE tbl_canceledbookings SET status = 1 WHERE bookingid = ?';
       await pool.execute(updateCancelStatusQuery, [bookingId]);
       console.log(`✅ Updated tbl_canceledbookings status to 1 for bookingid (tbl_bookings.id): ${bookingId}`);
-      
+
       console.log(`✅ Cancel request accepted for booking ${bookingId}`);
-      
+
       res.json({
         success: true,
         message: 'Cancel request accepted successfully',
@@ -1902,9 +1921,9 @@ app.put('/api/bookings/:bookingId/accept-cancel-request', async (req, res) => {
 app.put('/api/bookings/:bookingId/reject-cancel-request', async (req, res) => {
   try {
     const { bookingId } = req.params;
-    
+
     console.log(`❌ Rejecting cancel request for booking ${bookingId}`);
-    
+
     if (!bookingId) {
       return res.status(400).json({
         success: false,
@@ -1915,16 +1934,16 @@ app.put('/api/bookings/:bookingId/reject-cancel-request', async (req, res) => {
     // Update the booking to accepted (status = 1) and payment_status = 1
     const updateQuery = 'UPDATE tbl_bookings SET status = 1, payment_status = 1 WHERE id = ?';
     const [result] = await pool.execute(updateQuery, [bookingId]);
-    
+
     if (result.affectedRows > 0) {
       // Update tbl_canceledbookings.status = 2
       // Note: tbl_canceledbookings.bookingid refers to tbl_bookings.id (record ID)
       const updateCancelStatusQuery = 'UPDATE tbl_canceledbookings SET status = 2 WHERE bookingid = ?';
       await pool.execute(updateCancelStatusQuery, [bookingId]);
       console.log(`✅ Updated tbl_canceledbookings status to 2 for bookingid (tbl_bookings.id): ${bookingId}`);
-      
+
       console.log(`✅ Cancel request rejected for booking ${bookingId}`);
-      
+
       res.json({
         success: true,
         message: 'Cancel request rejected successfully',
@@ -1949,9 +1968,9 @@ app.put('/api/bookings/:bookingId/reject-cancel-request', async (req, res) => {
 app.put('/api/bookings/:bookingId/reject-reschedule-request', async (req, res) => {
   try {
     const { bookingId } = req.params;
-    
+
     console.log(`❌ Rejecting reschedule request for booking ${bookingId}`);
-    
+
     if (!bookingId) {
       return res.status(400).json({
         success: false,
@@ -1962,14 +1981,14 @@ app.put('/api/bookings/:bookingId/reject-reschedule-request', async (req, res) =
     // Update tbl_bookings.status = 1 (Accepted) and payment_status = 1
     const updateBookingQuery = 'UPDATE tbl_bookings SET status = 1, payment_status = 1 WHERE id = ?';
     const [bookingResult] = await pool.execute(updateBookingQuery, [bookingId]);
-    
+
     if (bookingResult.affectedRows > 0) {
       // Update tbl_rescheduledbookings.status = 2
       // Note: tbl_rescheduledbookings.bookingid refers to tbl_bookings.id (record ID)
       const updateRescheduleStatusQuery = 'UPDATE tbl_rescheduledbookings SET status = 2 WHERE bookingid = ?';
       await pool.execute(updateRescheduleStatusQuery, [bookingId]);
       console.log(`✅ Updated tbl_bookings status to 1 and tbl_rescheduledbookings status to 2 for bookingid (tbl_bookings.id): ${bookingId}`);
-      
+
       res.json({
         success: true,
         message: 'Reschedule request rejected successfully',
@@ -1995,8 +2014,8 @@ app.put('/api/bookings/:bookingId/payment', async (req, res) => {
   try {
     const { bookingId } = req.params; // This is the booking_id (not the id)
     const { payment_status, amount, payment_id } = req.body;
-    
-    
+
+
     if (!bookingId || payment_status === undefined || amount === undefined) {
       return res.status(400).json({
         success: false,
@@ -2033,7 +2052,7 @@ app.put('/api/bookings/:bookingId/payment', async (req, res) => {
               INSERT INTO tbl_payments (bookingid, payment_id, amount, created_at)
               VALUES (?, ?, ?, NOW())
             `;
-            
+
             for (const bookingRow of bookingRows) {
               await pool.execute(insertPaymentQuery, [
                 bookingRow.id,
@@ -2065,7 +2084,7 @@ app.put('/api/bookings/:bookingId/payment', async (req, res) => {
           const workerName = booking.worker_name || 'Worker';
           const workerMobile = booking.worker_mobile;
           const bookingTime = new Date(booking.booking_time);
-          
+
           // Format booking date (e.g., "Jan 15, 2024 at 10:30 AM")
           const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
           const day = bookingTime.getDate();
@@ -2108,9 +2127,9 @@ app.put('/api/bookings/:bookingId/payment', async (req, res) => {
       res.json({
         success: true,
         message: 'Payment status and amount updated successfully',
-        data: { 
-          bookingId, 
-          payment_status, 
+        data: {
+          bookingId,
+          payment_status,
           amount,
           updatedCount: result.affectedRows
         }
@@ -2135,7 +2154,7 @@ app.put('/api/bookings/:bookingId/payment', async (req, res) => {
 app.get('/api/serviceseeker/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const [seekers] = await pool.execute(
       'SELECT * FROM tbl_serviceseeker WHERE id = ?',
       [id]
@@ -2152,12 +2171,12 @@ app.get('/api/serviceseeker/:id', async (req, res) => {
 
     // Add full image URLs
     seeker.profile_image = seeker.profile_image ? `/uploads/profiles/${seeker.profile_image}` : null;
-    
+
     const responseData = {
       success: true,
       data: seeker
     };
-    
+
     res.json(responseData);
   } catch (error) {
     res.status(500).json({
@@ -2227,7 +2246,7 @@ app.put('/api/serviceseeker/:id', upload.fields([
     // Process uploaded files
     let profileImagePath = null;
     let newDocuments = [];
-    
+
     if (req.files) {
       // Profile photo
       if (req.files.profilePhoto && req.files.profilePhoto[0]) {
@@ -2252,7 +2271,7 @@ app.put('/api/serviceseeker/:id', upload.fields([
 
     // Combine existing and new documents
     const allDocuments = [...existingDocumentsArray, ...newDocuments];
-    
+
     // Store all documents as a comma-separated string in document1 column
     const documentsString = allDocuments.join(',');
 
@@ -2262,7 +2281,7 @@ app.put('/api/serviceseeker/:id', upload.fields([
         name = ?, mobile = ?, email = ?, pincode = ?, mandal = ?, city = ?,
         district = ?, state = ?, country = ?, latitude = ?, longitude = ?, address = ?
     `;
-    
+
     let values = [
       name, mobile, email, pincode || null, district || null, city || null,
       district || null, state || null, country || null, latitude || null, longitude || null, address || null
@@ -2291,10 +2310,10 @@ app.put('/api/serviceseeker/:id', upload.fields([
       );
 
       const updatedSeeker = updatedSeekers[0];
-      
+
       // Add full image URLs
       updatedSeeker.profile_image = updatedSeeker.profile_image ? `/uploads/profiles/${updatedSeeker.profile_image}` : null;
-      
+
       // Parse documents string and create full URLs
       if (updatedSeeker.document1) {
         const documentNames = updatedSeeker.document1.split(',').filter(name => name.trim());
@@ -2433,7 +2452,7 @@ app.post('/api/register-serviceseeker', upload.fields([
 app.get('/api/check-user-exists', async (req, res) => {
   try {
     const { mobile, email, userType } = req.query;
-    
+
     if (!mobile && !email) {
       return res.status(400).json({
         success: false,
@@ -2443,7 +2462,7 @@ app.get('/api/check-user-exists', async (req, res) => {
 
     // Determine which table to check based on userType
     let tableName, query, params;
-    
+
     if (userType === 'professional') {
       tableName = 'tbl_workers';
     } else if (userType === 'seeker') {
@@ -2459,7 +2478,7 @@ app.get('/api/check-user-exists', async (req, res) => {
       let seekersQuery = 'SELECT id, mobile, email FROM tbl_serviceseeker WHERE ';
       let workersParams = [];
       let seekersParams = [];
-      
+
       if (mobile && email) {
         workersQuery += 'mobile = ? OR email = ?';
         seekersQuery += 'mobile = ? OR email = ?';
@@ -2480,10 +2499,10 @@ app.get('/api/check-user-exists', async (req, res) => {
       // Execute both queries
       const [existingWorkers] = await pool.execute(workersQuery, workersParams);
       const [existingSeekers] = await pool.execute(seekersQuery, seekersParams);
-      
+
       // Combine results
       const allExistingUsers = [...existingWorkers, ...existingSeekers];
-      
+
       // Check for existing mobile and email across both tables
       const existingMobile = allExistingUsers.find(user => user.mobile === mobile);
       const existingEmail = allExistingUsers.find(user => user.email === email);
@@ -2511,7 +2530,7 @@ app.get('/api/check-user-exists', async (req, res) => {
       }
 
       const [existingUsers] = await pool.execute(query, params);
-      
+
       // Check for existing mobile and email in the specified table
       const existingMobile = existingUsers.find(user => user.mobile === mobile);
       const existingEmail = existingUsers.find(user => user.email === email);
@@ -2581,14 +2600,14 @@ app.get('/api/subcategory/:id', async (req, res) => {
       'SELECT id, name, image, video_title, category_id FROM tbl_subcategory WHERE id = ? LIMIT 1',
       [id]
     );
-    
+
     if (subcategory.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Subcategory not found'
       });
     }
-    
+
     res.json({
       success: true,
       data: subcategory[0]
@@ -2621,10 +2640,10 @@ app.get('/api/categories-with-subcategories', async (req, res) => {
 
     // Group the results by category
     const categoriesMap = new Map();
-    
+
     results.forEach(row => {
       const categoryId = row.category_id;
-      
+
       if (!categoriesMap.has(categoryId)) {
         categoriesMap.set(categoryId, {
           id: categoryId,
@@ -2633,7 +2652,7 @@ app.get('/api/categories-with-subcategories', async (req, res) => {
           subcategories: []
         });
       }
-      
+
       // Add subcategory if it exists
       if (row.subcategory_id) {
         categoriesMap.get(categoryId).subcategories.push({
@@ -2646,7 +2665,7 @@ app.get('/api/categories-with-subcategories', async (req, res) => {
     });
 
     const categoriesWithSubcategories = Array.from(categoriesMap.values());
-    
+
     res.json({
       success: true,
       data: categoriesWithSubcategories
@@ -2683,22 +2702,22 @@ app.get('/api/banners', async (req, res) => {
 app.get('/api/top-services', async (req, res) => {
   try {
     const { format, pincode } = req.query;
-    
+
     let results;
-    
+
     // If pincode is provided, get services based on bookings
-    if (pincode) {      
+    if (pincode) {
       // First, let's check if we have any bookings with this pincode (debugging)
       const [testBookingsAll] = await pool.execute(
         `SELECT COUNT(*) as count FROM tbl_bookings WHERE work_location LIKE ?`,
         [`%${pincode}%`]
       );
-      
+
       const [testBookings] = await pool.execute(
         `SELECT COUNT(*) as count FROM tbl_bookings 
          WHERE work_location LIKE ? AND status != 4 AND payment_status = 1`,
         [`%${pincode}%`]
-      );      
+      );
       // Check if workers have skill_ids that match services
       const [workersWithSkills] = await pool.execute(
         `SELECT COUNT(DISTINCT w.id) as count 
@@ -2707,7 +2726,7 @@ app.get('/api/top-services', async (req, res) => {
          WHERE b.work_location LIKE ? AND b.status != 4 AND b.payment_status = 1
          AND w.skill_id IS NOT NULL AND w.skill_id != ''`,
         [`%${pincode}%`]
-      );      
+      );
       // Query to get services based on bookings in the pincode area
       // Extract pincode from work_location and match with provided pincode
       // Count bookings per service through workers' skill_id (subcategory_ids)
@@ -2741,10 +2760,10 @@ app.get('/api/top-services', async (req, res) => {
         HAVING booking_count >= 2
         ORDER BY booking_count DESC, s.rating DESC
         LIMIT 10`
-      , [
-        `%${pincode}%`  // LIKE pattern to match pincode within work_location
-      ]);
-            
+        , [
+          `%${pincode}%`  // LIKE pattern to match pincode within work_location
+        ]);
+
       // If no results with booking_count >= 2, try with booking_count >= 1 as fallback
       if (bookingResults.length === 0) {
         const [bookingResultsFallback] = await pool.execute(
@@ -2777,9 +2796,9 @@ app.get('/api/top-services', async (req, res) => {
           HAVING booking_count >= 1
           ORDER BY booking_count DESC, s.rating DESC
           LIMIT 10`
-        , [
-          `%${pincode}%`
-        ]);
+          , [
+            `%${pincode}%`
+          ]);
         if (bookingResultsFallback.length > 0) {
           results = bookingResultsFallback;
         } else {
@@ -2802,7 +2821,7 @@ app.get('/api/top-services', async (req, res) => {
       } else {
         results = bookingResults;
       }
-    } 
+    }
     // Format based on query parameter
     let topServices;
     if (format === 'services') {
@@ -2830,7 +2849,7 @@ app.get('/api/top-services', async (req, res) => {
         instant_service: service.instant_service,
       }));
     }
-    
+
     res.json({
       success: true,
       data: topServices
@@ -2849,7 +2868,7 @@ app.get('/api/top-services', async (req, res) => {
 app.get('/api/top-deals', async (req, res) => {
   try {
     const { format } = req.query;
-    
+
     const [results] = await pool.execute(
       `SELECT 
         d.id,
@@ -2873,7 +2892,7 @@ app.get('/api/top-deals', async (req, res) => {
       WHERE d.is_active = 1 AND s.status = 1 AND s.visibility = 1
       ORDER BY d.id DESC`
     );
-    
+
     // Format based on query parameter
     let topDeals;
     if (format === 'services') {
@@ -2904,7 +2923,7 @@ app.get('/api/top-deals', async (req, res) => {
         instant_service: deal.instant_service,
       }));
     }
-    
+
     res.json({
       success: true,
       data: topDeals
@@ -2924,7 +2943,7 @@ app.get('/api/services/search', async (req, res) => {
   try {
     const { q } = req.query;
     console.log('Search query:', q);
-    
+
     if (!q || q.length < 2) {
       return res.json({
         success: true,
@@ -3011,7 +3030,7 @@ app.get('/api/services/search', async (req, res) => {
 app.get('/api/services-by-category/:categoryId', async (req, res) => {
   try {
     const { categoryId } = req.params;
-    
+
     if (!categoryId) {
       return res.status(400).json({
         success: false,
@@ -3086,7 +3105,7 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
 app.get('/api/services/:subcategoryId', async (req, res) => {
   try {
     const { subcategoryId } = req.params;
-    
+
     if (!subcategoryId) {
       return res.status(400).json({
         success: false,
@@ -3258,7 +3277,7 @@ ORDER BY distance ASC
         profile_image: worker.profile_image
           ? `/uploads/profiles/${worker.profile_image}`
           : null,
-        distance: worker.distance ? parseFloat(worker.distance.toFixed(2)) : null 
+        distance: worker.distance ? parseFloat(worker.distance.toFixed(2)) : null
       }))
     });
   } catch (error) {
@@ -3376,7 +3395,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Earth's radius in kilometers
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
@@ -3402,7 +3421,7 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
     const fcmToken = tokens[0].fcm_token;
     console.log(`🔍 Found ${tokens.length} FCM tokens for worker: ${workerId}`);
     console.log(`🔍 Using token: ${fcmToken.substring(0, 50)}... (length: ${fcmToken.length})`);
-    
+
     if (!fcmToken) {
       console.log(`❌ Empty FCM token for worker: ${workerId}`);
       return { success: false, error: 'Empty FCM token' };
@@ -3427,14 +3446,14 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
 
           // Calculate distance in kilometers
           distance = calculateDistance(workerLat, workerLng, workLat, workLng);
-          
+
           // Format distance text
           if (distance < 1) {
             distanceText = `${Math.round(distance * 1000)} meters away`;
           } else {
             distanceText = `${distance.toFixed(1)} km away`;
           }
-          
+
           console.log(`📍 Distance calculated: ${distanceText}`);
         } else {
           console.log(`⚠️ Worker location not found for worker: ${workerId}`);
@@ -3479,12 +3498,12 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
     // HYBRID APPROACH: Send both notification and data for better compatibility
     // Notification ensures system shows something when app is closed
     // Data ensures our service can handle fullscreen overlay
-    
+
     // Ensure booking_time is a string
-    const bookingTimeStr = bookingData.booking_time ? 
-      (typeof bookingData.booking_time === 'string' ? bookingData.booking_time : new Date(bookingData.booking_time).toISOString()) : 
+    const bookingTimeStr = bookingData.booking_time ?
+      (typeof bookingData.booking_time === 'string' ? bookingData.booking_time : new Date(bookingData.booking_time).toISOString()) :
       new Date().toISOString();
-    
+
     const message = {
       // Add notification payload for system-level display when app is closed
       notification: {
@@ -3547,7 +3566,7 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
             customer_mobile: String(bookingData.customer_mobile || ''),
             work_location: String(bookingData.work_location || ''),
             work_location_distance: String(distanceText || ''),
-          work_location_distance_original: String(originalDistanceText || ''),
+            work_location_distance_original: String(originalDistanceText || ''),
             work_location_distance_original: String(originalDistanceText || ''),
             description: String(bookingData.description || ''),
             booking_time: bookingTimeStr,
@@ -3584,8 +3603,8 @@ const sendNotificationToMultipleTokens = async (tokens, title, body, data = {}) 
 
     const response = await admin.messaging().sendMulticast(message);
     console.log('📱 Multicast notification sent:', response);
-    return { 
-      success: true, 
+    return {
+      success: true,
       successCount: response.successCount,
       failureCount: response.failureCount,
       responses: response.responses
@@ -3604,7 +3623,7 @@ const generateOTP = () => {
 // Send OTP via MSG91
 app.post('/api/send-otp', async (req, res) => {
   const { mobile, userType } = req.body;
-  
+
   if (!mobile || !userType) {
     return res.status(400).json({
       success: false,
@@ -3612,7 +3631,7 @@ app.post('/api/send-otp', async (req, res) => {
     });
   }
 
-  if(userType === 'professional') {
+  if (userType === 'professional') {
     const [ActiveWorker] = await pool.execute(
       'SELECT id FROM tbl_workers WHERE mobile = ? AND status = ? LIMIT 1',
       [mobile, 1]
@@ -3624,13 +3643,13 @@ app.post('/api/send-otp', async (req, res) => {
       });
     }
   }
-  
+
   try {
     // Generate OTP
     const otp = generateOTP();
     const message = `OTP: ${otp}`;
     console.log('Siva Muni' + otp);
-    
+
     // Store OTP with timestamp (10 minutes expiry)
     otpStore.set(mobile, {
       otp,
@@ -3656,7 +3675,7 @@ app.post('/api/send-otp', async (req, res) => {
         'Content-Type': 'application/json'
       }
     });
-    
+
     if (response.data.type === 'success' || response.data.message === 'SMS sent successfully') {
       res.json({
         success: true,
@@ -3681,7 +3700,7 @@ app.post('/api/send-otp', async (req, res) => {
 // Verify OTP
 app.post('/api/verify-otp', async (req, res) => {
   const { mobile, otp, userType } = req.body;
-  
+
   if (!mobile || !otp || !userType) {
     return res.status(400).json({
       success: false,
@@ -3691,7 +3710,7 @@ app.post('/api/verify-otp', async (req, res) => {
 
   try {
     const storedData = otpStore.get(mobile);
-    
+
     if (!storedData) {
       return res.status(400).json({
         success: false,
@@ -3780,11 +3799,11 @@ app.post('/api/verify-otp', async (req, res) => {
       if (user.profile_image) {
         const baseName = user.profile_image;
         const extensions = ['.jpg', '.jpeg', '.png', '.gif'];
-        
+
         // Check if file exists with current name
         const currentPath = path.join(__dirname, 'uploads', 'profiles', baseName);
         let fileExists = false;
-        
+
         try {
           await fs.access(currentPath);
           fileExists = true;
@@ -3802,7 +3821,7 @@ app.post('/api/verify-otp', async (req, res) => {
           }
         }
       }
-      
+
       // User exists - login successful
       res.json({
         success: true,
@@ -3909,14 +3928,14 @@ app.post('/api/admin/login', async (req, res) => {
     }
 
     const admin = admins[0];
-    
+
     // Check if password is hashed (starts with $2a$, $2b$, or $2y$)
-    const isHashed = admin.password.startsWith('$2a$') || 
-                     admin.password.startsWith('$2b$') || 
-                     admin.password.startsWith('$2y$');
-    
+    const isHashed = admin.password.startsWith('$2a$') ||
+      admin.password.startsWith('$2b$') ||
+      admin.password.startsWith('$2y$');
+
     let isMatch = false;
-    
+
     if (isHashed) {
       // Compare hashed password
       isMatch = await bcrypt.compare(password, admin.password);
@@ -3924,7 +3943,7 @@ app.post('/api/admin/login', async (req, res) => {
       // Compare plain text password (for initial setup)
       isMatch = password === admin.password;
     }
-    
+
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid username or password' });
     }
@@ -3970,7 +3989,7 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const { status, skip_payment_check } = req.query;
-    
+
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -4011,9 +4030,9 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
       LEFT JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
       WHERE b.user_id = ?
     `;
-    
+
     let params = [userId];
-    
+
     // Handle multiple status values (comma-separated)
     if (status !== undefined && status !== '') {
       if (status.includes(',')) {
@@ -4040,7 +4059,7 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
     if (status === undefined || status === '' || !status.includes('2')) {
       query += ' AND b.status != 2';
     }
-    
+
     query += ' ORDER BY b.created_at DESC';
 
     const [bookings] = await pool.execute(query, params);
@@ -4056,7 +4075,7 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
         params: params
       }
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching user bookings:', error);
     res.status(500).json({
@@ -4071,7 +4090,7 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
 app.get('/api/payments/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    
+
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -4092,14 +4111,14 @@ app.get('/api/payments/user/:userId', async (req, res) => {
       WHERE b.user_id = ?
       ORDER BY p.created_at DESC
     `;
-    
+
     const [payments] = await pool.execute(query, [userId]);
 
     res.json({
       success: true,
       data: payments
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching payment history:', error);
     res.status(500).json({
@@ -4140,7 +4159,7 @@ app.get('/api/serviceseekers', async (req, res) => {
 app.post('/api/worker-location', async (req, res) => {
   try {
     const { worker_id, latitude, longitude } = req.body;
-    
+
     // Validation
     if (!worker_id || !latitude || !longitude) {
       return res.status(400).json({
@@ -4152,7 +4171,7 @@ app.post('/api/worker-location', async (req, res) => {
     // Validate latitude and longitude are numbers
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
-    
+
     if (isNaN(lat) || isNaN(lng)) {
       return res.status(400).json({
         success: false,
@@ -4230,7 +4249,7 @@ app.post('/api/worker-location', async (req, res) => {
 app.get('/api/worker-location/:worker_id', async (req, res) => {
   try {
     const { worker_id } = req.params;
-    
+
     if (!worker_id) {
       return res.status(400).json({
         success: false,
@@ -4271,7 +4290,7 @@ app.get('/api/worker-location/:worker_id', async (req, res) => {
 app.post('/api/fcm-token', async (req, res) => {
   try {
     const { user_id, user_type, fcm_token } = req.body;
-    
+
     if (!user_id || !user_type || !fcm_token) {
       return res.status(400).json({
         success: false,
@@ -4282,7 +4301,7 @@ app.post('/api/fcm-token', async (req, res) => {
     // Check if user exists in both tables (same logic as login)
     let userExists = false;
     let actualUserType = user_type;
-    
+
     // First, check in the preferred table based on user_type
     if (user_type === 'professional' || user_type === 'worker') {
       const [workers] = await pool.execute(
@@ -4303,7 +4322,7 @@ app.post('/api/fcm-token', async (req, res) => {
         actualUserType = 'seeker'; // Normalize to 'seeker' for FCM token storage
       }
     }
-    
+
     // If user not found in preferred table, search in the other table
     if (!userExists) {
       if (user_type === 'professional' || user_type === 'worker') {
@@ -4340,7 +4359,7 @@ app.post('/api/fcm-token', async (req, res) => {
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE to handle existing tokens
     console.log('Storing FCM token:', { user_id, user_type: actualUserType, token_length: fcm_token.length });
-    
+
     const [result] = await pool.execute(
       `INSERT INTO tbl_push_tokens (user_id, user_type, fcm_token, created_at, updated_at) 
        VALUES (?, ?, ?, NOW(), NOW())
@@ -4372,7 +4391,7 @@ app.post('/api/fcm-token', async (req, res) => {
 app.post('/api/send-notification', async (req, res) => {
   try {
     const { user_id, user_type, title, body, data = {} } = req.body;
-    
+
     if (!user_id || !user_type || !title || !body) {
       return res.status(400).json({
         success: false,
@@ -4424,7 +4443,7 @@ app.post('/api/send-notification', async (req, res) => {
 app.post('/api/send-notification-broadcast', async (req, res) => {
   try {
     const { user_type, title, body, data = {} } = req.body;
-    
+
     if (!user_type || !title || !body) {
       return res.status(400).json({
         success: false,
@@ -4473,7 +4492,7 @@ app.post('/api/send-notification-broadcast', async (req, res) => {
 app.post('/api/send-booking-notification', async (req, res) => {
   try {
     const { booking_id, status, worker_id, user_id } = req.body;
-    
+
     if (!booking_id || !status || !worker_id || !user_id) {
       return res.status(400).json({
         success: false,
@@ -4486,7 +4505,7 @@ app.post('/api/send-booking-notification', async (req, res) => {
       'SELECT name FROM tbl_workers WHERE id = ?',
       [worker_id]
     );
-    
+
     const [users] = await pool.execute(
       'SELECT name FROM tbl_serviceseeker WHERE id = ?',
       [user_id]
@@ -4567,7 +4586,7 @@ app.post('/api/send-booking-notification', async (req, res) => {
 app.get('/api/worker-alerts/:workerId', async (req, res) => {
   try {
     const { workerId } = req.params;
-    
+
     if (!workerId) {
       return res.status(400).json({
         success: false,
@@ -4623,7 +4642,7 @@ app.get('/api/worker-alerts/:workerId', async (req, res) => {
 app.post('/api/accept-booking-alert', async (req, res) => {
   try {
     const { booking_id, worker_id, action } = req.body;
-    
+
     if (!booking_id || !worker_id) {
       return res.status(400).json({
         success: false,
@@ -4693,7 +4712,7 @@ app.post('/api/accept-booking-alert', async (req, res) => {
 app.post('/api/reject-booking-alert', async (req, res) => {
   try {
     const { booking_id, worker_id, reason } = req.body;
-    
+
     if (!booking_id || !worker_id) {
       return res.status(400).json({
         success: false,
@@ -4755,7 +4774,7 @@ app.post('/api/reject-booking-alert', async (req, res) => {
 app.post('/api/send-manual-alert', async (req, res) => {
   try {
     const { worker_mobile, customer_name, customer_mobile, work_location, description, booking_time } = req.body;
-    
+
     if (!worker_mobile || !customer_name || !work_location) {
       return res.status(400).json({
         success: false,
@@ -4851,7 +4870,7 @@ app.get('/api/admin/bookings', async (req, res) => {
     const { canceled, rescheduled, cancelreq, reschedulereq } = req.query;
 
     let query;
-    
+
     if (cancelreq === 'true') {
       // Cancel Requests: b.status = 5 AND c.status = 0 AND b.payment_status = 1; one row per booking (dedupe by c.id)
       query = `
@@ -4891,7 +4910,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         )
         ORDER BY b.id DESC
       `;
-      
+
       console.log('🔍 Fetching cancel requests (b.status=5 AND c.status=0 AND b.payment_status=1)');
     } else if (reschedulereq === 'true') {
       // Reschedule Requests: b.status = 6 AND r.status = 0 AND b.payment_status = 1 AND b.id = r.bookingid
@@ -4924,7 +4943,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         WHERE b.status = 6 AND r.status = 0 AND b.payment_status = 1
         ORDER BY b.id DESC
       `;
-      
+
       console.log('🔍 Fetching reschedule requests (b.status=6 AND r.status=0 AND b.payment_status=1 AND b.id=r.bookingid)');
     } else if (canceled === 'true') {
       // Fetch canceled bookings: b.status = 5 AND b.payment_status = 1 AND c.status = 1 AND b.id = c.bookingid
@@ -4960,7 +4979,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         WHERE b.status = 5 AND b.payment_status = 1 AND c.status = 1
         ORDER BY b.id DESC
       `;
-      
+
       console.log('🔍 Fetching canceled bookings (b.status=5 AND b.payment_status=1 AND c.status=1 AND b.id=c.bookingid)');
     } else if (rescheduled === 'true') {
       // Fetch rescheduled bookings: b.status = 6 AND b.payment_status = 1 AND r.status = 1 AND b.id = r.bookingid
@@ -4996,7 +5015,7 @@ app.get('/api/admin/bookings', async (req, res) => {
         WHERE b.status = 6 AND b.payment_status = 1 AND r.status = 1
         ORDER BY b.id DESC
       `;
-      
+
       console.log('🔍 Fetching rescheduled bookings (b.status=6 AND b.payment_status=1 AND r.status=1 AND b.id=r.bookingid)');
     } else {
       // Regular bookings query (All) - include cancel_status and reschedule_status for status 5/6 display
@@ -5030,7 +5049,7 @@ app.get('/api/admin/bookings', async (req, res) => {
     }
 
     const [bookings] = await pool.query(query);
-    
+
     if (cancelreq === 'true') {
       console.log(`✅ Found ${bookings.length} cancel requests`);
     } else if (reschedulereq === 'true') {
@@ -5284,7 +5303,7 @@ app.get('/api/admin/workers/:id', async (req, res) => {
     // Get category titles for multiple skill IDs
     if (worker.skill_id) {
       const skillIds = worker.skill_id.split(',').map(id => id.trim()).filter(id => id);
-      
+
       if (skillIds.length > 0) {
         const placeholders = skillIds.map(() => '?').join(',');
         const categoryQuery = `
@@ -5292,7 +5311,7 @@ app.get('/api/admin/workers/:id', async (req, res) => {
           FROM tbl_category 
           WHERE id IN (${placeholders})
         `;
-        
+
         const [categories] = await pool.query(categoryQuery, skillIds);
         worker.category_title = categories.map(cat => cat.title).join(', ');
       } else {
@@ -5319,43 +5338,43 @@ app.get('/api/admin/workers/:id', async (req, res) => {
 
 // Get Quotes for admin
 app.get('/api/admin/quotes', async (req, res) => {
-try {
-const query = `SELECT q.*,s.name FROM tbl_requestquote AS q LEFT JOIN tbl_serviceseeker AS S ON q.customer_id = s.id ORDER BY q.id DESC`;
-const [quotes] = await pool.query(query);
+  try {
+    const query = `SELECT q.*,s.name FROM tbl_requestquote AS q LEFT JOIN tbl_serviceseeker AS S ON q.customer_id = s.id ORDER BY q.id DESC`;
+    const [quotes] = await pool.query(query);
 
-res.json({
-  success: true,
-  quotes: quotes
-});
-} catch (error) {
-   console.error('❌ Error fetching quotes:', error);
-   res.status(500).json({
-    success: false,
-    message: 'failed to fetch quotes',
-    error: error.message
-   });
-}
+    res.json({
+      success: true,
+      quotes: quotes
+    });
+  } catch (error) {
+    console.error('❌ Error fetching quotes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'failed to fetch quotes',
+      error: error.message
+    });
+  }
 });
 
 //get Categories for admin
-app.get( '/api/admin/categories', async ( req, res ) => {
-try {
-  const query = `SELECT * FROM tbl_category ORDER BY id DESC`;
-  const [categories] = await pool.query(query);
+app.get('/api/admin/categories', async (req, res) => {
+  try {
+    const query = `SELECT * FROM tbl_category ORDER BY id DESC`;
+    const [categories] = await pool.query(query);
 
-  res.json({
-    success: true,
-    categories: categories
-  })
+    res.json({
+      success: true,
+      categories: categories
+    })
 
-} catch ( error) {
-console.error( '❌ Error fetching categories:', error );
-res.status( 500 ).json({
-success: false,
-message: 'failed to fetch categories',
-error: error.message
-});
-}
+  } catch (error) {
+    console.error('❌ Error fetching categories:', error);
+    res.status(500).json({
+      success: false,
+      message: 'failed to fetch categories',
+      error: error.message
+    });
+  }
 });
 
 // Create Category for admin
@@ -5459,7 +5478,7 @@ app.put('/api/admin/categories/:id', upload.single('categoryImage'), async (req,
     const existingStatus = existingCategory[0].status;
     const finalStatus = status !== undefined ? parseInt(status) : existingStatus;
     const finalVisibility = visibility !== undefined ? parseInt(visibility) : existingCategory[0].visibility;
-    
+
     const query = `UPDATE tbl_category SET title = ?, image = ?, status = ?, visibility = ? WHERE id = ?`;
     await pool.execute(query, [title.trim(), imageFileName, finalStatus, finalVisibility, id]);
 
@@ -5576,7 +5595,7 @@ app.get('/api/active-animation', async (req, res) => {
 app.post('/api/admin/animations', upload.single('animationVideo'), async (req, res) => {
   try {
     const { event_name, is_active } = req.body;
-    
+
     // Validation
     if (!event_name || !event_name.trim()) {
       return res.status(400).json({
@@ -5661,7 +5680,7 @@ app.put('/api/admin/animations/:id', upload.single('animationVideo'), async (req
     // If new video is uploaded, use it; otherwise keep existing
     if (req.file) {
       videoFileName = req.file.filename;
-      
+
       // Optionally delete old video file
       try {
         const oldFilePath = path.join(__dirname, 'uploads', 'animations', existingAnimation[0].video_title);
@@ -5743,13 +5762,13 @@ app.delete('/api/admin/animations/:id', async (req, res) => {
 //get SubCategories for admin
 app.get('/api/admin/subcategories', async (req, res) => {
   try {
-const query = `SELECT s.*,c.title FROM tbl_subcategory AS s LEFT JOIN tbl_category AS c ON s.category_id = c.id ORDER BY s.id DESC`;
-const [subcategories] = await pool.query(query);
+    const query = `SELECT s.*,c.title FROM tbl_subcategory AS s LEFT JOIN tbl_category AS c ON s.category_id = c.id ORDER BY s.id DESC`;
+    const [subcategories] = await pool.query(query);
 
-  res.json({
-  success : true,
-  subcategories : subcategories
-  })
+    res.json({
+      success: true,
+      subcategories: subcategories
+    })
 
   } catch (error) {
     console.error('❌ Error fetching subcategories:', error);
@@ -5765,7 +5784,7 @@ const [subcategories] = await pool.query(query);
 app.post('/api/admin/subcategories', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const { name, category_id, status, visibility } = req.body;
-    
+
     // Validation
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -5846,7 +5865,7 @@ app.put('/api/admin/subcategories/:id', upload.fields([{ name: 'image', maxCount
   try {
     const { id } = req.params;
     const { name, category_id, status, visibility } = req.body;
-    
+
     // Validation
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -5905,7 +5924,7 @@ app.put('/api/admin/subcategories/:id', upload.fields([{ name: 'image', maxCount
     const existingStatus = existingSubcategory[0].status;
     const finalStatus = status !== undefined ? parseInt(status) : existingStatus;
     const finalVisibility = visibility !== undefined ? parseInt(visibility) : existingSubcategory[0].visibility;
-    
+
     const query = `UPDATE tbl_subcategory SET name = ?, category_id = ?, image = ?, video_title = ?, status = ?, visibility = ? WHERE id = ?`;
     await pool.execute(query, [name.trim(), category_id, imageFileName, videoFileName, finalStatus, finalVisibility, id]);
 
@@ -5970,19 +5989,19 @@ app.delete('/api/admin/subcategories/:id', async (req, res) => {
 app.get('/api/admin/services', async (req, res) => {
   try {
     const query = `SELECT sv.*, ts.name as subcaregory_name, tc.title as category_name FROM tbl_services AS sv LEFT JOIN tbl_subcategory AS ts ON sv.subcategory_id = ts.id LEFT JOIN tbl_category AS tc ON ts.category_id = tc.id ORDER BY sv.id DESC`;
-    const [services] =  await pool.query(query);
+    const [services] = await pool.query(query);
 
     res.json({
-      success : true,
-      services : services
+      success: true,
+      services: services
     });
 
   } catch (error) {
     console.error('❌ Error fetching services:', error);
     res.status(500).json({
-      success : false,
-      message : 'failed to fetch services',
-      error : error.message
+      success: false,
+      message: 'failed to fetch services',
+      error: error.message
     });
   }
 });
@@ -5991,7 +6010,7 @@ app.get('/api/admin/services', async (req, res) => {
 app.post('/api/admin/services', upload.single('image'), async (req, res) => {
   try {
     const { name, subcategory_id, price, rating, instant_service, pincodes } = req.body;
-    
+
     // Validation
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -6039,11 +6058,11 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
     // Insert into tbl_services
     const query = `INSERT INTO tbl_services (name, subcategory_id, image, price, rating, instant_service, status, visibility) VALUES (?, ?, ?, ?, ?, ?, 1, 1)`;
     const [result] = await pool.execute(query, [
-      name.trim(), 
-      subcategory_id, 
-      imageFileName, 
-      priceValue, 
-      ratingValue, 
+      name.trim(),
+      subcategory_id,
+      imageFileName,
+      priceValue,
+      ratingValue,
       instantServiceValue
     ]);
 
@@ -6063,7 +6082,7 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
       } else if (Array.isArray(pincodes)) {
         pincodesArray = pincodes;
       }
-      
+
       if (pincodesArray.length > 0) {
         const validPincodes = pincodesArray.filter(p => {
           if (typeof p === 'object' && p.pincode) {
@@ -6071,7 +6090,7 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
           }
           return p && p.toString().trim().length > 0;
         });
-        
+
         if (validPincodes.length > 0) {
           // Insert pincodes with localities into tbl_service_pincodes
           const pincodeValues = validPincodes.map(item => {
@@ -6182,7 +6201,7 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
     if (pincodes !== undefined) {
       // Delete existing pincodes for this service
       await pool.execute('DELETE FROM tbl_service_pincodes WHERE service_id = ?', [id]);
-      
+
       // Parse pincodes if provided
       let pincodesArray = [];
       if (pincodes) {
@@ -6197,7 +6216,7 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
         } else if (Array.isArray(pincodes)) {
           pincodesArray = pincodes;
         }
-        
+
         // Insert new pincodes if provided
         if (pincodesArray.length > 0) {
           const validPincodes = pincodesArray.filter(p => {
@@ -6206,7 +6225,7 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
             }
             return p && p.toString().trim().length > 0;
           });
-          
+
           if (validPincodes.length > 0) {
             // Insert pincodes with localities into tbl_service_pincodes
             const pincodeValues = validPincodes.map(item => {
@@ -6241,17 +6260,17 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
 app.get('/api/admin/services/:id/pincodes', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const [pincodes] = await pool.execute(
       'SELECT pincode, locality FROM tbl_service_pincodes WHERE service_id = ? ORDER BY pincode',
       [id]
     );
-    
+
     res.json({
       success: true,
       pincodes: pincodes
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching pincodes:', error);
     res.status(500).json({
@@ -6267,25 +6286,25 @@ app.get('/api/google/places/autocomplete', async (req, res) => {
   try {
     const { input } = req.query;
     const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
-    
+
     if (!input || input.length < 2) {
       return res.json({
         success: true,
         predictions: []
       });
     }
-    
+
     const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${GOOGLE_PLACES_API_KEY}&types=geocode`;
-    
+
     const response = await fetch(url);
     const data = await response.json();
-    
+
     res.json({
       success: true,
       predictions: data.predictions || [],
       status: data.status
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching place suggestions:', error);
     res.status(500).json({
@@ -6302,25 +6321,25 @@ app.get('/api/google/places/details', async (req, res) => {
   try {
     const { place_id } = req.query;
     const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
-    
+
     if (!place_id) {
       return res.status(400).json({
         success: false,
         message: 'place_id is required'
       });
     }
-    
+
     const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(place_id)}&fields=address_components,formatted_address,geometry&key=${GOOGLE_PLACES_API_KEY}`;
-    
+
     const response = await fetch(url);
     const data = await response.json();
-    
+
     res.json({
       success: true,
       result: data.result || null,
       status: data.status
     });
-    
+
   } catch (error) {
     console.error('❌ Error fetching place details:', error);
     res.status(500).json({
@@ -6336,25 +6355,25 @@ app.get('/api/google/geocode/reverse', async (req, res) => {
   try {
     const { lat, lng } = req.query;
     const GOOGLE_PLACES_API_KEY = 'AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ';
-    
+
     if (!lat || !lng) {
       return res.status(400).json({
         success: false,
         message: 'lat and lng are required'
       });
     }
-    
+
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&key=${GOOGLE_PLACES_API_KEY}`;
-    
+
     const response = await fetch(url);
     const data = await response.json();
-    
+
     res.json({
       success: true,
       results: data.results || [],
       status: data.status
     });
-    
+
   } catch (error) {
     console.error('❌ Error reverse geocoding:', error);
     res.status(500).json({
@@ -6425,7 +6444,7 @@ app.get('/api/admin/deals', async (req, res) => {
 app.get('/api/service-reviews/:serviceId', async (req, res) => {
   try {
     const { serviceId } = req.params;
-    
+
     if (!serviceId) {
       return res.status(400).json({
         success: false,
@@ -6447,7 +6466,7 @@ app.get('/api/service-reviews/:serviceId', async (req, res) => {
       WHERE cr.service_id = ?
       ORDER BY cr.created_at DESC
     `;
-    
+
     const [reviews] = await pool.execute(query, [serviceId]);
 
     res.json({
@@ -6506,7 +6525,7 @@ app.get('/api/admin/reviews-ratings', async (req, res) => {
 app.post('/api/admin/deals', async (req, res) => {
   try {
     const { service_id, original_price, deal_price, discount, is_active } = req.body;
-    
+
     // Validation
     if (!service_id) {
       return res.status(400).json({
@@ -6743,7 +6762,7 @@ app.get('/api/admin/faqs-process', async (req, res) => {
 app.post('/api/admin/faqs-process', async (req, res) => {
   try {
     const { service_id, processes, notes, faqs, status } = req.body;
-    
+
     // Validation - all fields are required
     if (!service_id) {
       return res.status(400).json({
@@ -6916,7 +6935,7 @@ app.put('/api/admin/faqs-process/:id', async (req, res) => {
       'SELECT service_id, status FROM tbl_faqs WHERE service_id = (SELECT service_id FROM tbl_faqs WHERE id = ? LIMIT 1) LIMIT 1',
       [id]
     );
-    
+
     if (existingRows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -6981,7 +7000,7 @@ app.put('/api/admin/faqs-process/:id', async (req, res) => {
 app.get('/api/faqs-process/:serviceId', async (req, res) => {
   try {
     const { serviceId } = req.params;
-    
+
     if (!serviceId) {
       return res.status(400).json({
         success: false,
@@ -7013,7 +7032,7 @@ app.get('/api/faqs-process/:serviceId', async (req, res) => {
     }
 
     const row = rows[0];
-    
+
     // Parse semicolon-separated values
     const processNames = row.process_name ? row.process_name.split(';').filter(p => p.trim()) : [];
     const processTexts = row.process_text ? row.process_text.split(';').filter(p => p.trim()) : [];
@@ -7067,16 +7086,16 @@ const startPeriodicNotifications = async () => {
   console.log('🚀 Starting periodic notifications every 3 seconds...');
   console.log('📱 Make sure your device is ready!');
   console.log('👥 Will notify all workers with pending bookings (status = 0)');
-  
+
   let count = 0;
-  
+
   const sendPeriodicNotification = async () => {
     try {
       count++;
       console.log(`\n🔄 Periodic notification #${count}`);
       console.log(`⏰ ${new Date().toLocaleTimeString()}`);
       console.log('================================');
-      
+
       // Get all pending bookings for all workers
       const [bookings] = await pool.execute(`
         SELECT 
@@ -7099,15 +7118,15 @@ const startPeriodicNotifications = async () => {
         console.log(`📋 Found booking: ${booking.booking_id}`);
         console.log(`   Worker: ${booking.worker_name} (${booking.worker_mobile}) - ID: ${booking.worker_id}`);
         console.log(`   Location: ${booking.work_location}`);
-        
+
         // Get customer name from tbl_serviceseeker table
         const [customers] = await pool.execute(
           'SELECT name, mobile FROM tbl_serviceseeker WHERE id = ?',
           [booking.user_id]
         );
-        
+
         const customer = customers.length > 0 ? customers[0] : { name: 'Customer', mobile: booking.contact_number || 'N/A' };
-        
+
         // Prepare booking data
         const bookingData = {
           booking_id: booking.booking_id,
@@ -7120,10 +7139,10 @@ const startPeriodicNotifications = async () => {
           booking_time: booking.booking_time ? new Date(booking.booking_time).toISOString() : new Date().toISOString(),
           work_type: 'Service Request'
         };
-        
+
         // Send notification using the existing function
         const result = await sendBookingAlertNotification(booking.worker_id, bookingData);
-        
+
         if (result.success) {
           console.log(`✅ Notification sent successfully to worker ${booking.worker_id}!`);
         } else {
@@ -7131,17 +7150,17 @@ const startPeriodicNotifications = async () => {
         }
         console.log('---');
       }
-      
+
       console.log('================================');
-      
+
     } catch (error) {
       console.error('❌ Error in periodic notification:', error);
     }
   };
-  
+
   // Send first notification immediately
   await sendPeriodicNotification();
-  
+
   // Set up interval for every 3 seconds
   setInterval(sendPeriodicNotification, 3000);
 };
@@ -7158,7 +7177,7 @@ const startServer = async () => {
     console.log(`📱 For physical devices, use your computer's IP address:`);
     console.log(`   Example: http://192.168.1.100:${PORT}/api/health`);
     console.log(`   Run 'node scripts/find-ip.js' to find your IP address`);
-    
+
     // Start periodic notifications after server starts
     setTimeout(() => {
       startPeriodicNotifications();
