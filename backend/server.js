@@ -5377,6 +5377,235 @@ app.get('/api/admin/categories', async (req, res) => {
   }
 });
 
+// Category analysis: booking counts per category (tbl_category + tbl_bookings via workers/skills)
+// Query params: fromDate (YYYY-MM-DD), toDate (YYYY-MM-DD) - filter bookings by created_at in range
+app.get('/api/admin/analysis/category-bookings', async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    const hasFrom = fromDate && /^\d{4}-\d{2}-\d{2}$/.test(fromDate);
+    const hasTo = toDate && /^\d{4}-\d{2}-\d{2}$/.test(toDate);
+    let dateCondition = '';
+    const params = [];
+    if (hasFrom && hasTo) {
+      dateCondition = ' AND DATE(b.created_at) BETWEEN ? AND ?';
+      params.push(fromDate, toDate);
+    } else if (hasFrom) {
+      dateCondition = ' AND DATE(b.created_at) >= ?';
+      params.push(fromDate);
+    } else if (hasTo) {
+      dateCondition = ' AND DATE(b.created_at) <= ?';
+      params.push(toDate);
+    }
+    const [rows] = await pool.query(
+      `SELECT
+        c.id AS categoryId,
+        c.title AS categoryTitle,
+        COUNT(DISTINCT b.id) AS bookingCount
+      FROM tbl_category c
+      LEFT JOIN tbl_subcategory sc ON sc.category_id = c.id
+      LEFT JOIN tbl_workers w ON FIND_IN_SET(sc.id, REPLACE(REPLACE(COALESCE(w.skill_id, ''), ' ', ''), ',', ',')) > 0
+      LEFT JOIN tbl_bookings b ON b.worker_id = w.id${dateCondition}
+      GROUP BY c.id, c.title
+      ORDER BY bookingCount DESC, c.title ASC`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Error fetching category booking analysis:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch category analysis',
+      error: error.message
+    });
+  }
+});
+
+// Subcategory analysis: booking counts per subcategory (tbl_subcategory + tbl_bookings via workers/skill_id)
+// Each booking is counted ONCE - assigned to the worker's FIRST subcategory in skill_id (avoids double-counting when worker has multiple skills)
+// Query params: fromDate (YYYY-MM-DD), toDate (YYYY-MM-DD), categoryId - filter by category when provided
+app.get('/api/admin/analysis/subcategory-bookings', async (req, res) => {
+  try {
+    const { fromDate, toDate, categoryId } = req.query;
+    const hasFrom = fromDate && /^\d{4}-\d{2}-\d{2}$/.test(fromDate);
+    const hasTo = toDate && /^\d{4}-\d{2}-\d{2}$/.test(toDate);
+    const hasCategoryId = categoryId && /^\d+$/.test(String(categoryId));
+    let dateCondition = '';
+    const params = [];
+    if (hasFrom && hasTo) {
+      dateCondition = ' AND DATE(b.created_at) BETWEEN ? AND ?';
+      params.push(fromDate, toDate);
+    } else if (hasFrom) {
+      dateCondition = ' AND DATE(b.created_at) >= ?';
+      params.push(fromDate);
+    } else if (hasTo) {
+      dateCondition = ' AND DATE(b.created_at) <= ?';
+      params.push(toDate);
+    }
+    const categoryCondition = hasCategoryId ? ' WHERE sc.category_id = ?' : '';
+    if (hasCategoryId) params.push(categoryId);
+    const [rows] = await pool.query(
+      `SELECT
+        sc.id AS subcategoryId,
+        sc.name AS subcategoryTitle,
+        COUNT(bsk.id) AS bookingCount
+      FROM tbl_subcategory sc
+      LEFT JOIN (
+        SELECT b.id,
+          SUBSTRING_INDEX(SUBSTRING_INDEX(REPLACE(REPLACE(COALESCE(w.skill_id,''), ' ', ''), ',', ','), ',', 1), ',', -1) AS first_skill_id
+        FROM tbl_bookings b
+        INNER JOIN tbl_workers w ON b.worker_id = w.id
+        WHERE w.skill_id IS NOT NULL AND w.skill_id != ''${dateCondition}
+      ) AS bsk ON bsk.first_skill_id = sc.id${categoryCondition}
+      GROUP BY sc.id, sc.name
+      ORDER BY bookingCount DESC, sc.name ASC`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Error fetching subcategory booking analysis:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch subcategory analysis',
+      error: error.message
+    });
+  }
+});
+
+// Service analysis: booking counts per service (tbl_services + tbl_bookings)
+// Uses booking description "Booking for Service1, Service2" to attribute each booking to specific services
+// Query params: fromDate, toDate (YYYY-MM-DD), subcategoryId - filter by subcategory when provided
+app.get('/api/admin/analysis/service-bookings', async (req, res) => {
+  try {
+    const { fromDate, toDate, subcategoryId } = req.query;
+    const hasFrom = fromDate && /^\d{4}-\d{2}-\d{2}$/.test(fromDate);
+    const hasTo = toDate && /^\d{4}-\d{2}-\d{2}$/.test(toDate);
+    const hasSubcategoryId = subcategoryId != null && subcategoryId !== '' && /^\d+$/.test(String(subcategoryId));
+    let dateCondition = '';
+    const params = [];
+    if (hasFrom && hasTo) {
+      dateCondition = ' AND DATE(b.created_at) BETWEEN ? AND ?';
+      params.push(fromDate, toDate);
+    } else if (hasFrom) {
+      dateCondition = ' AND DATE(b.created_at) >= ?';
+      params.push(fromDate);
+    } else if (hasTo) {
+      dateCondition = ' AND DATE(b.created_at) <= ?';
+      params.push(toDate);
+    }
+    const subcategoryCondition = hasSubcategoryId ? ' AND s.subcategory_id = ?' : '';
+    if (hasSubcategoryId) params.push(String(subcategoryId));
+    // Match bookings where description contains service name (format: "Booking for Service1, Service2")
+    // CONCAT(', ', desc, ', ') ensures exact whole-name match (e.g. "Socket" won't match "Socket Replacement")
+    const [rows] = await pool.query(
+      `SELECT
+        s.id AS serviceId,
+        s.name AS serviceName,
+        COUNT(DISTINCT b.id) AS bookingCount
+      FROM tbl_services s
+      LEFT JOIN tbl_bookings b ON b.description IS NOT NULL
+        AND b.description != ''
+        AND REPLACE(b.description, 'Booking for ', '') NOT LIKE '%service(s)%'
+        AND CONCAT(', ', TRIM(REPLACE(b.description, 'Booking for ', '')), ', ') LIKE CONCAT('%, ', s.name, ', %')
+        ${dateCondition}
+      WHERE s.status = 1${subcategoryCondition}
+      GROUP BY s.id, s.name
+      ORDER BY bookingCount DESC, s.name ASC`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Error fetching service booking analysis:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch service analysis',
+      error: error.message
+    });
+  }
+});
+
+// Payment analysis: monthly totals (tbl_payments) - returns ALL months Jan-Dec with 0 for no payments
+// Query params: fromDate (YYYY-MM-DD), toDate (YYYY-MM-DD) - filter by date range
+app.get('/api/admin/analysis/payment-monthly', async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    const hasFrom = fromDate && /^\d{4}-\d{2}-\d{2}$/.test(fromDate);
+    const hasTo = toDate && /^\d{4}-\d{2}-\d{2}$/.test(toDate);
+    const year = hasFrom ? parseInt(fromDate.substring(0, 4), 10) : (hasTo ? parseInt(toDate.substring(0, 4), 10) : new Date().getFullYear());
+    const dateCondition = (hasFrom && hasTo) ? ' AND DATE(p.created_at) BETWEEN ? AND ?' : hasFrom ? ' AND DATE(p.created_at) >= ?' : hasTo ? ' AND DATE(p.created_at) <= ?' : '';
+    const params = (hasFrom && hasTo) ? [fromDate, toDate] : hasFrom ? [fromDate] : hasTo ? [toDate] : [];
+    const [rows] = await pool.query(
+      `WITH RECURSIVE m AS (SELECT 1 AS month UNION ALL SELECT month + 1 FROM m WHERE month < 12)
+      SELECT m.month AS month, ? AS year,
+        COALESCE(agg.totalAmount, 0) AS totalAmount,
+        COALESCE(agg.paymentCount, 0) AS paymentCount
+      FROM m
+      LEFT JOIN (
+        SELECT MONTH(p.created_at) AS month, SUM(p.amount) AS totalAmount, COUNT(p.id) AS paymentCount
+        FROM tbl_payments p
+        INNER JOIN tbl_bookings b ON p.bookingid = b.id
+        WHERE YEAR(p.created_at) = ?${dateCondition}
+        GROUP BY MONTH(p.created_at)
+      ) agg ON agg.month = m.month
+      ORDER BY m.month ASC`,
+      [year, year, ...params]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Error fetching payment monthly analysis:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payment monthly analysis',
+      error: error.message
+    });
+  }
+});
+
+// Payment analysis: daily breakdown for a given month (tbl_payments) - returns ALL days with 0 for no payments
+// Query params: year (required), month (required)
+app.get('/api/admin/analysis/payment-daily', async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const hasYear = year && /^\d{4}$/.test(year);
+    const hasMonth = month && /^(0?[1-9]|1[0-2])$/.test(month);
+    if (!hasYear || !hasMonth) {
+      return res.status(400).json({
+        success: false,
+        message: 'year and month query params are required (e.g. ?year=2025&month=3)'
+      });
+    }
+    const yearNum = parseInt(year, 10);
+    const monthNum = parseInt(month, 10);
+    const lastDay = new Date(yearNum, monthNum, 0).getDate();
+    const monthStr = String(monthNum).padStart(2, '0');
+    const [rows] = await pool.query(
+      `WITH RECURSIVE d AS (SELECT 1 AS day UNION ALL SELECT day + 1 FROM d WHERE day < ?)
+      SELECT
+        CONCAT(?, '-', ?, '-', LPAD(d.day, 2, '0')) AS date,
+        d.day AS day,
+        COALESCE(agg.totalAmount, 0) AS totalAmount,
+        COALESCE(agg.paymentCount, 0) AS paymentCount
+      FROM d
+      LEFT JOIN (
+        SELECT DAY(p.created_at) AS day, SUM(p.amount) AS totalAmount, COUNT(p.id) AS paymentCount
+        FROM tbl_payments p
+        INNER JOIN tbl_bookings b ON p.bookingid = b.id
+        WHERE YEAR(p.created_at) = ? AND MONTH(p.created_at) = ?
+        GROUP BY DAY(p.created_at)
+      ) agg ON agg.day = d.day
+      ORDER BY d.day ASC`,
+      [lastDay, yearNum, monthStr, yearNum, monthNum]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Error fetching payment daily analysis:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payment daily analysis',
+      error: error.message
+    });
+  }
+});
+
 // Create Category for admin
 app.post('/api/admin/categories', upload.single('categoryImage'), async (req, res) => {
   try {

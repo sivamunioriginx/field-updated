@@ -105,6 +105,11 @@ export const API_ENDPOINTS = {
   GET_RATINGS: `${getBaseUrl()}/customer-ratings`,
   ADMIN_REVIEWS_RATINGS: `${getBaseUrl()}/admin/reviews-ratings`,
   ADMIN_FAQS_PROCESS: `${getBaseUrl()}/admin/faqs-process`,
+  ADMIN_ANALYSIS_CATEGORY_BOOKINGS: `${getBaseUrl()}/admin/analysis/category-bookings`,
+  ADMIN_ANALYSIS_SUBCATEGORY_BOOKINGS: `${getBaseUrl()}/admin/analysis/subcategory-bookings`,
+  ADMIN_ANALYSIS_SERVICE_BOOKINGS: `${getBaseUrl()}/admin/analysis/service-bookings`,
+  ADMIN_ANALYSIS_PAYMENT_MONTHLY: `${getBaseUrl()}/admin/analysis/payment-monthly`,
+  ADMIN_ANALYSIS_PAYMENT_DAILY: `${getBaseUrl()}/admin/analysis/payment-daily`,
   
   // Google Places API proxy endpoints (to avoid CORS)
   GOOGLE_PLACES_AUTOCOMPLETE: (input: string) => `${getBaseUrl()}/google/places/autocomplete?input=${encodeURIComponent(input)}`,

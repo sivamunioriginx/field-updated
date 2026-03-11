@@ -115,6 +115,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelModalBooking, setCancelModalBooking] = useState<Booking | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [showStatusConfirmModal, setShowStatusConfirmModal] = useState(false);
+  const [statusConfirmBooking, setStatusConfirmBooking] = useState<Booking | null>(null);
+  const [statusConfirmNewStatus, setStatusConfirmNewStatus] = useState<number | null>(null);
   
   // Worker details popup state
   const [showWorkerPopup, setShowWorkerPopup] = useState(false);
@@ -279,16 +282,16 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   // Get status label (when statusFilter is 'all', use cancel_status/reschedule_status for status 5/6)
   const getStatusLabel = (status: number, booking?: Booking) => {
     if (booking) {
-      if (status === 5) return booking.cancel_status === 1 ? 'Canceled' : 'CANCEL REQUESTED';
-      if (status === 6) return booking.reschedule_status === 1 ? 'Rescheduled' : 'RESCHEDULE REQUESTED';
+      if (status === 5) return booking.cancel_status === 1 ? 'Cancel' : 'CANCEL REQUESTED';
+      if (status === 6) return booking.reschedule_status === 1 ? 'Reschedule' : 'RESCHEDULE REQUESTED';
     }
     switch (status) {
       case 1: return 'Accepted';
       case 2: return 'In Progress';
       case 3: return 'Completed';
       case 4: return 'Reject';
-      case 5: return 'Canceled';
-      case 6: return 'Rescheduled';
+      case 5: return 'Cancel';
+      case 6: return 'Reschedule';
       case 7: return 'Cancel Request';
       case 8: return 'Reschedule Request';
       default: return 'Unknown';
@@ -476,9 +479,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
   const statusChangeOptions = [
     { value: 1, label: 'Accept', icon: 'checkmark-circle' as const, color: '#10b981' },
-    { value: 2, label: 'Start', icon: 'play-circle' as const, color: '#3b82f6' },
+    { value: 2, label: 'In Progress', icon: 'play-circle' as const, color: '#3b82f6' },
     { value: 3, label: 'Complete', icon: 'checkmark-done' as const, color: '#8b5cf6' },
     { value: 5, label: 'Cancel', icon: 'trash-outline' as const, color: '#dc2626' },
+    { value: 6, label: 'Reschedule', icon: 'calendar-outline' as const, color: '#fde047' },
   ];
 
   const sortOptions = [
@@ -1499,6 +1503,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                                             setCancelModalBooking(booking);
                                             setCancelReason('');
                                             setShowCancelModal(true);
+                                          } else if (option.value === 1 || option.value === 2 || option.value === 3) {
+                                            setStatusDropdownBookingId(null);
+                                            setStatusDropdownPosition(null);
+                                            setStatusConfirmBooking(booking);
+                                            setStatusConfirmNewStatus(option.value);
+                                            setShowStatusConfirmModal(true);
                                           } else {
                                             handleStatusChange(booking, option.value);
                                           }
@@ -1712,6 +1722,57 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   <Text style={styles.cancelModalButtonSubmitText}>Submit</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Status Change Confirmation Modal (Accept / Start / Complete) */}
+      <Modal
+        visible={showStatusConfirmModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => { setShowStatusConfirmModal(false); setStatusConfirmBooking(null); setStatusConfirmNewStatus(null); }}
+      >
+        <View style={styles.workerModalOverlay}>
+          <View style={[styles.workerModalContent, { maxWidth: 400, alignItems: 'center', padding: 24 }]}>
+            <View style={[styles.statusConfirmIconWrap, { backgroundColor: statusConfirmNewStatus === 1 ? '#10b98120' : statusConfirmNewStatus === 2 ? '#3b82f620' : '#8b5cf620' }]}>
+              <Ionicons
+                name={statusConfirmNewStatus === 1 ? 'checkmark-circle' : statusConfirmNewStatus === 2 ? 'play-circle' : 'checkmark-done'}
+                size={48}
+                color={statusConfirmNewStatus === 1 ? '#10b981' : statusConfirmNewStatus === 2 ? '#3b82f6' : '#8b5cf6'}
+              />
+            </View>
+            <Text style={[styles.statusConfirmTitle, { marginTop: 16 }]}>
+              {statusConfirmNewStatus === 1 ? 'Accept Booking' : statusConfirmNewStatus === 2 ? 'Start Booking' : 'Complete Booking'}
+            </Text>
+            <Text style={[styles.tableCellText, { color: '#64748b', textAlign: 'center', marginTop: 8, marginBottom: 24 }]}>
+              {statusConfirmNewStatus === 1
+                ? 'Are you sure you want to accept this booking? The booking will be marked as active.'
+                : statusConfirmNewStatus === 2
+                ? 'Are you sure you want to start this booking? The work will be marked as in progress.'
+                : 'Are you sure you want to mark this booking as complete? This action cannot be undone.'}
+            </Text>
+            <View style={[styles.cancelModalButtons, { width: '100%', gap: 12, justifyContent: 'center' }]}>
+              <TouchableOpacity
+                style={[styles.cancelModalButtonCancel, { paddingHorizontal: 18, minWidth: 100 }]}
+                onPress={() => { setShowStatusConfirmModal(false); setStatusConfirmBooking(null); setStatusConfirmNewStatus(null); }}
+              >
+                <Text style={styles.cancelModalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.cancelModalButtonSubmit, { paddingHorizontal: 18, minWidth: 100 }]}
+                onPress={() => {
+                  if (statusConfirmBooking && statusConfirmNewStatus != null) {
+                    handleStatusChange(statusConfirmBooking, statusConfirmNewStatus);
+                    setShowStatusConfirmModal(false);
+                    setStatusConfirmBooking(null);
+                    setStatusConfirmNewStatus(null);
+                  }
+                }}
+              >
+                <Text style={styles.cancelModalButtonSubmitText}>Submit</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -2837,6 +2898,19 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '600',
       color: '#334155',
     },
+    statusConfirmIconWrap: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    statusConfirmTitle: {
+      fontSize: isDesktop ? 18 : 16,
+      fontWeight: '700',
+      color: '#0f172a',
+      textAlign: 'center',
+    },
     cancelReasonInput: {
       borderWidth: 1,
       borderColor: '#e2e8f0',
@@ -2859,22 +2933,28 @@ const createStyles = (width: number, height: number) => {
       paddingVertical: 12,
       borderRadius: 10,
       backgroundColor: '#f1f5f9',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     cancelModalButtonCancelText: {
       fontSize: 14,
       fontWeight: '600',
       color: '#64748b',
+      textAlign: 'center',
     },
     cancelModalButtonSubmit: {
       paddingHorizontal: 20,
       paddingVertical: 12,
       borderRadius: 10,
       backgroundColor: '#dc2626',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     cancelModalButtonSubmitText: {
       fontSize: 14,
       fontWeight: '600',
       color: '#ffffff',
+      textAlign: 'center',
     },
     tableStatusText: {
       fontSize: isDesktop ? 11 : isTablet ? 10 : 9,

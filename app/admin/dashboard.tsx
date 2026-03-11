@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,10 +28,14 @@ import Services from './services';
 import Subcategories from './subcategories';
 import TopDeals from './topdeals';
 import Workers from './workers';
+import CategoryAnalysis from './category-analysis';
+import SubcategoryAnalysis from './subcategory-analysis';
+import ServicesAnalysis from './services-analysis';
+import PaymentsAnalysis from './payments-analysis';
 
 export default function AdminIndexScreen() {
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
   const isMobile = width <= 600;
@@ -53,6 +59,45 @@ export default function AdminIndexScreen() {
   const [totalPaymentAmount, setTotalPaymentAmount] = useState<number | null>(null);
   // Which booking status should be shown when opening Bookings from summary cards
   const [bookingsStatus, setBookingsStatus] = useState<string>('all');
+  const [marketAnalysisExpanded, setMarketAnalysisExpanded] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string | null>(null);
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<number | null>(null);
+  const [selectedSubcategoryTitle, setSelectedSubcategoryTitle] = useState<string | null>(null);
+  const marketAnalysisSlide = useRef(new Animated.Value(0)).current;
+  const menuScrollRef = useRef<ScrollView>(null);
+  const marketAnalysisBlockRef = useRef<View>(null);
+  const menuScrollYRef = useRef(0);
+
+  useEffect(() => {
+    if (marketAnalysisExpanded) {
+      marketAnalysisSlide.setValue(0);
+      Animated.timing(marketAnalysisSlide, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: Platform.OS !== 'web',
+      }).start();
+      // Scroll menu so Market Analysis + sub-menus are visible
+      const timer = setTimeout(() => {
+        if (Platform.OS === 'web' && marketAnalysisBlockRef.current) {
+          // Web: use scrollIntoView (ref is a DOM element)
+          const el = (marketAnalysisBlockRef.current as any);
+          if (typeof el?.scrollIntoView === 'function') {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        } else if (menuScrollRef.current) {
+          // Native: scroll down by fixed amount to bring sub-menus into view
+          menuScrollRef.current.scrollTo({
+            y: menuScrollYRef.current + 200,
+            animated: true,
+          });
+        }
+      }, 280);
+      return () => clearTimeout(timer);
+    } else {
+      marketAnalysisSlide.setValue(0);
+    }
+  }, [marketAnalysisExpanded]);
 
   const quickCards = [
     { id: 'total-bookings', label: 'Total Bookings', value: '1,234', icon: 'cart-outline', bg: '#fef3c7', iconBg: '#f59e0b', change: '+3.4%', changeColor: '#10b981' },
@@ -564,7 +609,7 @@ const menuItems = [
     { id: 'animations', icon: 'film-outline', label: 'Animations', color: '#8b5cf6' },
     { id: 'topdeals', icon: 'pricetag-outline', label: 'Top Deals', color: '#f59e0b' },
     { id: 'reviewsratings', icon: 'star-outline', label: 'Review & Ratings', color: '#f59e0b' },
-    { id: 'help', icon: 'help-circle-outline', label: 'Help & Support', color: '#14b8a6' },
+    { id: 'marketanalysis', icon: 'analytics-outline', label: 'Market Analysis', color: '#14b8a6' },
   ];
 
   // Handle quick action card presses -> navigate and optionally apply filters
@@ -610,7 +655,7 @@ const menuItems = [
     setActiveMenu('dashboard');
   };
 
-  const styles = createStyles(width, height);
+  const styles = createStyles(width);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -632,45 +677,149 @@ const menuItems = [
             </View>
 
             {/* Menu Items */}
-            <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
-              <Text style={styles.menuSectionTitle}>MAIN MENU</Text>
-              {menuItems.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[
-                    styles.menuItem,
-                    activeMenu === item.id && styles.menuItemActive
-                  ]}
-                  onPress={() => {
-                    // If user opens Bookings from sidebar, reset to default ("all").
-                    // Dashboard quick-cards still set a specific status via handleQuickActionPress.
-                    if (item.id === 'bookings' && activeMenu !== 'bookings') {
-                      setBookingsStatus('all');
-                    }
-                    setActiveMenu(item.id);
-                  }}
-                >
-                  <View style={[
-                    styles.iconContainer,
-                    activeMenu === item.id && { backgroundColor: item.color }
-                  ]}>
-                    <Ionicons
-                      name={item.icon as any}
-                      size={20}
-                      color={activeMenu === item.id ? '#fff' : item.color}
-                    />
-                  </View>
-                  <Text style={[
-                    styles.menuLabel,
-                    activeMenu === item.id && styles.menuLabelActive
-                  ]}>
-                    {item.label}
-                  </Text>
-                  {activeMenu === item.id && (
-                    <View style={[styles.activeIndicator, { backgroundColor: item.color }]} />
+            <ScrollView
+              ref={menuScrollRef}
+              onScroll={(e) => { menuScrollYRef.current = e.nativeEvent.contentOffset.y; }}
+              scrollEventThrottle={16}
+              style={styles.menuContainer}
+              showsVerticalScrollIndicator={false}
+            >
+              <View collapsable={false}>
+                <Text style={styles.menuSectionTitle}>MAIN MENU</Text>
+                {menuItems.map((item) => (
+                  <React.Fragment key={item.id}>
+                    {item.id === 'marketanalysis' ? (
+                      <View ref={marketAnalysisBlockRef}>
+                        <TouchableOpacity
+                    style={[
+                      styles.menuItem,
+                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) && styles.menuItemActive
+                    ]}
+                    onPress={() => {
+                      if (item.id === 'marketanalysis') {
+                        setMarketAnalysisExpanded((prev) => !prev);
+                        return;
+                      }
+                      setMarketAnalysisExpanded(false);
+                      if (item.id === 'bookings' && activeMenu !== 'bookings') {
+                        setBookingsStatus('all');
+                      }
+                      setActiveMenu(item.id);
+                    }}
+                  >
+                    <View style={[
+                      styles.iconContainer,
+                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) && { backgroundColor: item.color }
+                    ]}>
+                      <Ionicons
+                        name={item.icon as any}
+                        size={20}
+                        color={(activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) ? '#fff' : item.color}
+                      />
+                    </View>
+                    <Text style={[
+                      styles.menuLabel,
+                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) && styles.menuLabelActive
+                    ]}>
+                      {item.label}
+                    </Text>
+                    {(activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) ? (
+                      <View style={[styles.activeIndicator, { backgroundColor: item.color }]} />
+                    ) : null}
+                  </TouchableOpacity>
+                  {marketAnalysisExpanded && (
+                    <Animated.View
+                      style={{
+                        opacity: marketAnalysisSlide,
+                        transform: [{
+                          translateY: marketAnalysisSlide.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [20, 0],
+                          }),
+                        }],
+                      }}
+                    >
+                      <TouchableOpacity
+                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_categories' && styles.menuItemActive]}
+                        onPress={() => { setActiveMenu('marketanalysis_categories'); }}
+                      >
+                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_categories' && { backgroundColor: '#ec4899' }]}>
+                          <Ionicons name="pie-chart-outline" size={20} color={activeMenu === 'marketanalysis_categories' ? '#fff' : '#ec4899'} />
+                        </View>
+                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_categories' && styles.menuLabelActive]}>Categories</Text>
+                        {activeMenu === 'marketanalysis_categories' && <View style={[styles.activeIndicator, { backgroundColor: '#ec4899' }]} />}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_subcategories' && styles.menuItemActive]}
+                        onPress={() => { setSelectedCategoryId(null); setSelectedCategoryTitle(null); setActiveMenu('marketanalysis_subcategories'); }}
+                      >
+                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_subcategories' && { backgroundColor: '#64748b' }]}>
+                          <Ionicons name="layers-outline" size={20} color={activeMenu === 'marketanalysis_subcategories' ? '#fff' : '#64748b'} />
+                        </View>
+                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_subcategories' && styles.menuLabelActive]}>Subcategories</Text>
+                        {activeMenu === 'marketanalysis_subcategories' && <View style={[styles.activeIndicator, { backgroundColor: '#64748b' }]} />}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_services' && styles.menuItemActive]}
+                        onPress={() => { setActiveMenu('marketanalysis_services'); }}
+                      >
+                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_services' && { backgroundColor: '#14b8a6' }]}>
+                          <Ionicons name="construct-outline" size={20} color={activeMenu === 'marketanalysis_services' ? '#fff' : '#14b8a6'} />
+                        </View>
+                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_services' && styles.menuLabelActive]}>Services Analysis</Text>
+                        {activeMenu === 'marketanalysis_services' && <View style={[styles.activeIndicator, { backgroundColor: '#14b8a6' }]} />}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_payments' && styles.menuItemActive]}
+                        onPress={() => { setActiveMenu('marketanalysis_payments'); }}
+                      >
+                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_payments' && { backgroundColor: '#8b5cf6' }]}>
+                          <Ionicons name="wallet-outline" size={20} color={activeMenu === 'marketanalysis_payments' ? '#fff' : '#8b5cf6'} />
+                        </View>
+                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_payments' && styles.menuLabelActive]}>Payments Analysis</Text>
+                        {activeMenu === 'marketanalysis_payments' && <View style={[styles.activeIndicator, { backgroundColor: '#8b5cf6' }]} />}
+                      </TouchableOpacity>
+                    </Animated.View>
                   )}
-                </TouchableOpacity>
-              ))}
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                    style={[
+                      styles.menuItem,
+                      activeMenu === item.id && styles.menuItemActive
+                    ]}
+                    onPress={() => {
+                      setMarketAnalysisExpanded(false);
+                      if (item.id === 'bookings' && activeMenu !== 'bookings') {
+                        setBookingsStatus('all');
+                      }
+                      setActiveMenu(item.id);
+                    }}
+                  >
+                    <View style={[
+                      styles.iconContainer,
+                      activeMenu === item.id && { backgroundColor: item.color }
+                    ]}>
+                      <Ionicons
+                        name={item.icon as any}
+                        size={20}
+                        color={activeMenu === item.id ? '#fff' : item.color}
+                      />
+                    </View>
+                    <Text style={[
+                      styles.menuLabel,
+                      activeMenu === item.id && styles.menuLabelActive
+                    ]}>
+                      {item.label}
+                    </Text>
+                    {activeMenu === item.id && (
+                      <View style={[styles.activeIndicator, { backgroundColor: item.color }]} />
+                    )}
+                  </TouchableOpacity>
+                    )}
+                  </React.Fragment>
+                ))}
+              </View>
             </ScrollView>
 
             {/* Logout Button */}
@@ -693,13 +842,13 @@ const menuItems = [
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'animations' ? 'Animations Management' : activeMenu === 'topdeals' ? 'Top Deals Management' : activeMenu === 'reviewsratings' ? 'Reviews & Ratings Management' : activeMenu === 'fags' ? 'FAQS & Process Management' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'marketanalysis_subcategories' ? 'Subcategory Analysis' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'marketanalysis_services' ? 'Services Analysis' : activeMenu === 'marketanalysis_payments' ? 'Payments Analysis' : activeMenu === 'animations' ? 'Animations Management' : activeMenu === 'topdeals' ? 'Top Deals Management' : activeMenu === 'reviewsratings' ? 'Reviews & Ratings Management' : activeMenu === 'fags' ? 'FAQS & Process Management' : activeMenu === 'marketanalysis_categories' ? 'Category Analysis' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
                   <Ionicons name="chevron-forward" size={14} color="#94a3b8" />
                   <Text style={styles.breadcrumbActive}>
-                    {menuItems.find(item => item.id === activeMenu)?.label || 'Dashboard'}
+                    {activeMenu === 'marketanalysis_categories' ? 'Category Analysis' : activeMenu === 'marketanalysis_subcategories' ? 'Subcategory Analysis' : activeMenu === 'marketanalysis_services' ? 'Services Analysis' : activeMenu === 'marketanalysis_payments' ? 'Payments Analysis' : menuItems.find(item => item.id === activeMenu)?.label || 'Dashboard'}
                   </Text>
                 </View>
               </View>
@@ -783,12 +932,38 @@ const menuItems = [
                 exportTrigger={exportTrigger}
               />
             </View>
+          ) : activeMenu === 'marketanalysis_categories' ? (
+            <View style={styles.content}>
+              <CategoryAnalysis
+                onCategorySelect={(id, title) => {
+                  setSelectedCategoryId(id);
+                  setSelectedCategoryTitle(title);
+                  setActiveMenu('marketanalysis_subcategories');
+                }}
+              />
+            </View>
           ) : activeMenu === 'categories' ? (
             <View style={styles.content}>
               <Categories
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 exportTrigger={exportTrigger}
+              />
+            </View>
+          ) : activeMenu === 'marketanalysis_subcategories' ? (
+            <View style={styles.content}>
+              <SubcategoryAnalysis
+                categoryId={selectedCategoryId}
+                categoryTitle={selectedCategoryTitle}
+                onClearCategoryFilter={() => {
+                  setSelectedCategoryId(null);
+                  setSelectedCategoryTitle(null);
+                }}
+                onSubcategorySelect={(id, title) => {
+                  setSelectedSubcategoryId(id);
+                  setSelectedSubcategoryTitle(title);
+                  setActiveMenu('marketanalysis_services');
+                }}
               />
             </View>
           ) : activeMenu === 'subcategories' ? (
@@ -799,13 +974,28 @@ const menuItems = [
                 exportTrigger={exportTrigger}
               />
             </View>
-          )  : activeMenu === 'services' ? (
+          ) : activeMenu === 'services' ? (
             <View style={styles.content}>
               <Services
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 exportTrigger={exportTrigger}
               />
+            </View>
+          ) : activeMenu === 'marketanalysis_services' ? (
+            <View style={styles.content}>
+              <ServicesAnalysis
+                subcategoryId={selectedSubcategoryId}
+                subcategoryTitle={selectedSubcategoryTitle}
+                onClearSubcategoryFilter={() => {
+                  setSelectedSubcategoryId(null);
+                  setSelectedSubcategoryTitle(null);
+                }}
+              />
+            </View>
+          ) : activeMenu === 'marketanalysis_payments' ? (
+            <View style={styles.content}>
+              <PaymentsAnalysis />
             </View>
           ) : activeMenu === 'quote' ? (
             <View style={styles.content}>
@@ -953,7 +1143,7 @@ const menuItems = [
   );
 }
 
-const createStyles = (width: number, height: number) => {
+const createStyles = (width: number) => {
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
   const isMobile = width <= 600;
@@ -1029,6 +1219,10 @@ const createStyles = (width: number, height: number) => {
       marginBottom: 4,
       borderRadius: 12,
       position: 'relative',
+    },
+    menuSubItem: {
+      paddingLeft: 56,
+      marginBottom: 2,
     },
     menuItemActive: {
       backgroundColor: '#f8fafc',
@@ -1308,30 +1502,6 @@ const createStyles = (width: number, height: number) => {
       borderColor: 'rgba(0,0,0,0.05)',
       minWidth: isDesktop ? 240 : '100%',
       paddingVertical: 20,
-    },
-    quickActionIcon: {
-      width: 56,
-      height: 56,
-      borderRadius: 14,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    quickActionText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: '#0f172a',
-    },
-    quickActionValue: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: '#0f172a',
-      marginTop: 6,
-    },
-    quickActionChange: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      marginTop: 6,
     },
   });
 };
