@@ -1659,15 +1659,10 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
 
       statusValue = 6;
 
-      if (rescheduleType === 2) {
-        // Rescheduled by Customer: Update booking_time to reschedule_date
-        updateCurrentQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?';
-        var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [rescheduleDate, bookingId]);
-      } else {
-        // Rescheduled by Worker: Don't update booking_time
-        updateCurrentQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1 WHERE id = ?';
-        var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [bookingId]);
-      }
+      // On click: update tbl_bookings.booking_time = tbl_rescheduledbookings.reschedule_date
+      // If no worker accepts, revert will restore original
+      updateCurrentQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?';
+      var [updateCurrentResult] = await pool.execute(updateCurrentQuery, [rescheduleDate, bookingId]);
     } else {
       // For cancel requests: status = 5
       statusValue = 5;
@@ -1677,16 +1672,14 @@ app.put('/api/bookings/:bookingId/assign-other-worker', async (req, res) => {
 
     if (updateCurrentResult.affectedRows > 0) {
       // Update all other workers with the same booking_id to status = 0 and payment_status = 1
-      // For reschedule requests by customer (type=2), also update booking_time to reschedule_date
+      // For reschedule: also update booking_time = reschedule_date (if no worker accepts, revert will restore original)
       let updateOthersQuery;
       let updateOthersParams;
 
-      if (requestType === 'reschedule' && rescheduleType === 2 && rescheduleDate) {
-        // Rescheduled by Customer: Update other workers' booking_time too
+      if (requestType === 'reschedule' && rescheduleDate) {
         updateOthersQuery = 'UPDATE tbl_bookings SET status = 0, payment_status = 1, booking_time = ? WHERE booking_id = ? AND id != ?';
         updateOthersParams = [rescheduleDate, currentBookingId, bookingId];
       } else {
-        // Rescheduled by Worker or Cancel request: Don't update booking_time for other workers
         updateOthersQuery = 'UPDATE tbl_bookings SET status = 0, payment_status = 1 WHERE booking_id = ? AND id != ?';
         updateOthersParams = [currentBookingId, bookingId];
       }
@@ -1803,7 +1796,7 @@ app.get('/api/bookings/check-status/:bookingId', async (req, res) => {
 app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { requestType, reschedule_date } = req.body; // requestType: 'cancel' or 'reschedule'
+    const { requestType, reschedule_date, original_booking_time } = req.body; // requestType: 'cancel' or 'reschedule'
 
     console.log(`🔄 Reverting booking ${bookingId} to ${requestType} request (all workers busy)`);
 
@@ -1819,17 +1812,25 @@ app.put('/api/bookings/:bookingId/revert-to-cancel-request', async (req, res) =>
     let statusValue;
 
     if (requestType === 'reschedule') {
-      // For reschedule requests: status = 6, update booking_time to reschedule_date
+      // If no worker accepts: restore original booking_time for all records with this booking_id
       statusValue = 6;
-      if (reschedule_date) {
-        updateQuery = 'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?';
-        var [result] = await pool.execute(updateQuery, [reschedule_date, bookingId]);
-      } else {
+      if (!original_booking_time) {
         return res.status(400).json({
           success: false,
-          message: 'Reschedule date is required for reschedule requests'
+          message: 'original_booking_time is required for reschedule revert'
         });
       }
+      // Get booking_id from the record
+      const [rows] = await pool.execute('SELECT booking_id FROM tbl_bookings WHERE id = ?', [bookingId]);
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Booking not found' });
+      }
+      const currentBookingId = rows[0].booking_id;
+      // Restore original booking_time for all records with this booking_id, set status 6 for the reverted record
+      await pool.execute('UPDATE tbl_bookings SET booking_time = ? WHERE booking_id = ?', [original_booking_time, currentBookingId]);
+      var [result] = await pool.execute('UPDATE tbl_bookings SET status = 6, payment_status = 1 WHERE id = ?', [bookingId]);
+      // No worker accepted: set tbl_rescheduledbookings.status = 0
+      await pool.execute('UPDATE tbl_rescheduledbookings SET status = 0 WHERE bookingid = ?', [bookingId]);
     } else {
       // For cancel requests when no workers available: status = 1, payment_status = 1
       // and tbl_canceledbookings.status = 0

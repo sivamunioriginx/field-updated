@@ -149,6 +149,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const currentRecordIdRef = useRef<number>(0);
   const currentRequestTypeRef = useRef<'cancel' | 'reschedule'>('cancel');
   const currentRescheduleDateRef = useRef<string>('');
+  const currentOriginalBookingTimeRef = useRef<string>('');
   const paginatedBookingsRef = useRef<Booking[]>([]);
 
   // Inject thin scrollbar style for status dropdown (web only)
@@ -539,11 +540,11 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
             pollingIntervalRef.current = null;
           }
           
-          // Update the clicked record based on request type
+          // Update the clicked record based on request type (if no worker accepts: restore original booking_time)
           try {
             const requestBody: any = { requestType: currentRequestTypeRef.current };
-            if (currentRequestTypeRef.current === 'reschedule' && currentRescheduleDateRef.current) {
-              requestBody.reschedule_date = currentRescheduleDateRef.current;
+            if (currentRequestTypeRef.current === 'reschedule') {
+              requestBody.original_booking_time = currentOriginalBookingTimeRef.current;
             }
             
             const revertResponse = await fetch(API_ENDPOINTS.REVERT_TO_CANCEL_REQUEST(currentRecordIdRef.current), {
@@ -585,11 +586,12 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   };
 
   // Start polling after assigning to other worker
-  const startPolling = (bookingId: string, recordId: number, requestType: 'cancel' | 'reschedule' = 'cancel', rescheduleDate?: string) => {
+  const startPolling = (bookingId: string, recordId: number, requestType: 'cancel' | 'reschedule' = 'cancel', rescheduleDate?: string, originalBookingTime?: string) => {
     currentBookingIdRef.current = bookingId;
     currentRecordIdRef.current = recordId;
     currentRequestTypeRef.current = requestType;
     currentRescheduleDateRef.current = rescheduleDate || '';
+    currentOriginalBookingTimeRef.current = originalBookingTime || '';
     
     // Show popup
     setShowPollingPopup(true);
@@ -751,7 +753,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       if (data.success) {
         console.log('✅ Successfully assigned to other worker');
         // Start polling to check if any worker accepts
-        startPolling(booking.booking_id, booking.id, requestType, booking.reschedule_date);
+        startPolling(booking.booking_id, booking.id, requestType, booking.reschedule_date, booking.booking_time);
       } else {
         console.error('❌ Failed to assign to other worker:', data.message);
         Toast.show({

@@ -211,7 +211,7 @@ CREATE TABLE tbl_rescheduledbookings (
   bookingid VARCHAR(50) NOT NULL,
   reschedule_reason TEXT NOT NULL,
   reschedule_date DATETIME NOT NULL,
-  type TINYINT(1) NOT NULL COMMENT '1 or 2',
+  type TINYINT(1) NOT NULL COMMENT '1 or 2 or 3',
   status TINYINT NOT NULL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
