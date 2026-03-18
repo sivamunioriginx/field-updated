@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { createElement, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -19,6 +21,95 @@ import {
 import Toast from 'react-native-toast-message';
 import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
+
+function WebDateInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  min?: string;
+  max?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const displayValue = value
+    ? new Date(value + 'T12:00:00').toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : placeholder;
+  const wrapperStyle: React.CSSProperties = {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 110,
+    height: 38,
+    paddingLeft: 12,
+    paddingRight: 12,
+    borderRadius: 10,
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#ffffff',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxSizing: 'border-box',
+  };
+  const inputStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0,
+    pointerEvents: 'none',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: value ? '#0f172a' : '#64748b',
+    fontWeight: value ? 600 : 500,
+  };
+  const handleClick = () => {
+    try {
+      (inputRef.current as HTMLInputElement & { showPicker?: () => void })?.showPicker?.();
+    } catch {
+      inputRef.current?.click();
+    }
+  };
+  return createElement(
+    'div',
+    { style: wrapperStyle, onClick: handleClick, role: 'button', tabIndex: 0 },
+    createElement('span', { style: { fontSize: 14 } }, '📅'),
+    createElement('span', { style: labelStyle }, displayValue),
+    createElement('input', {
+      ref: inputRef,
+      id,
+      type: 'date',
+      value: value || '',
+      min: min || undefined,
+      max: max || undefined,
+      onChange: (e: any) => onChange(e.target.value || ''),
+      'aria-label': placeholder,
+      style: inputStyle,
+    })
+  );
+}
+
+function formatDateToYYYYMMDD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 interface Booking {
   id: number;
@@ -107,6 +198,13 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [recordsPerPage, setRecordsPerPage] = useState<number | 'ALL'>(5);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [statusDropdownLayout, setStatusDropdownLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const statusDropdownButtonRef = useRef<View>(null);
+  const [sortDropdownLayout, setSortDropdownLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const sortDropdownButtonRef = useRef<View>(null);
+  const [recordsDropdownLayout, setRecordsDropdownLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const recordsDropdownButtonRef = useRef<View>(null);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
@@ -118,6 +216,17 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [showStatusConfirmModal, setShowStatusConfirmModal] = useState(false);
   const [statusConfirmBooking, setStatusConfirmBooking] = useState<Booking | null>(null);
   const [statusConfirmNewStatus, setStatusConfirmNewStatus] = useState<number | null>(null);
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleModalBooking, setRescheduleModalBooking] = useState<Booking | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [showRescheduleDatePicker, setShowRescheduleDatePicker] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState(() => formatDateToYYYYMMDD(new Date()));
+  const [showFromCalendar, setShowFromCalendar] = useState(false);
+  const [showToCalendar, setShowToCalendar] = useState(false);
+  const fromDateObj = fromDate ? new Date(fromDate + 'T12:00:00') : new Date();
+  const toDateObj = toDate ? new Date(toDate + 'T12:00:00') : new Date();
   
   // Worker details popup state
   const [showWorkerPopup, setShowWorkerPopup] = useState(false);
@@ -418,6 +527,17 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       );
     }
 
+    // Apply date range filter
+    if (fromDate.trim() || toDate.trim()) {
+      filtered = filtered.filter(booking => {
+        const bookingDate = new Date(booking.created_at || booking.booking_time);
+        const bookingDay = formatDateToYYYYMMDD(bookingDate);
+        if (fromDate.trim() && bookingDay < fromDate.trim()) return false;
+        if (toDate.trim() && bookingDay > toDate.trim()) return false;
+        return true;
+      });
+    }
+
     // Deduplicate by booking_id - keep only the latest record for each booking_id
     const bookingsMap = new Map<string, Booking>();
     filtered.forEach(booking => {
@@ -450,10 +570,11 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     return filtered;
   };
 
-  // Pagination logic
+  // Pagination logic - when From date is selected, show all records in that range; when empty, use Show dropdown
+  const hasDateFilter = fromDate.trim() !== '';
   const getPaginatedBookings = () => {
     const filtered = getFilteredAndSortedBookings();
-    if (recordsPerPage === 'ALL') {
+    if (recordsPerPage === 'ALL' || hasDateFilter) {
       return filtered;
     }
     const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
@@ -462,7 +583,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     return filtered.slice(startIndex, endIndex);
   };
 
-  const totalPages = recordsPerPage === 'ALL' 
+  const totalPages = (recordsPerPage === 'ALL' || hasDateFilter) 
     ? 1 
     : Math.ceil(getFilteredAndSortedBookings().length / (typeof recordsPerPage === 'number' ? recordsPerPage : 10));
 
@@ -978,6 +1099,47 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
+  const handleRescheduleSubmit = async () => {
+    if (!rescheduleModalBooking || !rescheduleReason.trim()) {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter reason for reschedule' });
+      return;
+    }
+    if (!rescheduleDate) {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please select reschedule date and time' });
+      return;
+    }
+    try {
+      setShowRescheduleModal(false);
+      const year = rescheduleDate.getFullYear();
+      const month = String(rescheduleDate.getMonth() + 1).padStart(2, '0');
+      const day = String(rescheduleDate.getDate()).padStart(2, '0');
+      const hour = String(rescheduleDate.getHours()).padStart(2, '0');
+      const minute = String(rescheduleDate.getMinutes()).padStart(2, '0');
+      const second = String(rescheduleDate.getSeconds()).padStart(2, '0');
+      const rescheduleDateTimeStr = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+      const response = await fetch(API_ENDPOINTS.ADMIN_RESCHEDULE_BOOKING(rescheduleModalBooking.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reschedule_date: rescheduleDateTimeStr, reschedule_reason: rescheduleReason.trim() }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        const bookingId = rescheduleModalBooking.booking_id;
+        const recordId = rescheduleModalBooking.id;
+        const originalBookingTime = rescheduleModalBooking.booking_time;
+        setRescheduleModalBooking(null);
+        setRescheduleDate(null);
+        setRescheduleReason('');
+        startPolling(bookingId, recordId, 'reschedule', rescheduleDateTimeStr, originalBookingTime);
+      } else {
+        Toast.show({ type: 'error', text1: 'Error', text2: data.message || 'Failed to reschedule booking' });
+      }
+    } catch (error) {
+      console.error('❌ Error rescheduling booking:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'An error occurred while rescheduling' });
+    }
+  };
+
   const styles = createStyles(width, height);
 
   if (loading) {
@@ -1035,6 +1197,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         setMenuPosition(null);
         setStatusDropdownBookingId(null);
         setStatusDropdownPosition(null);
+        setShowStatusDropdown(false);
+        setShowSortDropdown(false);
+        setShowRecordsDropdown(false);
       }}>
         <View style={styles.bookingsContainer}>
           <View style={styles.bookingsHeader}>
@@ -1044,96 +1209,144 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
               Bookings
             </Text>
             
-            {/* Right side - Status, Sort and Records */}
+            {/* Right side - Status, Sort, Date filters and Records - horizontally scrollable */}
             <View style={styles.controlsRight}>
-              {/* Status Filter */}
-              <View style={styles.statusFilterContainer}>
-                <Text style={styles.filterLabel}>Status:</Text>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.statusOptionsScroll}
-                >
-                  {statusOptions.map((option) => (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={true}
+                style={styles.controlsScrollRow}
+                contentContainerStyle={styles.controlsScrollContent}
+              >
+                {/* Status Dropdown - same style as Sort By */}
+                <View ref={statusDropdownButtonRef} style={styles.dropdownWrapperSort} collapsable={false}>
+                  <Text style={styles.dropdownLabel}>Status:</Text>
+                  <TouchableOpacity 
+                    style={styles.dropdownButtonSort}
+                    onPress={() => {
+                      statusDropdownButtonRef.current?.measureInWindow((x, y, width, height) => {
+                        setStatusDropdownLayout({ x, y, width, height });
+                        setShowStatusDropdown(!showStatusDropdown);
+                        setShowSortDropdown(false);
+                        setShowRecordsDropdown(false);
+                      });
+                    }}
+                  >
+                    <Ionicons name="filter" size={16} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {statusOptions.find(opt => opt.value === statusFilter)?.label}
+                    </Text>
+                    <Ionicons 
+                      name={showStatusDropdown ? "chevron-up" : "chevron-down"} 
+                      size={16} 
+                      color="#64748b" 
+                    />
+                  </TouchableOpacity>
+                  {/* Status dropdown options rendered in Modal to avoid ScrollView clipping */}
+                </View>
+
+                {/* Sort Dropdown */}
+                <View ref={sortDropdownButtonRef} style={styles.dropdownWrapperSort} collapsable={false}>
+                  <Text style={styles.dropdownLabel}>Sort By:</Text>
+                  <TouchableOpacity 
+                    style={styles.dropdownButtonSort}
+                    onPress={() => {
+                      sortDropdownButtonRef.current?.measureInWindow((x, y, width, height) => {
+                        setSortDropdownLayout({ x, y, width, height });
+                        setShowSortDropdown(!showSortDropdown);
+                        setShowStatusDropdown(false);
+                        setShowRecordsDropdown(false);
+                      });
+                    }}
+                  >
+                    <Ionicons name="swap-vertical" size={16} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {sortOptions.find(opt => opt.value === sortBy)?.label}
+                    </Text>
+                    <Ionicons 
+                      name={showSortDropdown ? "chevron-up" : "chevron-down"} 
+                      size={16} 
+                      color="#64748b" 
+                    />
+                  </TouchableOpacity>
+                  {/* Sort dropdown options rendered in Modal to avoid ScrollView clipping */}
+                </View>
+
+                {/* From date */}
+                <View style={styles.dropdownWrapperSort}>
+                  <Text style={styles.dropdownLabel}>From:</Text>
+                  {Platform.OS === 'web' ? (
+                    <WebDateInput
+                      id="book-from-date"
+                      value={fromDate}
+                      onChange={(v) => { setFromDate(v); setCurrentPage(1); }}
+                      placeholder="Select date"
+                      max={toDate || formatDateToYYYYMMDD(new Date())}
+                    />
+                  ) : (
                     <TouchableOpacity
-                      key={option.value}
-                      style={[
-                        styles.statusOption,
-                        statusFilter === option.value && styles.statusOptionActive
-                      ]}
-                      onPress={() => {
-                        setStatusFilter(option.value);
-                        setCurrentPage(1);
-                      }}
+                      style={styles.dropdownButtonSort}
+                      onPress={() => setShowFromCalendar(true)}
+                      activeOpacity={0.8}
                     >
-                      <Text style={[
-                        styles.statusOptionText,
-                        statusFilter === option.value && styles.statusOptionTextActive
-                      ]}>
-                        {option.label}
+                      <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                      <Text style={styles.dropdownButtonText}>
+                        {fromDate
+                          ? new Date(fromDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'Select date'}
                       </Text>
+                      <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+                  )}
+                </View>
+                {/* To date */}
+                <View style={styles.dropdownWrapperSort}>
+                  <Text style={styles.dropdownLabel}>To:</Text>
+                  {Platform.OS === 'web' ? (
+                    <WebDateInput
+                      id="book-to-date"
+                      value={toDate}
+                      onChange={(v) => { setToDate(v); setCurrentPage(1); }}
+                      placeholder="Select date"
+                      min={fromDate}
+                      max={formatDateToYYYYMMDD(new Date())}
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.dropdownButtonSort}
+                      onPress={() => setShowToCalendar(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                      <Text style={styles.dropdownButtonText}>
+                        {toDate
+                          ? new Date(toDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'Select date'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-              {/* Sort Dropdown */}
-              <View style={styles.dropdownWrapperSort}>
-                <Text style={styles.dropdownLabel}>Sort By:</Text>
-                <TouchableOpacity 
-                  style={styles.dropdownButtonSort}
-                  onPress={() => {
-                    setShowSortDropdown(!showSortDropdown);
-                    setShowRecordsDropdown(false);
-                  }}
-                >
-                  <Ionicons name="swap-vertical" size={16} color="#64748b" />
-                  <Text style={styles.dropdownButtonText}>
-                    {sortOptions.find(opt => opt.value === sortBy)?.label}
-                  </Text>
-                  <Ionicons 
-                    name={showSortDropdown ? "chevron-up" : "chevron-down"} 
-                    size={16} 
-                    color="#64748b" 
-                  />
-                </TouchableOpacity>
-                {showSortDropdown && (
-                  <View style={styles.dropdownMenu}>
-                    {sortOptions.map((option) => (
-                      <TouchableOpacity
-                        key={option.value}
-                        style={[
-                          styles.dropdownMenuItem,
-                          sortBy === option.value && styles.dropdownMenuItemActive
-                        ]}
-                        onPress={() => {
-                          setSortBy(option.value);
-                          setShowSortDropdown(false);
-                        }}
-                      >
-                        <Text style={[
-                          styles.dropdownMenuItemText,
-                          sortBy === option.value && styles.dropdownMenuItemTextActive
-                        ]}>
-                          {option.label}
-                        </Text>
-                        {sortBy === option.value && (
-                          <Ionicons name="checkmark" size={16} color="#6366f1" />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-
-              {/* Records Per Page Dropdown */}
-              <View style={styles.dropdownWrapperShow}>
+                {/* Records Per Page Dropdown */}
+              <View ref={recordsDropdownButtonRef} style={styles.dropdownWrapperShow} collapsable={false}>
                 <Text style={styles.dropdownLabel}>Show:</Text>
                 <TouchableOpacity 
                   style={styles.dropdownButtonShow}
                   onPress={() => {
-                    setShowRecordsDropdown(!showRecordsDropdown);
-                    setShowSortDropdown(false);
+                    recordsDropdownButtonRef.current?.measureInWindow((x, y, width, height) => {
+                      setRecordsDropdownLayout({ x, y, width, height });
+                      setShowRecordsDropdown(!showRecordsDropdown);
+                      setShowStatusDropdown(false);
+                      setShowSortDropdown(false);
+                    });
                   }}
                 >
                   <Ionicons name="list" size={14} color="#64748b" />
@@ -1146,35 +1359,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     color="#64748b" 
                   />
                 </TouchableOpacity>
-                {showRecordsDropdown && (
-                  <View style={styles.dropdownMenuShow}>
-                    {recordOptions.map((option) => (
-                      <TouchableOpacity
-                        key={option}
-                        style={[
-                          styles.dropdownMenuItem,
-                          recordsPerPage === option && styles.dropdownMenuItemActive
-                        ]}
-                        onPress={() => {
-                          setRecordsPerPage(option as number | 'ALL');
-                          setCurrentPage(1);
-                          setShowRecordsDropdown(false);
-                        }}
-                      >
-                        <Text style={[
-                          styles.dropdownMenuItemText,
-                          recordsPerPage === option && styles.dropdownMenuItemTextActive
-                        ]}>
-                          {option === 'ALL' ? 'ALL' : option}
-                        </Text>
-                        {recordsPerPage === option && (
-                          <Ionicons name="checkmark" size={16} color="#10b981" />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
+                {/* Show dropdown options rendered in Modal to avoid ScrollView clipping */}
               </View>
+              </ScrollView>
             </View>
           </View>
         </View>
@@ -1505,6 +1692,17 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                                             setCancelModalBooking(booking);
                                             setCancelReason('');
                                             setShowCancelModal(true);
+                                          } else if (option.value === 6) {
+                                            setStatusDropdownBookingId(null);
+                                            setStatusDropdownPosition(null);
+                                            setRescheduleModalBooking(booking);
+                                            const baseDate = booking.booking_time ? new Date(booking.booking_time) : new Date();
+                                            const plusOneDay = new Date(baseDate);
+                                            plusOneDay.setDate(plusOneDay.getDate() + 1);
+                                            setRescheduleDate(plusOneDay);
+                                            setRescheduleReason('');
+                                            setShowRescheduleDatePicker(false);
+                                            setShowRescheduleModal(true);
                                           } else if (option.value === 1 || option.value === 2 || option.value === 3) {
                                             setStatusDropdownBookingId(null);
                                             setStatusDropdownPosition(null);
@@ -1686,6 +1884,168 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         </View>
       </TouchableWithoutFeedback>
 
+      {/* Status Dropdown Modal - renders outside ScrollView to avoid clipping */}
+      <Modal
+        visible={showStatusDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStatusDropdown(false)}
+      >
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowStatusDropdown(false)}
+          />
+          <View
+            style={[
+              styles.dropdownMenuStatusModal,
+              {
+                position: 'absolute',
+                top: statusDropdownLayout ? statusDropdownLayout.y + statusDropdownLayout.height + 4 : 150,
+                left: statusDropdownLayout ? statusDropdownLayout.x : 50,
+                minWidth: statusDropdownLayout ? Math.max(statusDropdownLayout.width, 160) : 160,
+              },
+            ]}
+          >
+            <ScrollView
+              style={styles.dropdownMenuStatusScroll}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              {...(Platform.OS === 'web' ? { nativeID: 'status-dropdown-scroll' } : {})}
+            >
+              {statusOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.dropdownMenuItem,
+                    statusFilter === option.value && styles.dropdownMenuItemActive
+                  ]}
+                  onPress={() => {
+                    setStatusFilter(option.value);
+                    setCurrentPage(1);
+                    setShowStatusDropdown(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.dropdownMenuItemText,
+                    statusFilter === option.value && styles.dropdownMenuItemTextActive
+                  ]}>
+                    {option.label}
+                  </Text>
+                  {statusFilter === option.value && (
+                    <Ionicons name="checkmark" size={16} color="#6366f1" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Sort By Dropdown Modal - renders outside ScrollView to avoid clipping */}
+      <Modal
+        visible={showSortDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSortDropdown(false)}
+      >
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowSortDropdown(false)}
+          />
+          <View
+            style={[
+              styles.dropdownMenuStatusModal,
+              {
+                position: 'absolute',
+                top: sortDropdownLayout ? sortDropdownLayout.y + sortDropdownLayout.height + 4 : 150,
+                left: sortDropdownLayout ? sortDropdownLayout.x : 50,
+                minWidth: sortDropdownLayout ? Math.max(sortDropdownLayout.width, 120) : 120,
+              },
+            ]}
+          >
+            {sortOptions.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.dropdownMenuItem,
+                  sortBy === option.value && styles.dropdownMenuItemActive
+                ]}
+                onPress={() => {
+                  setSortBy(option.value);
+                  setShowSortDropdown(false);
+                }}
+              >
+                <Text style={[
+                  styles.dropdownMenuItemText,
+                  sortBy === option.value && styles.dropdownMenuItemTextActive
+                ]}>
+                  {option.label}
+                </Text>
+                {sortBy === option.value && (
+                  <Ionicons name="checkmark" size={16} color="#6366f1" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Show (Records Per Page) Dropdown Modal - renders outside ScrollView to avoid clipping */}
+      <Modal
+        visible={showRecordsDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowRecordsDropdown(false)}
+      >
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowRecordsDropdown(false)}
+          />
+          <View
+            style={[
+              styles.dropdownMenuStatusModal,
+              {
+                position: 'absolute',
+                top: recordsDropdownLayout ? recordsDropdownLayout.y + recordsDropdownLayout.height + 4 : 150,
+                left: recordsDropdownLayout ? recordsDropdownLayout.x : 50,
+                minWidth: recordsDropdownLayout ? Math.max(recordsDropdownLayout.width, 80) : 80,
+              },
+            ]}
+          >
+            {recordOptions.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[
+                  styles.dropdownMenuItem,
+                  recordsPerPage === option && styles.dropdownMenuItemActive
+                ]}
+                onPress={() => {
+                  setRecordsPerPage(option as number | 'ALL');
+                  setCurrentPage(1);
+                  setShowRecordsDropdown(false);
+                }}
+              >
+                <Text style={[
+                  styles.dropdownMenuItemText,
+                  recordsPerPage === option && styles.dropdownMenuItemTextActive
+                ]}>
+                  {option === 'ALL' ? 'ALL' : option}
+                </Text>
+                {recordsPerPage === option && (
+                  <Ionicons name="checkmark" size={16} color="#10b981" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
       {/* Cancel Booking Modal */}
       <Modal
         visible={showCancelModal}
@@ -1722,6 +2082,118 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.cancelModalButtonSubmit} onPress={handleCancelWithReason}>
                   <Text style={styles.cancelModalButtonSubmitText}>Submit</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reschedule Booking Modal */}
+      <Modal
+        visible={showRescheduleModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => { setShowRescheduleModal(false); setRescheduleModalBooking(null); setRescheduleDate(null); setRescheduleReason(''); setShowRescheduleDatePicker(false); }}
+      >
+        <View style={styles.workerModalOverlay}>
+          <View style={styles.workerModalContent}>
+            <View style={styles.workerModalHeader}>
+              <View style={styles.workerModalHeaderTitleRow}>
+                <Text style={styles.workerModalTitle}>Reschedule booking</Text>
+                <TouchableOpacity onPress={() => { setShowRescheduleModal(false); setRescheduleModalBooking(null); setRescheduleDate(null); setRescheduleReason(''); setShowRescheduleDatePicker(false); }} style={styles.workerModalClose}>
+                  <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={{ padding: 20 }}>
+              <Text style={[styles.tableCellText, { marginBottom: 6 }]}>Booking ID</Text>
+              <Text style={[styles.tableCellText, { fontWeight: '700', marginBottom: 16 }]}>{rescheduleModalBooking?.booking_id || ''}</Text>
+              <Text style={[styles.tableCellText, { marginBottom: 6 }]}>Booking For</Text>
+              <Text style={[styles.tableCellText, { fontWeight: '700', marginBottom: 16 }]}>{rescheduleModalBooking?.booking_time ? formatDate(rescheduleModalBooking.booking_time) : 'N/A'}</Text>
+              <Text style={[styles.tableCellText, { marginBottom: 6 }]}>Reschedule date time</Text>
+              {Platform.OS === 'web' ? (
+                <View style={{ marginBottom: 16 }}>
+                  <input
+                    type="datetime-local"
+                    value={rescheduleDate ? `${rescheduleDate.getFullYear()}-${String(rescheduleDate.getMonth() + 1).padStart(2, '0')}-${String(rescheduleDate.getDate()).padStart(2, '0')}T${String(rescheduleDate.getHours()).padStart(2, '0')}:${String(rescheduleDate.getMinutes()).padStart(2, '0')}` : ''}
+                    onChange={(e) => { const v = e.target.value; setRescheduleDate(v ? new Date(v) : null); }}
+                    min={new Date().toISOString().slice(0, 16)}
+                    style={{ padding: 12, fontSize: 14, borderRadius: 10, border: '1px solid #e2e8f0', width: '100%', boxSizing: 'border-box' } as any}
+                  />
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={[styles.cancelReasonInput, { marginBottom: 16, justifyContent: 'center' }]}
+                    onPress={() => setShowRescheduleDatePicker(true)}
+                  >
+                    <Text style={[styles.tableCellText, !rescheduleDate && { color: '#94a3b8' }]}>
+                      {rescheduleDate ? formatDate(rescheduleDate.toISOString()) : 'Select date and time'}
+                    </Text>
+                  </TouchableOpacity>
+                  {showRescheduleDatePicker && (
+                    Platform.OS === 'ios' ? (
+                      <Modal visible={showRescheduleDatePicker} transparent animationType="slide">
+                        <View style={styles.datePickerModalOverlay}>
+                          <View style={styles.datePickerModalContent}>
+                            <View style={styles.datePickerHeader}>
+                              <Text style={styles.datePickerModalTitle}>Select Date & Time</Text>
+                              <TouchableOpacity onPress={() => setShowRescheduleDatePicker(false)}>
+                                <Ionicons name="close" size={24} color="#666" />
+                              </TouchableOpacity>
+                            </View>
+                            <DateTimePicker
+                              value={rescheduleDate || new Date()}
+                              mode="datetime"
+                              display="spinner"
+                              onChange={(_, date) => date && setRescheduleDate(date)}
+                              minimumDate={new Date()}
+                              style={{ width: '100%' }}
+                            />
+                            <TouchableOpacity style={[styles.cancelModalButtonSubmit, { marginTop: 16 }]} onPress={() => setShowRescheduleDatePicker(false)}>
+                              <Text style={styles.cancelModalButtonSubmitText}>Done</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </Modal>
+                    ) : (
+                      <DateTimePicker
+                        value={rescheduleDate || new Date()}
+                        mode="datetime"
+                        display="default"
+                        onChange={(_, date) => { if (date) setRescheduleDate(date); setShowRescheduleDatePicker(false); }}
+                        minimumDate={new Date()}
+                      />
+                    )
+                  )}
+                </>
+              )}
+              <Text style={[styles.tableCellText, { marginBottom: 6 }]}>Reason for Reschedule</Text>
+              <TextInput
+                style={styles.cancelReasonInput}
+                placeholder="Enter reason..."
+                placeholderTextColor="#94a3b8"
+                value={rescheduleReason}
+                onChangeText={setRescheduleReason}
+                multiline
+                numberOfLines={3}
+              />
+              <View style={styles.cancelModalButtons}>
+                <TouchableOpacity style={styles.cancelModalButtonCancel} onPress={() => { setShowRescheduleModal(false); setRescheduleModalBooking(null); setRescheduleDate(null); setRescheduleReason(''); setShowRescheduleDatePicker(false); }}>
+                  <Text style={styles.cancelModalButtonCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.cancelModalButtonSubmit,
+                    { backgroundColor: '#f59e0b' },
+                    (!rescheduleDate || !rescheduleReason.trim()) && { backgroundColor: '#cbd5e1', opacity: 0.6 }
+                  ]}
+                  onPress={handleRescheduleSubmit}
+                  disabled={!rescheduleDate || !rescheduleReason.trim()}
+                  activeOpacity={(!rescheduleDate || !rescheduleReason.trim()) ? 1 : 0.7}
+                >
+                  <Text style={[styles.cancelModalButtonSubmitText, (!rescheduleDate || !rescheduleReason.trim()) && { color: '#94a3b8' }]}>Submit</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2456,6 +2928,117 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
           </View>
         </View>
       </Modal>
+
+      {/* Native date pickers for From/To filter */}
+      {Platform.OS !== 'web' && DateTimePicker && showFromCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowFromCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>From date</Text>
+                  <TouchableOpacity onPress={() => setShowFromCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={fromDateObj}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={toDateObj}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) { setFromDate(formatDateToYYYYMMDD(date)); setCurrentPage(1); }
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowFromCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#6366f1', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={fromDateObj}
+            mode="date"
+            display="calendar"
+            maximumDate={toDateObj}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) { setFromDate(formatDateToYYYYMMDD(date)); setCurrentPage(1); }
+              setShowFromCalendar(false);
+            }}
+          />
+        ))}
+
+      {Platform.OS !== 'web' && DateTimePicker && showToCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowToCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>To date</Text>
+                  <TouchableOpacity onPress={() => setShowToCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={toDateObj}
+                  mode="date"
+                  display="calendar"
+                  minimumDate={fromDateObj}
+                  maximumDate={new Date()}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) { setToDate(formatDateToYYYYMMDD(date)); setCurrentPage(1); }
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowToCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#6366f1', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={toDateObj}
+            mode="date"
+            display="calendar"
+            minimumDate={fromDateObj}
+            maximumDate={new Date()}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) { setToDate(formatDateToYYYYMMDD(date)); setCurrentPage(1); }
+              setShowToCalendar(false);
+            }}
+          />
+        ))}
     </ScrollView>
   );
 }
@@ -2522,7 +3105,7 @@ const createStyles = (width: number, height: number) => {
       overflow: 'visible',
     },
     bookingsHeader: {
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -2533,52 +3116,12 @@ const createStyles = (width: number, height: number) => {
       paddingBottom: 2,
       flexShrink: 1,
     },
-    statusFilterContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      height: isMobile ? 36 : 38,
-      paddingTop: isMobile ? 0 : 22,
-      width: isMobile ? '100%' : 'auto',
-    },
-    filterLabel: {
-      fontSize: isDesktop ? 12 : 11,
-      fontWeight: '600',
-      color: '#64748b',
-      marginRight: 8,
-      marginBottom: isMobile ? 4 : 0,
-    },
-    statusOptionsScroll: {
-      flexGrow: 0,
-    },
-    statusOption: {
-      paddingHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
-      paddingVertical: isDesktop ? 8 : 6,
-      marginRight: 6,
-      borderRadius: 8,
-      backgroundColor: '#f8fafc',
-      borderWidth: 1,
-      borderColor: '#e2e8f0',
-      height: isMobile ? 36 : 38,
-      justifyContent: 'center',
-    },
-    statusOptionActive: {
-      backgroundColor: '#f59e0b',
-      borderColor: '#f59e0b',
-    },
-    statusOptionText: {
-      fontSize: isDesktop ? 12 : 11,
-      fontWeight: '600',
-      color: '#64748b',
-    },
-    statusOptionTextActive: {
-      color: '#ffffff',
-    },
     controlsRow: {
       flexDirection: isMobile ? 'column' : 'row',
       justifyContent: 'space-between',
       alignItems: isMobile ? 'flex-start' : 'flex-end',
       gap: isMobile ? 16 : 12,
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -2589,6 +3132,57 @@ const createStyles = (width: number, height: number) => {
       width: isMobile ? '100%' : 'auto',
       zIndex: 500,
       overflow: 'visible',
+    },
+    controlsScrollRow: {
+      flexGrow: 0,
+      flexShrink: 1,
+      maxWidth: isMobile ? '100%' : undefined,
+    },
+    controlsScrollContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 4,
+    },
+    calendarOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    calendarModal: {
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 32,
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    calendarTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#0f172a',
+    },
+    picker: { width: '100%' },
+    calendarDone: {
+      marginHorizontal: 20,
+      marginTop: 16,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    calendarDoneGradient: {
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    calendarDoneText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#fff',
     },
     dropdownWrapperSort: {
       position: 'relative',
@@ -2642,11 +3236,7 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '500',
       color: '#0f172a',
     },
-    dropdownMenu: {
-      position: 'absolute',
-      top: 62,
-      right: 0,
-      minWidth: 120,
+    dropdownMenuStatusModal: {
       backgroundColor: '#ffffff',
       borderRadius: 10,
       borderWidth: 1,
@@ -2656,25 +3246,11 @@ const createStyles = (width: number, height: number) => {
       shadowOpacity: 0.2,
       shadowRadius: 20,
       elevation: 20,
-      zIndex: 10000,
-      maxHeight: 180,
+      maxHeight: 220,
+      overflow: 'hidden',
     },
-    dropdownMenuShow: {
-      position: 'absolute',
-      top: 62,
-      right: 0,
-      minWidth: 80,
-      backgroundColor: '#ffffff',
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: '#e2e8f0',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.2,
-      shadowRadius: 20,
-      elevation: 20,
-      zIndex: 10000,
-      maxHeight: 180,
+    dropdownMenuStatusScroll: {
+      maxHeight: 220,
     },
     dropdownMenuItem: {
       flexDirection: 'row',
@@ -2957,6 +3533,29 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '600',
       color: '#ffffff',
       textAlign: 'center',
+    },
+    datePickerModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    datePickerModalContent: {
+      backgroundColor: '#ffffff',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      paddingBottom: 24,
+    },
+    datePickerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    datePickerModalTitle: {
+      fontSize: isDesktop ? 18 : 16,
+      fontWeight: '700',
+      color: '#0f172a',
     },
     tableStatusText: {
       fontSize: isDesktop ? 11 : isTablet ? 10 : 9,

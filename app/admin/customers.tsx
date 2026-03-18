@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { createElement, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   Linking,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,100 @@ import {
 import Toast from 'react-native-toast-message';
 import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
+
+let DateTimePicker: React.ComponentType<any> | null = null;
+if (Platform.OS !== 'web') {
+  DateTimePicker = require('@react-native-community/datetimepicker').default;
+}
+
+function WebDateInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  min?: string;
+  max?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const displayValue = value
+    ? new Date(value + 'T12:00:00').toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+    : placeholder;
+  const wrapperStyle: React.CSSProperties = {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 110,
+    height: 38,
+    paddingLeft: 12,
+    paddingRight: 12,
+    borderRadius: 10,
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#ffffff',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxSizing: 'border-box',
+  };
+  const inputStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0,
+    pointerEvents: 'none',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: value ? '#0f172a' : '#64748b',
+    fontWeight: value ? 600 : 500,
+  };
+  const handleClick = () => {
+    try {
+      (inputRef.current as HTMLInputElement & { showPicker?: () => void })?.showPicker?.();
+    } catch {
+      inputRef.current?.click();
+    }
+  };
+  return createElement(
+    'div',
+    { style: wrapperStyle, onClick: handleClick, role: 'button', tabIndex: 0 },
+    createElement('span', { style: { fontSize: 14 } }, '📅'),
+    createElement('span', { style: labelStyle }, displayValue),
+    createElement('input', {
+      ref: inputRef,
+      id,
+      type: 'date',
+      value: value || '',
+      min: min || undefined,
+      max: max || undefined,
+      onChange: (e: any) => onChange(e.target.value || ''),
+      'aria-label': placeholder,
+      style: inputStyle,
+    })
+  );
+}
+
+function formatDateToYYYYMMDD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 interface Customer {
   id: number;
@@ -32,6 +128,7 @@ interface Customer {
   country: string;
   profile_image?: string;
   document1?: string;
+  created_at?: string;
 }
 
 interface CustomerBooking {
@@ -65,8 +162,8 @@ interface CustomersProps {
   exportTrigger?: number;
 }
 
-export default function Customers({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: CustomersProps) {
-  const { width, height } = useWindowDimensions();
+export default function Customers({ searchQuery: externalSearchQuery, exportTrigger }: CustomersProps) {
+  const { width } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
   const isMobile = width <= 600;
@@ -79,9 +176,14 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState(() => formatDateToYYYYMMDD(new Date()));
+  const [showFromCalendar, setShowFromCalendar] = useState(false);
+  const [showToCalendar, setShowToCalendar] = useState(false);
+  const fromDateObj = fromDate ? new Date(fromDate + 'T12:00:00') : new Date();
+  const toDateObj = toDate ? new Date(toDate + 'T12:00:00') : new Date();
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
-  const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
   const [deleteConfirmCustomer, setDeleteConfirmCustomer] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showViewPersonalInfo, setShowViewPersonalInfo] = useState(false);
@@ -118,37 +220,27 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
       { wch: 6 }, { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 50 },
     ];
     XLSX.writeFile(wb, `customer_records.xlsx`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportTrigger]);
 
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      
-      console.log('📡 Fetching customers from:', API_ENDPOINTS.ADMIN_CUSTOMERS);
       const response = await fetch(API_ENDPOINTS.ADMIN_CUSTOMERS);
-      
       if (!response.ok) {
-        console.error('❌ Response not OK:', response.status, response.statusText);
         setCustomers([]);
         setLoading(false);
         return;
       }
-      
       const data = await response.json();
-      console.log('📦 Customers response:', data);
-      
       if (data.success) {
         const customersData = data.customers || data.data || [];
-        console.log('✅ Customers fetched:', customersData.length, 'records');
         setCustomers(customersData);
         setCurrentPage(1);
       } else {
-        console.error('❌ Failed to fetch customers:', data.message);
         setCustomers([]);
       }
-    } catch (error) {
-      console.error('❌ Error fetching customers:', error);
+    } catch {
       setCustomers([]);
     } finally {
       setLoading(false);
@@ -185,8 +277,8 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
             });
           setCvBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
         }
-      } catch (e) {
-        console.error('❌ Error fetching customer bookings:', e);
+      } catch {
+        // ignore
       } finally {
         setCvBookingsLoading(false);
       }
@@ -203,8 +295,8 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
           );
           setCvReviews(filtered);
         }
-      } catch (e) {
-        console.error('❌ Error fetching customer reviews:', e);
+      } catch {
+        // ignore
       } finally {
         setCvReviewsLoading(false);
       }
@@ -232,7 +324,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(customer => 
+      filtered = filtered.filter(customer =>
         customer.name.toLowerCase().includes(query) ||
         customer.mobile.includes(query) ||
         (customer.email && customer.email.toLowerCase().includes(query)) ||
@@ -241,13 +333,28 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
       );
     }
 
-    // Apply sorting
+    // Apply date range filter
+    if (fromDate.trim() || toDate.trim()) {
+      filtered = filtered.filter(customer => {
+        const created = customer.created_at;
+        if (!created) return true;
+        const customerDate = new Date(created);
+        const customerDay = formatDateToYYYYMMDD(customerDate);
+        if (fromDate.trim() && customerDay < fromDate.trim()) return false;
+        if (toDate.trim() && customerDay > toDate.trim()) return false;
+        return true;
+      });
+    }
+
+    // Apply sorting (by created_at when available, else by id)
     filtered.sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : a.id;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : b.id;
       switch (sortBy) {
         case 'desc':
-          return b.id - a.id;
+          return bTime - aTime;
         case 'asc':
-          return a.id - b.id;
+          return aTime - bTime;
         default:
           return 0;
       }
@@ -256,10 +363,11 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
     return filtered;
   };
 
-  // Pagination logic
+  // Pagination logic - when From date is selected, show all records in that range; when empty, use Show dropdown
+  const hasDateFilter = fromDate.trim() !== '';
   const getPaginatedCustomers = () => {
     const filtered = getFilteredAndSortedCustomers();
-    if (recordsPerPage === 'ALL') {
+    if (recordsPerPage === 'ALL' || hasDateFilter) {
       return filtered;
     }
     const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
@@ -268,8 +376,8 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
     return filtered.slice(startIndex, endIndex);
   };
 
-  const totalPages = recordsPerPage === 'ALL' 
-    ? 1 
+  const totalPages = (recordsPerPage === 'ALL' || hasDateFilter)
+    ? 1
     : Math.ceil(getFilteredAndSortedCustomers().length / (typeof recordsPerPage === 'number' ? recordsPerPage : 10));
 
   const sortOptions = [
@@ -278,14 +386,6 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
   ];
 
   const recordOptions = [5, 10, 50, 100, 'ALL'];
-
-  const handleSearchChange = (text: string) => {
-    setSearchQuery(text);
-    setCurrentPage(1);
-    if (onSearchChange) {
-      onSearchChange(text);
-    }
-  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -360,7 +460,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
     }
   };
 
-  const styles = createStyles(width, height);
+  const styles = createStyles(width);
 
   if (loading) {
     return (
@@ -388,7 +488,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
   paginatedCustomersRef.current = paginatedCustomers;
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
@@ -408,13 +508,76 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
             <Text style={styles.customersTitle}>
               Customers
             </Text>
-            
-            {/* Right side - Sort and Records */}
+
+            {/* Right side - Date filters, Sort and Records */}
             <View style={styles.controlsRight}>
+              {/* From date */}
+              <View style={styles.dropdownWrapperSort}>
+                <Text style={styles.dropdownLabel}>From:</Text>
+                {Platform.OS === 'web' ? (
+                  <WebDateInput
+                    id="cust-from-date"
+                    value={fromDate}
+                    onChange={(v) => { setFromDate(v); setCurrentPage(1); }}
+                    placeholder="Select date"
+                    max={toDate || formatDateToYYYYMMDD(new Date())}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.dropdownButtonSort}
+                    onPress={() => setShowFromCalendar(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {fromDate
+                        ? new Date(fromDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                        : 'Select date'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {/* To date */}
+              <View style={styles.dropdownWrapperSort}>
+                <Text style={styles.dropdownLabel}>To:</Text>
+                {Platform.OS === 'web' ? (
+                  <WebDateInput
+                    id="cust-to-date"
+                    value={toDate}
+                    onChange={(v) => { setToDate(v); setCurrentPage(1); }}
+                    placeholder="Select date"
+                    min={fromDate}
+                    max={formatDateToYYYYMMDD(new Date())}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.dropdownButtonSort}
+                    onPress={() => setShowToCalendar(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {toDate
+                        ? new Date(toDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                        : 'Select date'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                  </TouchableOpacity>
+                )}
+              </View>
               {/* Sort Dropdown */}
               <View style={styles.dropdownWrapperSort}>
                 <Text style={styles.dropdownLabel}>Sort By:</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.dropdownButtonSort}
                   onPress={() => {
                     setShowSortDropdown(!showSortDropdown);
@@ -425,10 +588,10 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
                   <Text style={styles.dropdownButtonText}>
                     {sortOptions.find(opt => opt.value === sortBy)?.label}
                   </Text>
-                  <Ionicons 
-                    name={showSortDropdown ? "chevron-up" : "chevron-down"} 
-                    size={isDesktop ? 16 : 14} 
-                    color="#64748b" 
+                  <Ionicons
+                    name={showSortDropdown ? "chevron-up" : "chevron-down"}
+                    size={isDesktop ? 16 : 14}
+                    color="#64748b"
                   />
                 </TouchableOpacity>
                 {showSortDropdown && (
@@ -463,7 +626,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
               {/* Records Per Page Dropdown */}
               <View style={styles.dropdownWrapperShow}>
                 <Text style={styles.dropdownLabel}>Show:</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.dropdownButtonShow}
                   onPress={() => {
                     setShowRecordsDropdown(!showRecordsDropdown);
@@ -474,10 +637,10 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
                   <Text style={styles.dropdownButtonTextShow}>
                     {recordsPerPage === 'ALL' ? 'ALL' : recordsPerPage}
                   </Text>
-                  <Ionicons 
-                    name={showRecordsDropdown ? "chevron-up" : "chevron-down"} 
-                    size={isDesktop ? 14 : 12} 
-                    color="#64748b" 
+                  <Ionicons
+                    name={showRecordsDropdown ? "chevron-up" : "chevron-down"}
+                    size={isDesktop ? 14 : 12}
+                    color="#64748b"
                   />
                 </TouchableOpacity>
                 {showRecordsDropdown && (
@@ -515,163 +678,274 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
 
         <TouchableWithoutFeedback onPress={() => setOpenMenuId(null)}>
           <View style={styles.tableWrapper}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={true} 
-            style={styles.tableScrollView}
-            persistentScrollbar={true}
-            nestedScrollEnabled={true}
-            onScrollBeginDrag={() => setOpenMenuId(null)}
-          >
-            <View style={styles.tableContainer}>
-              {/* Table Header */}
-              <View style={styles.tableHeader}>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 40 : isTablet ? 30 : 20 }]}>
-                </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 200 : isTablet ? 190 : 170 }]}>
-                  <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Name</Text>
-                </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
-                  <Ionicons name="call" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Mobile</Text>
-                </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 220 : isTablet ? 200 : 180 }]}>
-                  <Ionicons name="mail" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Email</Text>
-                </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 110 : 100 }]}>
-                  <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Pincode</Text>
-                </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 400 : isTablet ? 350 : 300 }]}>
-                  <Ionicons name="home" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Address</Text>
-                </View>
-              </View>
-
-              {/* Table Body */}
-              {paginatedCustomers.map((customer, index) => {
-                const isMenuOpen = openMenuId === customer.id;
-                const shouldOpenUpward = index >= paginatedCustomers.length - 2;
-                const isLastRow = index === paginatedCustomers.length - 1;
-                return (
-                  <View 
-                    key={customer.id} 
-                    style={[
-                      styles.tableRow,
-                      index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
-                      isMenuOpen && styles.tableRowActive,
-                      isLastRow && styles.tableRowLast
-                    ]}
-                  >
-                    <View style={[styles.tableCell, styles.menuCell, { width: isDesktop ? 90 : isTablet ? 80 : 70 }]}>
-                      <TouchableOpacity
-                        style={styles.menuIconButton}
-                        onPress={() => setOpenMenuId(isMenuOpen ? null : customer.id)}
-                      >
-                        <Ionicons name="menu" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" />
-                      </TouchableOpacity>
-                      {isMenuOpen && (
-                        <TouchableWithoutFeedback>
-                          <View style={[
-                            styles.menuDropdown,
-                            shouldOpenUpward && styles.menuDropdownUp
-                          ]}>
-                            <TouchableOpacity
-                              style={styles.menuItem}
-                              onPress={() => handleView(customer)}
-                            >
-                              <Ionicons name="eye-outline" size={isDesktop ? 16 : 14} color="#06b6d4" />
-                              <Text style={styles.menuItemText}>View</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.menuItem, styles.menuItemLast]}
-                              onPress={() => handleDelete(customer)}
-                            >
-                              <Ionicons name="trash-outline" size={isDesktop ? 16 : 14} color="#ef4444" />
-                              <Text style={styles.menuItemText}>Delete</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </TouchableWithoutFeedback>
-                      )}
-                    </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 170 : 150 }]}>
-                      <Text style={styles.tableCellText}>{customer.name || 'N/A'}</Text>
-                    </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
-                      <Text style={styles.tableCellText}>{customer.mobile || 'N/A'}</Text>
-                    </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 220 : isTablet ? 200 : 180 }]}>
-                      <Text style={styles.tableCellText}>{customer.email || 'N/A'}</Text>
-                    </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 110 : 100 }]}>
-                      <Text style={styles.tableCellText}>{customer.pincode || 'N/A'}</Text>
-                    </View>
-                    <View style={[styles.tableCell, { width: isDesktop ? 400 : isTablet ? 350 : 300 }]}>
-                      <Text style={styles.tableCellText}>{formatAddress(customer)}</Text>
-                    </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={true}
+              style={styles.tableScrollView}
+              persistentScrollbar={true}
+              nestedScrollEnabled={true}
+              onScrollBeginDrag={() => setOpenMenuId(null)}
+            >
+              <View style={styles.tableContainer}>
+                {/* Table Header */}
+                <View style={styles.tableHeader}>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 40 : isTablet ? 30 : 20 }]}>
                   </View>
-                );
-              })}
-            </View>
-          </ScrollView>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 200 : isTablet ? 190 : 170 }]}>
+                    <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Name</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
+                    <Ionicons name="call" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Mobile</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 220 : isTablet ? 200 : 180 }]}>
+                    <Ionicons name="mail" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Email</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 120 : isTablet ? 110 : 100 }]}>
+                    <Ionicons name="location" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Pincode</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 400 : isTablet ? 350 : 300 }]}>
+                    <Ionicons name="home" size={isDesktop ? 16 : 14} color="#ffffff" />
+                    <Text style={styles.tableHeaderText}>Address</Text>
+                  </View>
+                </View>
+
+                {/* Table Body */}
+                {paginatedCustomers.map((customer, index) => {
+                  const isMenuOpen = openMenuId === customer.id;
+                  const shouldOpenUpward = index >= paginatedCustomers.length - 2;
+                  const isLastRow = index === paginatedCustomers.length - 1;
+                  return (
+                    <View
+                      key={customer.id}
+                      style={[
+                        styles.tableRow,
+                        index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
+                        isMenuOpen && styles.tableRowActive,
+                        isLastRow && styles.tableRowLast
+                      ]}
+                    >
+                      <View style={[styles.tableCell, styles.menuCell, { width: isDesktop ? 90 : isTablet ? 80 : 70 }]}>
+                        <TouchableOpacity
+                          style={styles.menuIconButton}
+                          onPress={() => setOpenMenuId(isMenuOpen ? null : customer.id)}
+                        >
+                          <Ionicons name="menu" size={isDesktop ? 18 : isTablet ? 16 : 14} color="#64748b" />
+                        </TouchableOpacity>
+                        {isMenuOpen && (
+                          <TouchableWithoutFeedback>
+                            <View style={[
+                              styles.menuDropdown,
+                              shouldOpenUpward && styles.menuDropdownUp
+                            ]}>
+                              <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => handleView(customer)}
+                              >
+                                <Ionicons name="eye-outline" size={isDesktop ? 16 : 14} color="#06b6d4" />
+                                <Text style={styles.menuItemText}>View</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.menuItem, styles.menuItemLast]}
+                                onPress={() => handleDelete(customer)}
+                              >
+                                <Ionicons name="trash-outline" size={isDesktop ? 16 : 14} color="#ef4444" />
+                                <Text style={styles.menuItemText}>Delete</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </TouchableWithoutFeedback>
+                        )}
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 170 : 150 }]}>
+                        <Text style={styles.tableCellText}>{customer.name || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 130 : 120 }]}>
+                        <Text style={styles.tableCellText}>{customer.mobile || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 220 : isTablet ? 200 : 180 }]}>
+                        <Text style={styles.tableCellText}>{customer.email || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 110 : 100 }]}>
+                        <Text style={styles.tableCellText}>{customer.pincode || 'N/A'}</Text>
+                      </View>
+                      <View style={[styles.tableCell, { width: isDesktop ? 400 : isTablet ? 350 : 300 }]}>
+                        <Text style={styles.tableCellText}>{formatAddress(customer)}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         </TouchableWithoutFeedback>
 
         {/* Pagination Controls */}
         <View style={styles.paginationContainer}>
           <Text style={styles.paginationInfo}>
-            {recordsPerPage === 'ALL' 
+            {recordsPerPage === 'ALL'
               ? `Showing all ${filteredCustomers.length} entries`
               : (() => {
-                  const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
-                  const start = ((currentPage - 1) * pageSize) + 1;
-                  const end = Math.min(currentPage * pageSize, filteredCustomers.length);
-                  return `Showing ${start} to ${end} of ${filteredCustomers.length} entries`;
-                })()
+                const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
+                const start = ((currentPage - 1) * pageSize) + 1;
+                const end = Math.min(currentPage * pageSize, filteredCustomers.length);
+                return `Showing ${start} to ${end} of ${filteredCustomers.length} entries`;
+              })()
             }
           </Text>
-          
+
           <View style={styles.paginationButtons}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
               onPress={() => setCurrentPage(1)}
               disabled={currentPage === 1}
             >
-              <Ionicons name="play-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="play-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
               onPress={() => setCurrentPage(currentPage - 1)}
               disabled={currentPage === 1}
             >
-              <Ionicons name="chevron-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="chevron-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
 
             <Text style={styles.paginationText}>
               Page {currentPage} of {totalPages || 1}
             </Text>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
               onPress={() => setCurrentPage(currentPage + 1)}
               disabled={currentPage === totalPages}
             >
-              <Ionicons name="chevron-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="chevron-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
               onPress={() => setCurrentPage(totalPages)}
               disabled={currentPage === totalPages}
             >
-              <Ionicons name="play-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="play-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
+
+      {/* Native date pickers */}
+      {DateTimePicker && showFromCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowFromCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>From date</Text>
+                  <TouchableOpacity onPress={() => setShowFromCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={fromDateObj}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={toDateObj}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) setFromDate(formatDateToYYYYMMDD(date));
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowFromCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#6366f1', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={fromDateObj}
+            mode="date"
+            display="calendar"
+            maximumDate={toDateObj}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) setFromDate(formatDateToYYYYMMDD(date));
+              setShowFromCalendar(false);
+            }}
+          />
+        ))}
+
+      {DateTimePicker && showToCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowToCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>To date</Text>
+                  <TouchableOpacity onPress={() => setShowToCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={toDateObj}
+                  mode="date"
+                  display="calendar"
+                  minimumDate={fromDateObj}
+                  maximumDate={new Date()}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) setToDate(formatDateToYYYYMMDD(date));
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowToCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#6366f1', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={toDateObj}
+            mode="date"
+            display="calendar"
+            minimumDate={fromDateObj}
+            maximumDate={new Date()}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) setToDate(formatDateToYYYYMMDD(date));
+              setShowToCalendar(false);
+            }}
+          />
+        ))}
 
       {/* Customer View Modal */}
       <Modal
@@ -993,33 +1267,6 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Document Full-Image Viewer */}
-      <Modal
-        visible={viewingDocUrl !== null}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setViewingDocUrl(null)}
-      >
-        <TouchableWithoutFeedback onPress={() => setViewingDocUrl(null)}>
-          <View style={styles.docViewerOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.docViewerContainer}>
-                <TouchableOpacity onPress={() => setViewingDocUrl(null)} style={styles.docViewerClose}>
-                  <Ionicons name="close" size={22} color="#ffffff" />
-                </TouchableOpacity>
-                {viewingDocUrl && (
-                  <Image
-                    source={{ uri: viewingDocUrl }}
-                    style={styles.docViewerImage}
-                    resizeMode="contain"
-                  />
-                )}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
       {/* Delete Confirmation Modal */}
       <Modal
         visible={deleteConfirmCustomer !== null}
@@ -1065,7 +1312,7 @@ export default function Customers({ searchQuery: externalSearchQuery, onSearchCh
   );
 }
 
-const createStyles = (width: number, height: number) => {
+const createStyles = (width: number) => {
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
   const isMobile = width <= 600;
@@ -1124,7 +1371,7 @@ const createStyles = (width: number, height: number) => {
       width: '100%',
     },
     customersHeader: {
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -1140,7 +1387,7 @@ const createStyles = (width: number, height: number) => {
       justifyContent: 'space-between',
       alignItems: isMobile ? 'flex-start' : 'flex-end',
       gap: isMobile ? 16 : 12,
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -1151,6 +1398,46 @@ const createStyles = (width: number, height: number) => {
       width: isMobile ? '100%' : 'auto',
       zIndex: 500,
       overflow: 'visible',
+    },
+    calendarOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    calendarModal: {
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 32,
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    calendarTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#0f172a',
+    },
+    picker: { width: '100%' },
+    calendarDone: {
+      marginHorizontal: 20,
+      marginTop: 16,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    calendarDoneGradient: {
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    calendarDoneText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#fff',
     },
     dropdownWrapperSort: {
       position: 'relative',
@@ -1793,31 +2080,6 @@ const createStyles = (width: number, height: number) => {
       color: '#1e293b',
       lineHeight: isDesktop ? 18 : 16,
       fontStyle: 'italic',
-    },
-    docViewerOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.9)',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    docViewerContainer: {
-      width: '100%',
-      height: '100%',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    docViewerClose: {
-      position: 'absolute',
-      top: isDesktop ? 20 : 16,
-      right: isDesktop ? 20 : 16,
-      zIndex: 10,
-      padding: 8,
-      borderRadius: 20,
-      backgroundColor: 'rgba(255,255,255,0.15)',
-    },
-    docViewerImage: {
-      width: '90%',
-      height: '80%',
     },
     // Delete Confirmation Styles
     confirmOverlay: {

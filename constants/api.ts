@@ -92,6 +92,7 @@ export const API_ENDPOINTS = {
   
   // Admin endpoints
   ADMIN_BOOKINGS: `${getBaseUrl()}/admin/bookings`,
+  ADMIN_RESCHEDULE_BOOKING: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/admin-reschedule`,
   ADMIN_PAYMENTS: `${getBaseUrl()}/admin/payments`,
   ADMIN_CUSTOMERS: `${getBaseUrl()}/admin/customers`,
   ADMIN_WORKERS: `${getBaseUrl()}/admin/workers`,

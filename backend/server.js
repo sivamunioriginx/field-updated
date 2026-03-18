@@ -2010,6 +2010,81 @@ app.put('/api/bookings/:bookingId/reject-reschedule-request', async (req, res) =
   }
 });
 
+// Admin reschedule booking endpoint (from status dropdown Reschedule option)
+// Assigns to other workers: update booking_time = reschedule_date, show polling for worker accept
+app.put('/api/bookings/:bookingId/admin-reschedule', async (req, res) => {
+  try {
+    const { bookingId } = req.params; // tbl_bookings.id (record ID)
+    const { reschedule_date, reschedule_reason } = req.body;
+
+    if (!bookingId || !reschedule_date || !reschedule_reason || !reschedule_reason.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID, reschedule date, and reschedule reason are required'
+      });
+    }
+
+    const recordId = parseInt(bookingId, 10);
+    if (isNaN(recordId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID'
+      });
+    }
+
+    // Get booking_id (string) from the record
+    const [rows] = await pool.execute('SELECT booking_id FROM tbl_bookings WHERE id = ?', [recordId]);
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+    const bookingIdStr = rows[0].booking_id;
+
+    // Upsert tbl_rescheduledbookings: update if exists, insert if not (type=3 Admin, status=1)
+    const [existing] = await pool.execute(
+      'SELECT id FROM tbl_rescheduledbookings WHERE bookingid = ? LIMIT 1',
+      [String(recordId)]
+    );
+    if (existing.length > 0) {
+      await pool.execute(
+        'UPDATE tbl_rescheduledbookings SET reschedule_reason = ?, reschedule_date = ?, type = 3, status = 1 WHERE bookingid = ?',
+        [reschedule_reason.trim(), reschedule_date, String(recordId)]
+      );
+    } else {
+      await pool.execute(
+        'INSERT INTO tbl_rescheduledbookings (bookingid, reschedule_reason, reschedule_date, type, status) VALUES (?, ?, ?, 3, 1)',
+        [String(recordId), reschedule_reason.trim(), reschedule_date]
+      );
+    }
+
+    // Update current record: status=6 (reschedule request), booking_time=reschedule_date
+    await pool.execute(
+      'UPDATE tbl_bookings SET status = 6, payment_status = 1, booking_time = ? WHERE id = ?',
+      [reschedule_date, recordId]
+    );
+
+    // Update other records with same booking_id: status=0, payment_status=1, booking_time=reschedule_date
+    await pool.execute(
+      'UPDATE tbl_bookings SET status = 0, payment_status = 1, booking_time = ? WHERE booking_id = ? AND id != ?',
+      [reschedule_date, bookingIdStr, recordId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Booking rescheduled - waiting for worker to accept',
+      data: { bookingId: recordId, booking_id: bookingIdStr }
+    });
+  } catch (error) {
+    console.error('❌ Error in admin reschedule:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 // Update booking payment status and amount endpoint
 app.put('/api/bookings/:bookingId/payment', async (req, res) => {
   try {
@@ -4358,19 +4433,25 @@ app.post('/api/fcm-token', async (req, res) => {
       });
     }
 
-    // Use INSERT ... ON DUPLICATE KEY UPDATE to handle existing tokens
+    // Check if record exists for this user_id + user_type, then UPDATE or INSERT (avoids duplicate rows)
     console.log('Storing FCM token:', { user_id, user_type: actualUserType, token_length: fcm_token.length });
 
-    const [result] = await pool.execute(
-      `INSERT INTO tbl_push_tokens (user_id, user_type, fcm_token, created_at, updated_at) 
-       VALUES (?, ?, ?, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE 
-       fcm_token = VALUES(fcm_token), 
-       updated_at = NOW()`,
-      [user_id, actualUserType, fcm_token]
+    const [existing] = await pool.execute(
+      'SELECT id FROM tbl_push_tokens WHERE user_id = ? AND user_type = ?',
+      [user_id, actualUserType]
     );
 
-    console.log('FCM token storage result:', result);
+    if (existing.length > 0) {
+      await pool.execute(
+        'UPDATE tbl_push_tokens SET fcm_token = ?, updated_at = NOW() WHERE user_id = ? AND user_type = ?',
+        [fcm_token, user_id, actualUserType]
+      );
+    } else {
+      await pool.execute(
+        'INSERT INTO tbl_push_tokens (user_id, user_type, fcm_token, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
+        [user_id, actualUserType, fcm_token]
+      );
+    }
 
     res.json({
       success: true,

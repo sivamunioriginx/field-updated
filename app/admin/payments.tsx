@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { createElement, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,6 +15,100 @@ import {
 } from 'react-native';
 import * as XLSX from 'xlsx';
 import { API_ENDPOINTS } from '../../constants/api';
+
+let DateTimePicker: React.ComponentType<any> | null = null;
+if (Platform.OS !== 'web') {
+  DateTimePicker = require('@react-native-community/datetimepicker').default;
+}
+
+function WebDateInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  min?: string;
+  max?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const displayValue = value
+    ? new Date(value + 'T12:00:00').toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : placeholder;
+  const wrapperStyle: React.CSSProperties = {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 110,
+    height: 38,
+    paddingLeft: 12,
+    paddingRight: 12,
+    borderRadius: 10,
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#ffffff',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxSizing: 'border-box',
+  };
+  const inputStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0,
+    pointerEvents: 'none',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: value ? '#0f172a' : '#64748b',
+    fontWeight: value ? 600 : 500,
+  };
+  const handleClick = () => {
+    try {
+      (inputRef.current as HTMLInputElement & { showPicker?: () => void })?.showPicker?.();
+    } catch {
+      inputRef.current?.click();
+    }
+  };
+  return createElement(
+    'div',
+    { style: wrapperStyle, onClick: handleClick, role: 'button', tabIndex: 0 },
+    createElement('span', { style: { fontSize: 14 } }, '📅'),
+    createElement('span', { style: labelStyle }, displayValue),
+    createElement('input', {
+      ref: inputRef,
+      id,
+      type: 'date',
+      value: value || '',
+      min: min || undefined,
+      max: max || undefined,
+      onChange: (e: any) => onChange(e.target.value || ''),
+      'aria-label': placeholder,
+      style: inputStyle,
+    })
+  );
+}
+
+function formatDateToYYYYMMDD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 interface Payment {
   id: number;
@@ -29,7 +126,7 @@ interface PaymentsProps {
 }
 
 export default function Payments({ searchQuery: externalSearchQuery, onSearchChange, exportTrigger }: PaymentsProps) {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
   const isMobile = width <= 600;
@@ -42,6 +139,12 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState(() => formatDateToYYYYMMDD(new Date()));
+  const [showFromCalendar, setShowFromCalendar] = useState(false);
+  const [showToCalendar, setShowToCalendar] = useState(false);
+  const fromDateObj = fromDate ? new Date(fromDate + 'T12:00:00') : new Date();
+  const toDateObj = toDate ? new Date(toDate + 'T12:00:00') : new Date();
   const paginatedPaymentsRef = useRef<Payment[]>([]);
 
   // Sync external search query if provided
@@ -145,6 +248,17 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
       );
     }
 
+    // Apply date range filter
+    if (fromDate.trim() || toDate.trim()) {
+      filtered = filtered.filter(payment => {
+        const paymentDate = new Date(payment.payment_date || payment.created_at);
+        const paymentDay = formatDateToYYYYMMDD(paymentDate);
+        if (fromDate.trim() && paymentDay < fromDate.trim()) return false;
+        if (toDate.trim() && paymentDay > toDate.trim()) return false;
+        return true;
+      });
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
@@ -160,10 +274,11 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
     return filtered;
   };
 
-  // Pagination logic
+  // Pagination logic - when From date is selected, show all records in that range; when empty, use Show dropdown
+  const hasDateFilter = fromDate.trim() !== '';
   const getPaginatedPayments = () => {
     const filtered = getFilteredAndSortedPayments();
-    if (recordsPerPage === 'ALL') {
+    if (recordsPerPage === 'ALL' || hasDateFilter) {
       return filtered;
     }
     const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
@@ -172,8 +287,8 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
     return filtered.slice(startIndex, endIndex);
   };
 
-  const totalPages = recordsPerPage === 'ALL' 
-    ? 1 
+  const totalPages = (recordsPerPage === 'ALL' || hasDateFilter)
+    ? 1
     : Math.ceil(getFilteredAndSortedPayments().length / (typeof recordsPerPage === 'number' ? recordsPerPage : 10));
 
   const sortOptions = [
@@ -191,7 +306,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
     }
   };
 
-  const styles = createStyles(width, height);
+  const styles = createStyles(width);
 
   if (loading) {
     return (
@@ -238,8 +353,71 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
               Payments
             </Text>
             
-            {/* Right side - Sort and Records */}
+            {/* Right side - Date filters, Sort and Records */}
             <View style={styles.controlsRight}>
+              {/* From date - aligned like Sort By */}
+              <View style={styles.dropdownWrapperSort}>
+                <Text style={styles.dropdownLabel}>From:</Text>
+                {Platform.OS === 'web' ? (
+                  <WebDateInput
+                    id="pay-from-date"
+                    value={fromDate}
+                    onChange={(v) => { setFromDate(v); setCurrentPage(1); }}
+                    placeholder="Select date"
+                    max={toDate || formatDateToYYYYMMDD(new Date())}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.dropdownButtonSort}
+                    onPress={() => setShowFromCalendar(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {fromDate
+                        ? new Date(fromDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'Select date'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {/* To date - aligned like Sort By */}
+              <View style={styles.dropdownWrapperSort}>
+                <Text style={styles.dropdownLabel}>To:</Text>
+                {Platform.OS === 'web' ? (
+                  <WebDateInput
+                    id="pay-to-date"
+                    value={toDate}
+                    onChange={(v) => { setToDate(v); setCurrentPage(1); }}
+                    placeholder="Select date"
+                    min={fromDate}
+                    max={formatDateToYYYYMMDD(new Date())}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.dropdownButtonSort}
+                    onPress={() => setShowToCalendar(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {toDate
+                        ? new Date(toDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'Select date'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                  </TouchableOpacity>
+                )}
+              </View>
               {/* Sort Dropdown */}
               <View style={styles.dropdownWrapperSort}>
                 <Text style={styles.dropdownLabel}>Sort By:</Text>
@@ -377,8 +555,8 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
 
               {/* Table Body */}
               {paginatedPayments.map((payment, index) => {
-                const serialNumber = recordsPerPage === 'ALL' 
-                  ? index + 1 
+                const serialNumber = (recordsPerPage === 'ALL' || hasDateFilter)
+                  ? index + 1
                   : (currentPage - 1) * recordsPerPage + index + 1;
                 return (
                   <View 
@@ -417,7 +595,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
         {/* Pagination Controls */}
         <View style={styles.paginationContainer}>
           <Text style={styles.paginationInfo}>
-            {recordsPerPage === 'ALL' 
+            {(recordsPerPage === 'ALL' || hasDateFilter)
               ? `Showing all ${filteredPayments.length} entries`
               : (() => {
                   const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
@@ -434,7 +612,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
               onPress={() => setCurrentPage(1)}
               disabled={currentPage === 1}
             >
-              <Ionicons name="play-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="play-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -442,7 +620,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
               onPress={() => setCurrentPage(currentPage - 1)}
               disabled={currentPage === 1}
             >
-              <Ionicons name="chevron-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="chevron-back" size={isDesktop ? 16 : 14} color={currentPage === 1 ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
 
             <Text style={styles.paginationText}>
@@ -454,7 +632,7 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
               onPress={() => setCurrentPage(currentPage + 1)}
               disabled={currentPage === totalPages}
             >
-              <Ionicons name="chevron-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="chevron-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -462,16 +640,127 @@ export default function Payments({ searchQuery: externalSearchQuery, onSearchCha
               onPress={() => setCurrentPage(totalPages)}
               disabled={currentPage === totalPages}
             >
-              <Ionicons name="play-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#64748b'} />
+              <Ionicons name="play-forward" size={isDesktop ? 16 : 14} color={currentPage === totalPages ? '#cbd5e1' : '#7c3aed'} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
+
+      {/* Native date pickers */}
+      {DateTimePicker && showFromCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowFromCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>From date</Text>
+                  <TouchableOpacity onPress={() => setShowFromCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={fromDateObj}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={toDateObj}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) setFromDate(formatDateToYYYYMMDD(date));
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowFromCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#6366f1', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={fromDateObj}
+            mode="date"
+            display="calendar"
+            maximumDate={toDateObj}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) setFromDate(formatDateToYYYYMMDD(date));
+              setShowFromCalendar(false);
+            }}
+          />
+        ))}
+
+      {DateTimePicker && showToCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowToCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>To date</Text>
+                  <TouchableOpacity onPress={() => setShowToCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={toDateObj}
+                  mode="date"
+                  display="calendar"
+                  minimumDate={fromDateObj}
+                  maximumDate={new Date()}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) setToDate(formatDateToYYYYMMDD(date));
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowToCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#6366f1', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={toDateObj}
+            mode="date"
+            display="calendar"
+            minimumDate={fromDateObj}
+            maximumDate={new Date()}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) setToDate(formatDateToYYYYMMDD(date));
+              setShowToCalendar(false);
+            }}
+          />
+        ))}
     </ScrollView>
   );
 }
 
-const createStyles = (width: number, height: number) => {
+const createStyles = (width: number) => {
   const isDesktop = width > 768;
   const isTablet = width > 600 && width <= 768;
   const isMobile = width <= 600;
@@ -530,7 +819,7 @@ const createStyles = (width: number, height: number) => {
       width: '100%',
     },
     paymentsHeader: {
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -546,7 +835,7 @@ const createStyles = (width: number, height: number) => {
       justifyContent: 'space-between',
       alignItems: isMobile ? 'flex-start' : 'flex-end',
       gap: isMobile ? 16 : 12,
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -557,6 +846,46 @@ const createStyles = (width: number, height: number) => {
       width: isMobile ? '100%' : 'auto',
       zIndex: 500,
       overflow: 'visible',
+    },
+    calendarOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    calendarModal: {
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 32,
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    calendarTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#0f172a',
+    },
+    picker: { width: '100%' },
+    calendarDone: {
+      marginHorizontal: 20,
+      marginTop: 16,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    calendarDoneGradient: {
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    calendarDoneText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#fff',
     },
     dropdownWrapperSort: {
       position: 'relative',
@@ -667,7 +996,7 @@ const createStyles = (width: number, height: number) => {
     },
     // Table Styles
     tableWrapper: {
-      marginBottom: 12,
+      marginBottom: 6,
       width: '80%',
       alignSelf: 'flex-end',
       marginRight: isDesktop ? 40 : isTablet ? 30 : 20,
@@ -741,21 +1070,21 @@ const createStyles = (width: number, height: number) => {
       flexDirection: isDesktop ? 'row' : 'column',
       justifyContent: 'space-between',
       alignItems: isDesktop ? 'center' : 'flex-start',
-      marginTop: isDesktop ? 20 : isTablet ? 16 : 12,
-      paddingTop: isDesktop ? 20 : isTablet ? 16 : 12,
-      borderTopWidth: 1,
-      borderTopColor: '#e2e8f0',
-      gap: isDesktop ? 12 : isTablet ? 10 : 8,
+      marginTop: isDesktop ? 10 : isTablet ? 8 : 6,
+      paddingTop: 0,
+      gap: isDesktop ? 8 : isTablet ? 6 : 4,
     },
     paginationInfo: {
       fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
-      color: '#64748b',
+      color: '#7c3aed',
       fontWeight: '500',
+      marginLeft: isDesktop ? 195 : isTablet ? 44 : 32,
     },
     paginationButtons: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+      marginRight: isDesktop ? 150 : isTablet ? 44 : 32,
     },
     paginationButton: {
       width: isDesktop ? 36 : isTablet ? 34 : 32,
@@ -763,9 +1092,14 @@ const createStyles = (width: number, height: number) => {
       borderRadius: 8,
       backgroundColor: '#ffffff',
       borderWidth: 1,
-      borderColor: '#e2e8f0',
+      borderColor: '#e9d5ff',
       justifyContent: 'center',
       alignItems: 'center',
+      shadowColor: '#8b5cf6',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.18,
+      shadowRadius: 6,
+      elevation: 3,
     },
     paginationButtonDisabled: {
       backgroundColor: '#f8fafc',
@@ -774,7 +1108,7 @@ const createStyles = (width: number, height: number) => {
     paginationText: {
       fontSize: isDesktop ? 14 : isTablet ? 13 : 12,
       fontWeight: '600',
-      color: '#0f172a',
+      color: '#7c3aed',
       marginHorizontal: isDesktop ? 12 : isTablet ? 10 : 8,
     },
   });

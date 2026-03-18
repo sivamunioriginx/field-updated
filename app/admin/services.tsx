@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { createElement, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -19,6 +21,100 @@ import {
 import Toast from 'react-native-toast-message';
 import * as XLSX from 'xlsx';
 import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
+
+let DateTimePicker: React.ComponentType<any> | null = null;
+if (Platform.OS !== 'web') {
+  DateTimePicker = require('@react-native-community/datetimepicker').default;
+}
+
+function WebDateInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  min?: string;
+  max?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const displayValue = value
+    ? new Date(value + 'T12:00:00').toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : placeholder;
+  const wrapperStyle: React.CSSProperties = {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 110,
+    height: 38,
+    paddingLeft: 12,
+    paddingRight: 12,
+    borderRadius: 10,
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#ffffff',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxSizing: 'border-box',
+  };
+  const inputStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0,
+    pointerEvents: 'none',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: value ? '#0f172a' : '#64748b',
+    fontWeight: value ? 600 : 500,
+  };
+  const handleClick = () => {
+    try {
+      (inputRef.current as HTMLInputElement & { showPicker?: () => void })?.showPicker?.();
+    } catch {
+      inputRef.current?.click();
+    }
+  };
+  return createElement(
+    'div',
+    { style: wrapperStyle, onClick: handleClick, role: 'button', tabIndex: 0 },
+    createElement('span', { style: { fontSize: 14 } }, '📅'),
+    createElement('span', { style: labelStyle }, displayValue),
+    createElement('input', {
+      ref: inputRef,
+      id,
+      type: 'date',
+      value: value || '',
+      min: min || undefined,
+      max: max || undefined,
+      onChange: (e: any) => onChange(e.target.value || ''),
+      'aria-label': placeholder,
+      style: inputStyle,
+    })
+  );
+}
+
+function formatDateToYYYYMMDD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 interface LocationSuggestion {
   id: string;
@@ -70,6 +166,12 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showRecordsDropdown, setShowRecordsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState(() => formatDateToYYYYMMDD(new Date()));
+  const [showFromCalendar, setShowFromCalendar] = useState(false);
+  const [showToCalendar, setShowToCalendar] = useState(false);
+  const fromDateObj = fromDate ? new Date(fromDate + 'T12:00:00') : new Date();
+  const toDateObj = toDate ? new Date(toDate + 'T12:00:00') : new Date();
   const [visibilityStates, setVisibilityStates] = useState<Record<number, boolean>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [serviceName, setServiceName] = useState('');
@@ -397,6 +499,17 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       );
     }
 
+    // Apply date range filter
+    if (fromDate.trim() || toDate.trim()) {
+      filtered = filtered.filter(s => {
+        const sDate = new Date(s.created_at || 0);
+        const sDay = formatDateToYYYYMMDD(sDate);
+        if (fromDate.trim() && sDay < fromDate.trim()) return false;
+        if (toDate.trim() && sDay > toDate.trim()) return false;
+        return true;
+      });
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
@@ -412,10 +525,11 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     return filtered;
   };
 
-  // Pagination logic
+  // Pagination logic - when From date is selected, show all records in that range; when empty, use Show dropdown
+  const hasDateFilter = fromDate.trim() !== '';
   const getPaginatedServices = () => {
     const filtered = getFilteredAndSortedServices();
-    if (recordsPerPage === 'ALL') {
+    if (recordsPerPage === 'ALL' || hasDateFilter) {
       return filtered;
     }
     const pageSize = typeof recordsPerPage === 'number' ? recordsPerPage : 10;
@@ -424,7 +538,7 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     return filtered.slice(startIndex, endIndex);
   };
 
-  const totalPages = recordsPerPage === 'ALL' 
+  const totalPages = (recordsPerPage === 'ALL' || hasDateFilter) 
     ? 1 
     : Math.ceil(getFilteredAndSortedServices().length / (typeof recordsPerPage === 'number' ? recordsPerPage : 10));
 
@@ -969,6 +1083,69 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                 </TouchableOpacity>
               </View>
 
+              {/* From date */}
+              <View style={styles.dropdownWrapperSort}>
+                <Text style={styles.dropdownLabel}>From:</Text>
+                {Platform.OS === 'web' ? (
+                  <WebDateInput
+                    id="svc-from-date"
+                    value={fromDate}
+                    onChange={(v) => { setFromDate(v); setCurrentPage(1); }}
+                    placeholder="Select date"
+                    max={toDate || formatDateToYYYYMMDD(new Date())}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.dropdownButtonSort}
+                    onPress={() => setShowFromCalendar(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {fromDate
+                        ? new Date(fromDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'Select date'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {/* To date */}
+              <View style={styles.dropdownWrapperSort}>
+                <Text style={styles.dropdownLabel}>To:</Text>
+                {Platform.OS === 'web' ? (
+                  <WebDateInput
+                    id="svc-to-date"
+                    value={toDate}
+                    onChange={(v) => { setToDate(v); setCurrentPage(1); }}
+                    placeholder="Select date"
+                    min={fromDate}
+                    max={formatDateToYYYYMMDD(new Date())}
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.dropdownButtonSort}
+                    onPress={() => setShowToCalendar(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={isDesktop ? 16 : 14} color="#64748b" />
+                    <Text style={styles.dropdownButtonText}>
+                      {toDate
+                        ? new Date(toDate + 'T12:00:00').toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'Select date'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={isDesktop ? 16 : 14} color="#64748b" />
+                  </TouchableOpacity>
+                )}
+              </View>
               {/* Sort Dropdown */}
               <View style={styles.dropdownWrapperSort}>
                 <Text style={styles.dropdownLabel}>Sort By:</Text>
@@ -1708,6 +1885,116 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
           </View>
         </View>
       </Modal>
+
+      {DateTimePicker && showFromCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowFromCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>From date</Text>
+                  <TouchableOpacity onPress={() => setShowFromCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={fromDateObj}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={toDateObj}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) setFromDate(formatDateToYYYYMMDD(date));
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowFromCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#0891b2', '#06b6d4']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={fromDateObj}
+            mode="date"
+            display="calendar"
+            maximumDate={toDateObj}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) setFromDate(formatDateToYYYYMMDD(date));
+              setShowFromCalendar(false);
+            }}
+          />
+        ))}
+
+      {DateTimePicker && showToCalendar &&
+        (Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="slide">
+            <TouchableOpacity
+              style={styles.calendarOverlay}
+              activeOpacity={1}
+              onPress={() => setShowToCalendar(false)}
+            >
+              <View style={styles.calendarModal}>
+                <View style={styles.calendarHeader}>
+                  <Text style={styles.calendarTitle}>To date</Text>
+                  <TouchableOpacity onPress={() => setShowToCalendar(false)}>
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={toDateObj}
+                  mode="date"
+                  display="calendar"
+                  minimumDate={fromDateObj}
+                  maximumDate={new Date()}
+                  onChange={(_: unknown, date?: Date) => {
+                    if (date) setToDate(formatDateToYYYYMMDD(date));
+                  }}
+                  style={styles.picker}
+                />
+                <TouchableOpacity
+                  style={styles.calendarDone}
+                  onPress={() => setShowToCalendar(false)}
+                >
+                  <LinearGradient
+                    colors={['#0891b2', '#06b6d4']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.calendarDoneGradient}
+                  >
+                    <Text style={styles.calendarDoneText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={toDateObj}
+            mode="date"
+            display="calendar"
+            minimumDate={fromDateObj}
+            maximumDate={new Date()}
+            onChange={(_: unknown, date?: Date) => {
+              if (date) setToDate(formatDateToYYYYMMDD(date));
+              setShowToCalendar(false);
+            }}
+          />
+        ))}
     </View>
   );
 }
@@ -1771,7 +2058,7 @@ const createStyles = (width: number, height: number) => {
       width: '100%',
     },
     customersHeader: {
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -1787,7 +2074,7 @@ const createStyles = (width: number, height: number) => {
       justifyContent: 'space-between',
       alignItems: isMobile ? 'flex-start' : 'flex-end',
       gap: isMobile ? 16 : 12,
-      marginBottom: 12,
+      marginBottom: 6,
       zIndex: 500,
       overflow: 'visible',
     },
@@ -1905,6 +2192,46 @@ const createStyles = (width: number, height: number) => {
     dropdownMenuItemTextActive: {
       fontWeight: '600',
       color: '#06b6d4',
+    },
+    calendarOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    calendarModal: {
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 32,
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+    },
+    calendarTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#0f172a',
+    },
+    picker: { width: '100%' },
+    calendarDone: {
+      marginHorizontal: 20,
+      marginTop: 16,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    calendarDoneGradient: {
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    calendarDoneText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#fff',
     },
     // Table Styles
     tableWrapper: {
