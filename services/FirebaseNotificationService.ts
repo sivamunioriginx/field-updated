@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import messaging from '@react-native-firebase/messaging';
 import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
 import { Alert, Platform } from 'react-native';
 import { API_BASE_URL } from '../constants/api';
 
@@ -56,11 +57,16 @@ class FirebaseNotificationService {
    */
   public async initialize(): Promise<void> {
     try {
-      // Request permission for notifications
+      // System tray (Android 13+ POST_NOTIFICATIONS, iOS alert) — show prompt when app opens
+      const { status: expoStatus } = await Notifications.requestPermissionsAsync();
+      const expoGranted = expoStatus === 'granted';
+
       const authStatus = await messaging().requestPermission();
-      const enabled =
+      const fcmEnabled =
         authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
         authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+      const enabled = fcmEnabled || expoGranted;
 
       if (!enabled) {
         console.log('Notification permission denied');
@@ -103,9 +109,16 @@ class FirebaseNotificationService {
           // Regular booking alert handling for customer app (non-worker)
           console.log('🚨 Customer app booking alert - React Native will handle');
           await this.handleBackgroundBookingAlert(remoteMessage);
+        } else if (
+          remoteMessage.data?.type === 'booking_start_code' ||
+          remoteMessage.data?.type === 'booking_complete_code'
+        ) {
+          // Native Android posts one tray notification; do not duplicate with Expo here
+          console.log(
+            '🚨 booking start/complete code — native tray only (no duplicate local notification)'
+          );
         } else {
           console.log('🚨 Regular background message - React Native will handle');
-          // Handle other types of background messages normally
         }
       });
 
@@ -242,7 +255,11 @@ class FirebaseNotificationService {
       }
       
       // Show local notification when app is in foreground for OTHER cases (customer app, regular notifications)
-      if (remoteMessage.notification) {
+      if (remoteMessage.data?.type === 'booking_start_code') {
+        await this.createStartVerificationNotification(remoteMessage);
+      } else if (remoteMessage.data?.type === 'booking_complete_code') {
+        await this.createCompleteVerificationNotification(remoteMessage);
+      } else if (remoteMessage.notification) {
         console.log('🚨 Showing React Native notification for non-worker app or non-booking alert');
         this.showLocalNotification(
           remoteMessage.notification.title || 'Notification',
@@ -429,7 +446,7 @@ class FirebaseNotificationService {
           name: 'Booking Alerts',
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
-          sound: true,
+          sound: 'default',
           enableLights: true,
           enableVibrate: true,
         });
@@ -450,6 +467,106 @@ class FirebaseNotificationService {
 
     } catch (error) {
       console.error('Error creating booking alert notification:', error);
+    }
+  }
+
+  /**
+   * System tray notification for job-start verification code (works in background headless JS).
+   */
+  private async createStartVerificationNotification(remoteMessage: any): Promise<void> {
+    try {
+      const Notifications = await import('expo-notifications');
+      const title =
+        remoteMessage.notification?.title ||
+        'Job start verification code';
+      const body =
+        remoteMessage.notification?.body ||
+        (remoteMessage.data?.code
+          ? `Your code: ${remoteMessage.data.code}. Share it only with your professional.`
+          : 'A verification code was generated for your booking.');
+
+      await Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+        }),
+      });
+
+      const channelId = 'job-start-verification';
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync(channelId, {
+          name: 'Job start verification',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          sound: 'default',
+          enableVibrate: true,
+        });
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: { ...(remoteMessage.data || {}), type: 'booking_start_code' },
+          sound: true,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          ...(Platform.OS === 'android' ? { channelId } : {}),
+        },
+        trigger: null,
+      });
+    } catch (error) {
+      console.error('Error creating start verification notification:', error);
+    }
+  }
+
+  private async createCompleteVerificationNotification(remoteMessage: any): Promise<void> {
+    try {
+      const Notifications = await import('expo-notifications');
+      const title =
+        remoteMessage.notification?.title || 'Job completion verification code';
+      const body =
+        remoteMessage.notification?.body ||
+        (remoteMessage.data?.code
+          ? `Your code: ${remoteMessage.data.code}. Share it only with your professional.`
+          : 'A completion verification code was generated for your booking.');
+
+      await Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+        }),
+      });
+
+      const channelId = 'job-complete-verification';
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync(channelId, {
+          name: 'Job completion verification',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          sound: 'default',
+          enableVibrate: true,
+        });
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: { ...(remoteMessage.data || {}), type: 'booking_complete_code' },
+          sound: true,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          ...(Platform.OS === 'android' ? { channelId } : {}),
+        },
+        trigger: null,
+      });
+    } catch (error) {
+      console.error('Error creating complete verification notification:', error);
     }
   }
 

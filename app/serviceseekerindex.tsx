@@ -5,7 +5,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
+import { Alert, Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ServiceSeeker {
@@ -45,6 +45,8 @@ interface Booking {
   reschedule_type?: number;
   reschedule_reason?: string;
   reschedule_date?: string;
+  start_verification_code?: string | null;
+  complete_verification_code?: string | null;
 }
 
 interface Payment {
@@ -54,6 +56,20 @@ interface Payment {
   booking_id: string;
   description: string;
   payment_date: string;
+}
+
+function formatWorkCommentDate(value: string | Date | null | undefined) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 // Helper functions moved inside createStyles for better responsive scaling
@@ -93,6 +109,24 @@ export default function Index() {
   const [cancelError, setCancelError] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelSuccess, setCancelSuccess] = useState(false);
+
+  const [customerCommentsPopupVisible, setCustomerCommentsPopupVisible] = useState(false);
+  const [customerCommentsBooking, setCustomerCommentsBooking] = useState<Booking | null>(null);
+  const [customerCommentsText, setCustomerCommentsText] = useState('');
+  const [customerCommentsError, setCustomerCommentsError] = useState('');
+  const [customerCommentsSubmitLoading, setCustomerCommentsSubmitLoading] = useState(false);
+
+  const [viewWorkCommentVisible, setViewWorkCommentVisible] = useState(false);
+  const [viewWorkCommentBooking, setViewWorkCommentBooking] = useState<Booking | null>(null);
+  const [viewWorkCommentUserType, setViewWorkCommentUserType] = useState<1 | 2 | null>(null);
+  const [viewWorkCommentHasRow, setViewWorkCommentHasRow] = useState(false);
+  const [viewWorkCommentText, setViewWorkCommentText] = useState('');
+  const [viewWorkCommentSubmittedLabel, setViewWorkCommentSubmittedLabel] = useState('');
+  const [viewWorkCommentUpdatedLabel, setViewWorkCommentUpdatedLabel] = useState('');
+  const [viewWorkCommentLoading, setViewWorkCommentLoading] = useState(false);
+  const [viewWorkCommentSaving, setViewWorkCommentSaving] = useState(false);
+  const [viewWorkCommentLoadError, setViewWorkCommentLoadError] = useState('');
+  const [viewWorkCommentError, setViewWorkCommentError] = useState('');
   
   // Rating states
   const [ratingBookings, setRatingBookings] = useState<{ [key: number]: { rating: number; description: string } }>({});
@@ -478,7 +512,7 @@ export default function Index() {
     try {
       setBookingsLoading(true);
       // Fetch status 1, 2, 5, 6 for Notifications tab
-      const apiUrl = `${API_ENDPOINTS.BOOKINGS_BY_USER(userId).split('?')[0]}?status=1,2,5,6`;
+      const apiUrl = `${API_ENDPOINTS.BOOKINGS_BY_USER(userId).split('?')[0]}?status=1,2,5,6,9`;
       
       const response = await fetch(apiUrl);
       const result = await response.json();
@@ -496,6 +530,11 @@ export default function Index() {
           
           // Status 2 (In Progress) - show as is
           if (status === 2) {
+            return paymentStatus === 1;
+          }
+
+          // Status 9 (On hold) - same payment rule as in progress
+          if (status === 9) {
             return paymentStatus === 1;
           }
           
@@ -767,6 +806,158 @@ export default function Index() {
     setCancelSuccess(false);
   };
 
+  const showCustomerCommentsPopup = (booking: Booking) => {
+    setCustomerCommentsBooking(booking);
+    setCustomerCommentsText('');
+    setCustomerCommentsError('');
+    setCustomerCommentsPopupVisible(true);
+  };
+
+  const closeCustomerCommentsPopup = () => {
+    setCustomerCommentsPopupVisible(false);
+    setCustomerCommentsBooking(null);
+    setCustomerCommentsText('');
+    setCustomerCommentsError('');
+    setCustomerCommentsSubmitLoading(false);
+  };
+
+  const handleCustomerCommentsSubmit = async () => {
+    if (!customerCommentsBooking) return;
+    const trimmed = customerCommentsText.trim();
+    if (!trimmed) {
+      setCustomerCommentsError('Comments are required');
+      return;
+    }
+    const userId = user?.id || serviceSeeker?.id;
+    if (!userId) {
+      Alert.alert('Error', 'Could not determine your account.');
+      return;
+    }
+    setCustomerCommentsError('');
+    setCustomerCommentsSubmitLoading(true);
+    try {
+      const response = await fetch(
+        API_ENDPOINTS.CUSTOMER_BOOKING_ONHOLD_COMMENT(customerCommentsBooking.id),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, comments: trimmed }),
+        }
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        Alert.alert('Error', result.message || 'Could not submit comments.');
+        return;
+      }
+      Alert.alert('Submitted', `Comments for booking #${customerCommentsBooking.booking_id} were submitted.`);
+      closeCustomerCommentsPopup();
+      fetchBookings();
+    } catch {
+      Alert.alert('Error', 'Network error. Please try again.');
+    } finally {
+      setCustomerCommentsSubmitLoading(false);
+    }
+  };
+
+  const applyWorkCommentLabels = (data: {
+    onhold_time?: string | Date | null;
+    created_at?: string | Date | null;
+    updated_at?: string | Date | null;
+  }) => {
+    setViewWorkCommentSubmittedLabel(formatWorkCommentDate(data.onhold_time ?? data.created_at));
+    setViewWorkCommentUpdatedLabel(formatWorkCommentDate(data.updated_at));
+  };
+
+  const closeViewWorkCommentPopup = () => {
+    setViewWorkCommentVisible(false);
+    setViewWorkCommentBooking(null);
+    setViewWorkCommentUserType(null);
+    setViewWorkCommentHasRow(false);
+    setViewWorkCommentText('');
+    setViewWorkCommentSubmittedLabel('');
+    setViewWorkCommentUpdatedLabel('');
+    setViewWorkCommentLoadError('');
+    setViewWorkCommentError('');
+    setViewWorkCommentLoading(false);
+    setViewWorkCommentSaving(false);
+  };
+
+  const openViewWorkCommentPopup = async (booking: Booking, commentUserType: 1 | 2) => {
+    setViewWorkCommentBooking(booking);
+    setViewWorkCommentUserType(commentUserType);
+    setViewWorkCommentVisible(true);
+    setViewWorkCommentLoadError('');
+    setViewWorkCommentError('');
+    setViewWorkCommentText('');
+    setViewWorkCommentSubmittedLabel('');
+    setViewWorkCommentUpdatedLabel('');
+    setViewWorkCommentHasRow(false);
+    const userId = user?.id || serviceSeeker?.id;
+    if (!userId) {
+      setViewWorkCommentLoadError('Could not determine your account.');
+      return;
+    }
+    setViewWorkCommentLoading(true);
+    try {
+      const url = `${API_ENDPOINTS.CUSTOMER_BOOKING_WORK_COMMENT(booking.id)}?user_id=${encodeURIComponent(String(userId))}&comment_user_type=${commentUserType}`;
+      const res = await fetch(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        setViewWorkCommentLoadError(json.message || 'Could not load comments.');
+        return;
+      }
+      if (!json.found || !json.data) {
+        setViewWorkCommentHasRow(false);
+        return;
+      }
+      setViewWorkCommentHasRow(true);
+      setViewWorkCommentText(String(json.data.comments ?? ''));
+      applyWorkCommentLabels(json.data);
+    } catch {
+      setViewWorkCommentLoadError('Network error.');
+    } finally {
+      setViewWorkCommentLoading(false);
+    }
+  };
+
+  const handleSaveSeekerYourWorkComment = async () => {
+    if (!viewWorkCommentBooking || viewWorkCommentUserType !== 2) return;
+    const trimmed = viewWorkCommentText.trim();
+    if (!trimmed) {
+      setViewWorkCommentError('Comments are required');
+      return;
+    }
+    const userId = user?.id || serviceSeeker?.id;
+    if (!userId) {
+      Alert.alert('Error', 'Could not determine your account.');
+      return;
+    }
+    setViewWorkCommentError('');
+    setViewWorkCommentSaving(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.CUSTOMER_BOOKING_ONHOLD_COMMENT(viewWorkCommentBooking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, comments: trimmed }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        Alert.alert('Error', json.message || 'Could not save.');
+        return;
+      }
+      if (json.data) {
+        setViewWorkCommentHasRow(true);
+        setViewWorkCommentText(String(json.data.comments ?? ''));
+        applyWorkCommentLabels(json.data);
+      }
+      Alert.alert('Saved', 'Comments updated.');
+    } catch {
+      Alert.alert('Error', 'Network error.');
+    } finally {
+      setViewWorkCommentSaving(false);
+    }
+  };
+
   // Handle Rating Star Selection
   const handleStarPress = (bookingId: number, starIndex: number) => {
     setRatingBookings(prev => ({
@@ -879,7 +1070,7 @@ export default function Index() {
     try {
       setBookingsLoading(true);
       // Get all bookings with status 1,2,3,4,5,6 to check for status 1,2,6 in same booking_id
-      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=1,2,3,4,5,6&skip_payment_check=true`;
+      const apiUrl = `${API_ENDPOINTS.TOTAL_BOOKINGS_BY_USER(userId)}?status=1,2,3,4,5,6,9&skip_payment_check=true`;
       
       const response = await fetch(apiUrl);
       const result = await response.json();
@@ -888,7 +1079,7 @@ export default function Index() {
         // Filter to only include status 1,2,3,4,5,6
         const filteredBookings = result.data.filter((booking: Booking) => {
           const status = Number(booking.status);
-          const isValid = status >= 1 && status <= 6;
+          const isValid = (status >= 1 && status <= 6) || status === 9;
           if (!isValid) {
             console.log(`❌ Filtered out booking with status ${status} (booking_id: ${booking.booking_id})`);
           }
@@ -927,6 +1118,12 @@ export default function Index() {
                 new Date(current.created_at) > new Date(latest.created_at) ? current : latest
               );
             } else {
+              const status9Bookings = bookings.filter((b: Booking) => Number(b.status) === 9);
+              if (status9Bookings.length > 0) {
+                selectedBooking = status9Bookings.reduce((latest: Booking, current: Booking) =>
+                  new Date(current.created_at) > new Date(latest.created_at) ? current : latest
+                );
+              } else {
               // Check for status 6 (Rescheduled)
               const status6Bookings = bookings.filter((b: Booking) => Number(b.status) === 6);
               if (status6Bookings.length > 0) {
@@ -965,6 +1162,7 @@ export default function Index() {
                 }
               }
             }
+            }
           }
           
           if (selectedBooking) {
@@ -992,6 +1190,10 @@ export default function Index() {
           if (status === 6) {
             const rescheduleStatus = booking.reschedule_status !== undefined ? Number(booking.reschedule_status) : null;
             return paymentStatus === 1 && rescheduleStatus === 1;
+          }
+
+          if (status === 9) {
+            return paymentStatus === 1;
           }
           
           return false;
@@ -1041,6 +1243,8 @@ export default function Index() {
           return 'Worker accepted your booking!';
         case 2:
           return 'Work is in progress';
+        case 9:
+          return 'Work is on hold';
         case 3:
           return 'Work completed successfully!';
         case 4:
@@ -1115,6 +1319,8 @@ export default function Index() {
         return 'Worker accepted your booking!';
       case 2:
         return 'Work is in progress';
+      case 9:
+        return 'Work is on hold';
       case 3:
         return 'Work completed successfully!';
       case 4:
@@ -1164,6 +1370,8 @@ export default function Index() {
     switch (statusNum) {
       case 2:
         return 'hourglass-outline'; // In Progress
+      case 9:
+        return 'pause-circle-outline'; // On hold
       case 3:
         return 'checkmark-done-circle'; // Completed
       case 4:
@@ -1213,6 +1421,8 @@ export default function Index() {
     switch (statusNum) {
       case 2:
         return '#f59e0b'; // Amber (In Progress)
+      case 9:
+        return '#d97706'; // Amber/orange (On hold)
       case 3:
         return '#10b981'; // Green (Completed)
       case 4:
@@ -1525,6 +1735,7 @@ export default function Index() {
                                 }
                                 
                                 if (statusNum === 2) return 'In Progress';
+                                if (statusNum === 9) return 'On hold';
                                 if (statusNum === 3) return 'Completed';
                                 if (statusNum === 4) return 'Rejected';
                                 return `Status ${booking.status}`;
@@ -1573,7 +1784,7 @@ export default function Index() {
                               <Ionicons name="time" size={styles.smallIconSize} color="#666" />
                               <Text style={styles.bookingLabel}>Booking For: </Text>
                               <Text style={styles.bookingValue}>
-                                {new Date(booking.created_at).toLocaleString("en-GB", {
+                                {new Date(booking.booking_time).toLocaleString("en-GB", {
                                   day: '2-digit',
                                   month: '2-digit',
                                   year: 'numeric',
@@ -1591,6 +1802,35 @@ export default function Index() {
                                 {getStatusChangeMessage(booking.status, booking)}
                               </Text>
                             </View>
+
+                            {Number(booking.status) === 1 &&
+                              booking.start_verification_code &&
+                              String(booking.start_verification_code).trim() !== '' && (
+                                <View
+                                  style={[
+                                    styles.statusInfoContainer,
+                                    { backgroundColor: '#fffbeb', borderColor: '#fbbf24' },
+                                  ]}
+                                >
+                                  <Text style={styles.statusInfoText}>
+                                    Your professional is ready to begin. Share this verification code with them
+                                    only:
+                                  </Text>
+                                  <Text
+                                    style={[
+                                      styles.bookingValue,
+                                      {
+                                        marginTop: 8,
+                                        fontSize: 22,
+                                        letterSpacing: 4,
+                                        alignSelf: 'center',
+                                      },
+                                    ]}
+                                  >
+                                    {booking.start_verification_code}
+                                  </Text>
+                                </View>
+                              )}
                             
                             {/* Reschedule and Cancel Buttons */}
                             <View style={styles.actionButtonsContainer}>
@@ -1638,7 +1878,7 @@ export default function Index() {
                                   <Ionicons name="time" size={styles.smallIconSize} color="#666" />
                                   <Text style={styles.bookingLabel}>Booking For: </Text>
                                   <Text style={styles.bookingValue}>
-                                    {new Date(booking.created_at).toLocaleString("en-GB", {
+                                    {new Date(booking.booking_time).toLocaleString("en-GB", {
                                       day: '2-digit',
                                       month: '2-digit',
                                       year: 'numeric',
@@ -1649,12 +1889,128 @@ export default function Index() {
                                     })}
                                   </Text>
                                 </View>
-                                
-                                <View style={styles.statusInfoContainer}>
-                                  <Text style={styles.statusInfoText}>
-                                    {getStatusChangeMessage(booking.status, booking)}
+
+                                <View style={styles.actionButtonsContainer}>
+                                  <TouchableOpacity
+                                    style={[styles.actionButton, styles.rescheduleButton]}
+                                    onPress={() => showCustomerCommentsPopup(booking)}
+                                  >
+                                    <Ionicons name="chatbubble-ellipses-outline" size={styles.smallIconSize} color="#7c3aed" />
+                                    <Text style={[styles.actionButtonText, { color: '#7c3aed' }]}>Upload comments</Text>
+                                  </TouchableOpacity>
+                                </View>
+
+                                {booking.complete_verification_code &&
+                                  String(booking.complete_verification_code).trim() !== '' && (
+                                    <View
+                                      style={[
+                                        styles.statusInfoContainer,
+                                        { backgroundColor: '#ecfdf5', borderColor: '#34d399' },
+                                      ]}
+                                    >
+                                      <Text style={styles.statusInfoText}>
+                                        Your professional is completing the job. Share this verification code
+                                        with them only:
+                                      </Text>
+                                      <Text
+                                        style={[
+                                          styles.bookingValue,
+                                          {
+                                            marginTop: 8,
+                                            fontSize: 22,
+                                            letterSpacing: 4,
+                                            alignSelf: 'center',
+                                          },
+                                        ]}
+                                      >
+                                        {booking.complete_verification_code}
+                                      </Text>
+                                    </View>
+                                  )}
+                              </View>
+                            );
+                          }
+
+                          // Status 9 - On hold (customer/worker comments)
+                          if (statusNum === 9) {
+                            return (
+                              <View style={styles.bookingDetails}>
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="person" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Worker: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_name || `Worker #${booking.worker_id}`}
                                   </Text>
                                 </View>
+
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="call" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Contact: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {booking.worker_mobile || 'N/A'}
+                                  </Text>
+                                </View>
+
+                                <View style={styles.bookingRow}>
+                                  <Ionicons name="time" size={styles.smallIconSize} color="#666" />
+                                  <Text style={styles.bookingLabel}>Booking For: </Text>
+                                  <Text style={styles.bookingValue}>
+                                    {new Date(booking.booking_time).toLocaleString('en-GB', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit',
+                                      hour12: true,
+                                    })}
+                                  </Text>
+                                </View>
+
+                                <View style={styles.viewWorkCommentsButtonRow}>
+                                  <TouchableOpacity
+                                    style={styles.viewWorkCommentsChip}
+                                    onPress={() => openViewWorkCommentPopup(booking, 1)}
+                                  >
+                                    <Ionicons name="eye-outline" size={styles.viewWorkCommentsChipIcon} color="#5b21b6" />
+                                    <Text style={styles.viewWorkCommentsChipText}>Worker comments</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.viewWorkCommentsChip}
+                                    onPress={() => openViewWorkCommentPopup(booking, 2)}
+                                  >
+                                    <Ionicons name="chatbox-ellipses-outline" size={styles.viewWorkCommentsChipIcon} color="#5b21b6" />
+                                    <Text style={styles.viewWorkCommentsChipText}>Your comments</Text>
+                                  </TouchableOpacity>
+                                </View>
+
+                                {booking.complete_verification_code &&
+                                  String(booking.complete_verification_code).trim() !== '' && (
+                                    <View
+                                      style={[
+                                        styles.statusInfoContainer,
+                                        { backgroundColor: '#ecfdf5', borderColor: '#34d399' },
+                                      ]}
+                                    >
+                                      <Text style={styles.statusInfoText}>
+                                        Your professional is completing the job. Share this verification code
+                                        with them only:
+                                      </Text>
+                                      <Text
+                                        style={[
+                                          styles.bookingValue,
+                                          {
+                                            marginTop: 8,
+                                            fontSize: 22,
+                                            letterSpacing: 4,
+                                            alignSelf: 'center',
+                                          },
+                                        ]}
+                                      >
+                                        {booking.complete_verification_code}
+                                      </Text>
+                                    </View>
+                                  )}
                               </View>
                             );
                           }
@@ -1783,7 +2139,7 @@ export default function Index() {
                                   <Ionicons name="time" size={styles.smallIconSize} color="#666" />
                                   <Text style={styles.bookingLabel}>Booking For: </Text>
                                   <Text style={styles.bookingValue}>
-                                    {new Date(booking.created_at).toLocaleString("en-GB", {
+                                    {new Date(booking.booking_time).toLocaleString("en-GB", {
                                       day: '2-digit',
                                       month: '2-digit',
                                       year: 'numeric',
@@ -2333,6 +2689,207 @@ export default function Index() {
             </View>
           )}
 
+          {customerCommentsPopupVisible && customerCommentsBooking && (
+            <View style={[styles.popupOverlay, styles.popupOverlayStackTop]}>
+              <View style={styles.jobCommentsModalCard}>
+                <TouchableOpacity
+                  onPress={closeCustomerCommentsPopup}
+                  style={styles.startVerifyCloseFab}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={styles.jobCommentsCloseIcon} color="#64748b" />
+                </TouchableOpacity>
+
+                <View style={styles.jobCommentsHero}>
+                  <View style={styles.jobCommentsIconCircle}>
+                    <Ionicons name="chatbubbles-outline" size={styles.jobCommentsHeroIcon} color="#7c3aed" />
+                  </View>
+                  <Text style={styles.jobCommentsTitleText}>Upload comments</Text>
+                  <Text style={styles.jobCommentsSubtitleText}>
+                    Share notes about the work, site conditions, or anything.
+                  </Text>
+                  <View style={styles.jobCommentsBookingChip}>
+                    <Ionicons name="pricetag-outline" size={styles.jobCommentsChipIcon} color="#6d28d9" />
+                    <Text style={styles.jobCommentsBookingChipText}>
+                      Booking #{customerCommentsBooking.booking_id}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.jobCommentsForm}>
+                  <View style={styles.jobCommentsFieldLabelRow}>
+                    <Text style={styles.jobCommentsFieldLabel}>Your comments</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.jobCommentsInput, customerCommentsError ? styles.jobCommentsInputError : null]}
+                    placeholder="Write your comments here…"
+                    placeholderTextColor="#94a3b8"
+                    value={customerCommentsText}
+                    onChangeText={(text) => {
+                      setCustomerCommentsText(text);
+                      if (customerCommentsError) setCustomerCommentsError('');
+                    }}
+                    multiline
+                    numberOfLines={5}
+                    textAlignVertical="top"
+                  />
+                  {customerCommentsError ? (
+                    <View style={styles.jobCommentsErrorRow}>
+                      <Ionicons name="alert-circle" size={styles.jobCommentsAlertIcon} color="#e11d48" />
+                      <Text style={styles.jobCommentsErrorText}>{customerCommentsError}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.startVerifyActionsRow}>
+                  <TouchableOpacity
+                    style={styles.startVerifyBtnGhost}
+                    onPress={closeCustomerCommentsPopup}
+                    disabled={customerCommentsSubmitLoading}
+                  >
+                    <Text style={styles.startVerifyBtnGhostText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.jobCommentsSubmitBtn,
+                      (!customerCommentsText.trim() || customerCommentsSubmitLoading) &&
+                        styles.jobCommentsSubmitBtnDisabled,
+                    ]}
+                    onPress={handleCustomerCommentsSubmit}
+                    disabled={!customerCommentsText.trim() || customerCommentsSubmitLoading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.jobCommentsSubmitBtnText}>
+                      {customerCommentsSubmitLoading ? 'Submitting…' : 'Submit'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {viewWorkCommentVisible && viewWorkCommentBooking && viewWorkCommentUserType != null && (
+            <View style={styles.popupOverlay}>
+              <View style={styles.jobCommentsModalCard}>
+                <TouchableOpacity
+                  onPress={closeViewWorkCommentPopup}
+                  style={styles.startVerifyCloseFab}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={styles.jobCommentsCloseIcon} color="#64748b" />
+                </TouchableOpacity>
+
+                <View style={styles.jobCommentsHero}>
+                  <View style={styles.jobCommentsIconCircle}>
+                    <Ionicons name="document-text-outline" size={styles.viewWorkCommentDocIcon} color="#7c3aed" />
+                  </View>
+                  <Text style={styles.jobCommentsTitleText}>
+                    {viewWorkCommentUserType === 1 ? 'Worker comments' : 'Your comments'}
+                  </Text>
+                  <View style={styles.jobCommentsBookingChip}>
+                    <Ionicons name="pricetag-outline" size={styles.jobCommentsChipIcon} color="#6d28d9" />
+                    <Text style={styles.jobCommentsBookingChipText}>
+                      Booking #{viewWorkCommentBooking.booking_id}
+                    </Text>
+                  </View>
+                </View>
+
+                {viewWorkCommentLoading ? (
+                  <Text style={styles.viewWorkCommentMetaText}>Loading…</Text>
+                ) : viewWorkCommentLoadError ? (
+                  <Text style={styles.jobCommentsErrorText}>{viewWorkCommentLoadError}</Text>
+                ) : viewWorkCommentUserType === 1 ? (
+                  !viewWorkCommentHasRow || !viewWorkCommentText.trim() ? (
+                    <Text style={styles.viewWorkCommentEmptyText}>there is no existing comments</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.viewWorkCommentMetaText}>
+                        Submitted: {viewWorkCommentSubmittedLabel}
+                      </Text>
+                      <Text style={styles.viewWorkCommentMetaText}>
+                        Last updated: {viewWorkCommentUpdatedLabel}
+                      </Text>
+                      <Text style={styles.viewWorkCommentReadOnlyText}>{viewWorkCommentText}</Text>
+                      <TouchableOpacity
+                        style={styles.viewWorkCommentEmptyCloseButton}
+                        onPress={closeViewWorkCommentPopup}
+                      >
+                        <Text style={styles.viewWorkCommentEmptyCloseButtonText}>Close</Text>
+                      </TouchableOpacity>
+                    </>
+                  )
+                ) : !viewWorkCommentHasRow || !viewWorkCommentText.trim() ? (
+                  <>
+                    <Text style={styles.viewWorkCommentEmptyText}>There is no comment from you.</Text>
+                    <TouchableOpacity
+                      style={styles.viewWorkCommentAddCommentsButton}
+                      onPress={() => showCustomerCommentsPopup(viewWorkCommentBooking!)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.viewWorkCommentAddCommentsButtonText}>Add comments</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.viewWorkCommentMetaText}>
+                      Submitted: {viewWorkCommentSubmittedLabel}
+                    </Text>
+                    <Text style={styles.viewWorkCommentMetaText}>
+                      Last updated: {viewWorkCommentUpdatedLabel}
+                    </Text>
+                    <View style={styles.jobCommentsForm}>
+                      <Text style={styles.jobCommentsFieldLabel}>Comments</Text>
+                      <TextInput
+                        style={[styles.jobCommentsInput, viewWorkCommentError ? styles.jobCommentsInputError : null]}
+                        placeholder="Your comments…"
+                        placeholderTextColor="#94a3b8"
+                        value={viewWorkCommentText}
+                        onChangeText={(t) => {
+                          setViewWorkCommentText(t);
+                          if (viewWorkCommentError) setViewWorkCommentError('');
+                        }}
+                        multiline
+                        numberOfLines={6}
+                        textAlignVertical="top"
+                        editable={!viewWorkCommentSaving}
+                      />
+                      {viewWorkCommentError ? (
+                        <View style={styles.jobCommentsErrorRow}>
+                          <Ionicons name="alert-circle" size={styles.jobCommentsAlertIcon} color="#e11d48" />
+                          <Text style={styles.jobCommentsErrorText}>{viewWorkCommentError}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.startVerifyActionsRow}>
+                      <TouchableOpacity
+                        style={styles.startVerifyBtnGhost}
+                        onPress={closeViewWorkCommentPopup}
+                        disabled={viewWorkCommentSaving}
+                      >
+                        <Text style={styles.startVerifyBtnGhostText}>Close</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.jobCommentsSubmitBtn,
+                          (!viewWorkCommentText.trim() || viewWorkCommentSaving) && styles.jobCommentsSubmitBtnDisabled,
+                        ]}
+                        onPress={handleSaveSeekerYourWorkComment}
+                        disabled={!viewWorkCommentText.trim() || viewWorkCommentSaving}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.jobCommentsSubmitBtnText}>
+                          {viewWorkCommentSaving ? 'Saving…' : 'Save'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Cancellation Reason Popup */}
           {cancelPopupVisible && cancellingBooking && (
             <View style={styles.popupOverlay}>
@@ -2456,6 +3013,8 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     const scaledSize = (size * screenWidth) / baseWidth;
     return size + (scaledSize - size) * 0.5;
   };
+
+  const isLargeScreen = screenWidth >= 414 && screenWidth < 768;
 
   // Icon sizes
   const iconSize = Math.max(24, Math.min(32, moderateScale(28)));
@@ -2987,6 +3546,260 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
       alignItems: 'center',
       zIndex: 2000,
     },
+    popupOverlayStackTop: {
+      zIndex: 3000,
+    },
+    jobCommentsModalCard: {
+      backgroundColor: '#ffffff',
+      borderRadius: moderateScale(24),
+      marginHorizontal: moderateScale(20),
+      width: '90%',
+      maxWidth: isLargeScreen ? moderateScale(400) : moderateScale(368),
+      paddingTop: moderateScale(28),
+      paddingBottom: moderateScale(22),
+      paddingHorizontal: moderateScale(20),
+      shadowColor: '#4c1d95',
+      shadowOffset: { width: 0, height: getResponsiveSpacing(10) },
+      shadowOpacity: 0.14,
+      shadowRadius: getResponsiveSpacing(22),
+      elevation: 16,
+      borderWidth: 1,
+      borderColor: '#ede9fe',
+    },
+    startVerifyCloseFab: {
+      position: 'absolute',
+      top: moderateScale(14),
+      right: moderateScale(14),
+      zIndex: 2,
+      width: moderateScale(36),
+      height: moderateScale(36),
+      borderRadius: moderateScale(18),
+      backgroundColor: '#f1f5f9',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    jobCommentsHero: {
+      alignItems: 'center',
+      paddingBottom: moderateScale(20),
+      paddingHorizontal: moderateScale(4),
+    },
+    jobCommentsIconCircle: {
+      width: moderateScale(64),
+      height: moderateScale(64),
+      borderRadius: moderateScale(32),
+      backgroundColor: '#f5f3ff',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: moderateScale(14),
+      borderWidth: 1,
+      borderColor: '#ddd6fe',
+    },
+    jobCommentsTitleText: {
+      fontSize: moderateScale(21),
+      fontWeight: '700',
+      color: '#0f172a',
+      letterSpacing: -0.35,
+      marginBottom: moderateScale(8),
+      textAlign: 'center',
+    },
+    jobCommentsSubtitleText: {
+      fontSize: moderateScale(14),
+      color: '#64748b',
+      lineHeight: moderateScale(21),
+      textAlign: 'center',
+      marginBottom: moderateScale(16),
+      paddingHorizontal: moderateScale(2),
+    },
+    jobCommentsBookingChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'center',
+      backgroundColor: '#ede9fe',
+      paddingVertical: moderateScale(12),
+      paddingHorizontal: moderateScale(18),
+      borderRadius: moderateScale(16),
+      borderWidth: 1.5,
+      borderColor: '#c4b5fd',
+      shadowColor: '#6d28d9',
+      shadowOffset: { width: 0, height: getResponsiveSpacing(4) },
+      shadowOpacity: 0.14,
+      shadowRadius: getResponsiveSpacing(10),
+      elevation: 5,
+    },
+    jobCommentsBookingChipText: {
+      fontSize: moderateScale(14),
+      fontWeight: '700',
+      color: '#5b21b6',
+      letterSpacing: 0.4,
+      marginLeft: moderateScale(10),
+    },
+    jobCommentsForm: {
+      marginBottom: moderateScale(20),
+    },
+    jobCommentsFieldLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: moderateScale(10),
+    },
+    jobCommentsFieldLabel: {
+      fontSize: moderateScale(15),
+      fontWeight: '600',
+      color: '#334155',
+    },
+    jobCommentsInput: {
+      minHeight: moderateScale(128),
+      borderRadius: moderateScale(16),
+      borderWidth: 1.5,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#f8fafc',
+      paddingHorizontal: moderateScale(16),
+      paddingVertical: moderateScale(14),
+      fontSize: moderateScale(15),
+      color: '#0f172a',
+      lineHeight: moderateScale(22),
+    },
+    jobCommentsInputError: {
+      borderColor: '#fda4af',
+      backgroundColor: '#fff1f2',
+    },
+    jobCommentsErrorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: moderateScale(10),
+    },
+    jobCommentsErrorText: {
+      fontSize: moderateScale(13),
+      color: '#e11d48',
+      fontWeight: '600',
+      flex: 1,
+      marginLeft: moderateScale(8),
+      lineHeight: moderateScale(18),
+    },
+    startVerifyActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: moderateScale(10),
+    },
+    startVerifyBtnGhost: {
+      flex: 1,
+      paddingVertical: moderateScale(14),
+      borderRadius: moderateScale(14),
+      borderWidth: 1.5,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#ffffff',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    startVerifyBtnGhostText: {
+      fontSize: moderateScale(15),
+      fontWeight: '600',
+      color: '#475569',
+    },
+    jobCommentsSubmitBtn: {
+      flex: 1,
+      paddingVertical: moderateScale(14),
+      borderRadius: moderateScale(14),
+      backgroundColor: '#7c3aed',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#7c3aed',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.28,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    jobCommentsSubmitBtnDisabled: {
+      backgroundColor: '#c4b5fd',
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    jobCommentsSubmitBtnText: {
+      fontSize: moderateScale(15),
+      fontWeight: '700',
+      color: '#ffffff',
+    },
+    viewWorkCommentsButtonRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      marginTop: moderateScale(10),
+      width: '100%',
+    },
+    viewWorkCommentsChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#ede9fe',
+      paddingVertical: moderateScale(8),
+      paddingHorizontal: moderateScale(12),
+      borderRadius: moderateScale(12),
+      borderWidth: 1,
+      borderColor: '#c4b5fd',
+      marginHorizontal: moderateScale(4),
+      marginVertical: moderateScale(4),
+    },
+    viewWorkCommentsChipText: {
+      fontSize: moderateScale(12),
+      fontWeight: '700',
+      color: '#5b21b6',
+      marginLeft: moderateScale(6),
+    },
+    viewWorkCommentMetaText: {
+      fontSize: moderateScale(13),
+      color: '#64748b',
+      marginBottom: moderateScale(6),
+      alignSelf: 'stretch',
+    },
+    viewWorkCommentEmptyText: {
+      fontSize: moderateScale(15),
+      color: '#64748b',
+      fontStyle: 'italic',
+      textAlign: 'center',
+      marginVertical: moderateScale(16),
+      paddingHorizontal: moderateScale(8),
+    },
+    viewWorkCommentReadOnlyText: {
+      fontSize: moderateScale(15),
+      color: '#0f172a',
+      lineHeight: moderateScale(22),
+      marginBottom: moderateScale(16),
+      padding: moderateScale(14),
+      backgroundColor: '#f8fafc',
+      borderRadius: moderateScale(16),
+      borderWidth: 1.5,
+      borderColor: '#e2e8f0',
+      alignSelf: 'stretch',
+    },
+    viewWorkCommentEmptyCloseButton: {
+      marginTop: moderateScale(12),
+      alignSelf: 'stretch',
+      paddingVertical: moderateScale(14),
+      borderRadius: moderateScale(14),
+      backgroundColor: '#7c3aed',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewWorkCommentEmptyCloseButtonText: {
+      fontSize: moderateScale(15),
+      fontWeight: '700',
+      color: '#ffffff',
+    },
+    viewWorkCommentAddCommentsButton: {
+      alignSelf: 'stretch',
+      paddingVertical: moderateScale(12),
+      borderRadius: moderateScale(14),
+      borderWidth: 1.5,
+      borderColor: '#7c3aed',
+      backgroundColor: '#faf5ff',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: moderateScale(14),
+    },
+    viewWorkCommentAddCommentsButtonText: {
+      fontSize: moderateScale(15),
+      fontWeight: '700',
+      color: '#7c3aed',
+    },
     cancelPopupContainer: {
       backgroundColor: '#ffffff',
       borderRadius: getResponsiveValue(16, 12, 20),
@@ -3307,6 +4120,12 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     emptyIconSize,
     paymentIconSize,
     ratingStarSize,
+    jobCommentsCloseIcon: moderateScale(20),
+    jobCommentsHeroIcon: moderateScale(30),
+    jobCommentsChipIcon: moderateScale(18),
+    jobCommentsAlertIcon: moderateScale(18),
+    viewWorkCommentDocIcon: moderateScale(28),
+    viewWorkCommentsChipIcon: moderateScale(16),
   } as typeof styles & {
     iconSize: number;
     titleIconSize: number;
@@ -3318,5 +4137,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     emptyIconSize: number;
     paymentIconSize: number;
     ratingStarSize: number;
+    jobCommentsCloseIcon: number;
+    jobCommentsHeroIcon: number;
+    jobCommentsChipIcon: number;
+    jobCommentsAlertIcon: number;
+    viewWorkCommentDocIcon: number;
+    viewWorkCommentsChipIcon: number;
   };
 };

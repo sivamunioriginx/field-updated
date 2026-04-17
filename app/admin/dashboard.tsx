@@ -3,35 +3,33 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  useWindowDimensions
+    Animated,
+    Image,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+    useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_ENDPOINTS } from '../../constants/api';
 import Animations from './animations';
+import BookingAnalysis from './booking-analysis';
 import Bookings from './bookings';
 import Categories from './categories';
 import Customers from './customers';
 import FaqsAndProcess from './faqsandprocess';
 import Payments from './payments';
+import PaymentsAnalysis from './payments-analysis';
 import Quote from './quote';
 import ReviewsRatings from './reviewsandratings';
 import Services from './services';
 import Subcategories from './subcategories';
 import TopDeals from './topdeals';
 import Workers from './workers';
-import CategoryAnalysis from './category-analysis';
-import SubcategoryAnalysis from './subcategory-analysis';
-import ServicesAnalysis from './services-analysis';
-import PaymentsAnalysis from './payments-analysis';
 
 export default function AdminIndexScreen() {
   const router = useRouter();
@@ -51,6 +49,7 @@ export default function AdminIndexScreen() {
   const [totalBookingsCount, setTotalBookingsCount] = useState<number | null>(null);
   const [activeBookingsCount, setActiveBookingsCount] = useState<number | null>(null);
   const [inprogressBookingsCount, setInprogressBookingCount] = useState<number | null>(null);
+  const [onHoldBookingsCount, setOnHoldBookingsCount] = useState<number | null>(null);
   const [completedBookingsCount, setCompletedBookingsCount] = useState<number | null>(null);
   const [canceledBookingsCount, setCanceledBookingsCount] = useState<number | null>(null);
   const [rescheduledBookingsCount, setRescheduledBookingsCount] = useState<number | null>(null);
@@ -60,10 +59,6 @@ export default function AdminIndexScreen() {
   // Which booking status should be shown when opening Bookings from summary cards
   const [bookingsStatus, setBookingsStatus] = useState<string>('all');
   const [marketAnalysisExpanded, setMarketAnalysisExpanded] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string | null>(null);
-  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<number | null>(null);
-  const [selectedSubcategoryTitle, setSelectedSubcategoryTitle] = useState<string | null>(null);
   const marketAnalysisSlide = useRef(new Animated.Value(0)).current;
   const menuScrollRef = useRef<ScrollView>(null);
   const marketAnalysisBlockRef = useRef<View>(null);
@@ -103,6 +98,7 @@ export default function AdminIndexScreen() {
     { id: 'total-bookings', label: 'Total Bookings', value: '1,234', icon: 'cart-outline', bg: '#fef3c7', iconBg: '#f59e0b', change: '+3.4%', changeColor: '#10b981' },
     { id: 'active', label: 'Accepted Bookings', value: '12', icon: 'play-circle-outline', bg: '#fef9c3', iconBg: '#f59e0b', change: '-1.0%', changeColor: '#ef4444' },
     { id: 'inprogress', label: 'In Progress Bookings', value: '567', icon: 'sync-outline', bg: '#dbeafe', iconBg: '#06b6d4', change: '+8.2%', changeColor: '#10b981' },
+    { id: 'onhold', label: 'On Hold Bookings', value: '0', icon: 'pause-circle-outline', bg: '#e0e7ff', iconBg: '#6366f1', change: '+0%', changeColor: '#10b981' },
     { id: 'complete', label: 'Completed Bookings', value: '1,234', icon: 'checkmark-done-outline', bg: '#ede9fe', iconBg: '#6366f1', change: '+12.5%', changeColor: '#10b981' },
     { id: 'cancele', label: 'Canceled Bookings', value: '89%', icon: 'close-circle-outline', bg: '#d1fae5', iconBg: '#10b981', change: '+5.1%', changeColor: '#10b981' },
     { id: 'reschedule', label: 'Rescheduled Bookings', value: '23', icon: 'calendar-outline', bg: '#fed7aa', iconBg: '#f59e0b', change: '-2.4%', changeColor: '#ef4444' },
@@ -428,6 +424,45 @@ useEffect(() => {
   return () => { cancelled = true; };
 }, []);
 
+// get On hold bookings count (status = 9)
+useEffect(() => {
+  let cancelled = false;
+
+  const fetchOnHoldBookingsCount = async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.bookings)) {
+        const paid = data.bookings.filter((b: any) => b.payment_status === 1);
+        const bookingsMap = new Map<any, any>();
+        paid.forEach((b: any) => {
+          const key = b.booking_id ?? b.id ?? b.bookingId ?? b.bookingid;
+          if (key == null) return;
+          const existing = bookingsMap.get(key);
+          if (!existing) {
+            bookingsMap.set(key, b);
+            return;
+          }
+          const existingTime = new Date(existing.created_at ?? 0).getTime();
+          const currentTime = new Date(b.created_at ?? 0).getTime();
+          if (currentTime > existingTime) bookingsMap.set(key, b);
+        });
+
+        const uniquePaid = Array.from(bookingsMap.values());
+        const count = uniquePaid.filter((b: any) => b.status === 9).length;
+        if (!cancelled) setOnHoldBookingsCount(count);
+      } else {
+        if (!cancelled) setOnHoldBookingsCount(0);
+      }
+    } catch (error) {
+      console.error('Error fetching On hold bookings count:', error);
+      if (!cancelled) setOnHoldBookingsCount(0);
+    }
+  };
+  fetchOnHoldBookingsCount();
+  return () => { cancelled = true; };
+}, []);
+
 // get Completed bookings count
 useEffect(() => {
 let cancelled = false;
@@ -618,6 +653,7 @@ const menuItems = [
       'total-bookings': 'all',
       'active': 'active', // Accepted
       'inprogress': 'inprogress',
+      'onhold': 'onhold',
       'complete': 'completed',
       'cancele': 'cancel', // note: id in quickCards is 'cancele'
       'reschedule': 'reschedule',
@@ -693,7 +729,7 @@ const menuItems = [
                         <TouchableOpacity
                     style={[
                       styles.menuItem,
-                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) && styles.menuItemActive
+                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_bookings','marketanalysis_payments'].includes(activeMenu)))) && styles.menuItemActive
                     ]}
                     onPress={() => {
                       if (item.id === 'marketanalysis') {
@@ -709,21 +745,21 @@ const menuItems = [
                   >
                     <View style={[
                       styles.iconContainer,
-                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) && { backgroundColor: item.color }
+                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_bookings','marketanalysis_payments'].includes(activeMenu)))) && { backgroundColor: item.color }
                     ]}>
                       <Ionicons
                         name={item.icon as any}
                         size={20}
-                        color={(activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) ? '#fff' : item.color}
+                        color={(activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_bookings','marketanalysis_payments'].includes(activeMenu)))) ? '#fff' : item.color}
                       />
                     </View>
                     <Text style={[
                       styles.menuLabel,
-                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) && styles.menuLabelActive
+                      (activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_bookings','marketanalysis_payments'].includes(activeMenu)))) && styles.menuLabelActive
                     ]}>
                       {item.label}
                     </Text>
-                    {(activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_categories','marketanalysis_subcategories','marketanalysis_services','marketanalysis_payments'].includes(activeMenu)))) ? (
+                    {(activeMenu === item.id || (item.id === 'marketanalysis' && (marketAnalysisExpanded || ['marketanalysis_bookings','marketanalysis_payments'].includes(activeMenu)))) ? (
                       <View style={[styles.activeIndicator, { backgroundColor: item.color }]} />
                     ) : null}
                   </TouchableOpacity>
@@ -740,34 +776,14 @@ const menuItems = [
                       }}
                     >
                       <TouchableOpacity
-                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_categories' && styles.menuItemActive]}
-                        onPress={() => { setActiveMenu('marketanalysis_categories'); }}
+                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_bookings' && styles.menuItemActive]}
+                        onPress={() => { setActiveMenu('marketanalysis_bookings'); }}
                       >
-                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_categories' && { backgroundColor: '#ec4899' }]}>
-                          <Ionicons name="pie-chart-outline" size={20} color={activeMenu === 'marketanalysis_categories' ? '#fff' : '#ec4899'} />
+                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_bookings' && { backgroundColor: '#6366f1' }]}>
+                          <Ionicons name="analytics-outline" size={20} color={activeMenu === 'marketanalysis_bookings' ? '#fff' : '#6366f1'} />
                         </View>
-                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_categories' && styles.menuLabelActive]}>Categories</Text>
-                        {activeMenu === 'marketanalysis_categories' && <View style={[styles.activeIndicator, { backgroundColor: '#ec4899' }]} />}
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_subcategories' && styles.menuItemActive]}
-                        onPress={() => { setSelectedCategoryId(null); setSelectedCategoryTitle(null); setActiveMenu('marketanalysis_subcategories'); }}
-                      >
-                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_subcategories' && { backgroundColor: '#64748b' }]}>
-                          <Ionicons name="layers-outline" size={20} color={activeMenu === 'marketanalysis_subcategories' ? '#fff' : '#64748b'} />
-                        </View>
-                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_subcategories' && styles.menuLabelActive]}>Subcategories</Text>
-                        {activeMenu === 'marketanalysis_subcategories' && <View style={[styles.activeIndicator, { backgroundColor: '#64748b' }]} />}
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_services' && styles.menuItemActive]}
-                        onPress={() => { setActiveMenu('marketanalysis_services'); }}
-                      >
-                        <View style={[styles.iconContainer, activeMenu === 'marketanalysis_services' && { backgroundColor: '#14b8a6' }]}>
-                          <Ionicons name="construct-outline" size={20} color={activeMenu === 'marketanalysis_services' ? '#fff' : '#14b8a6'} />
-                        </View>
-                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_services' && styles.menuLabelActive]}>Services Analysis</Text>
-                        {activeMenu === 'marketanalysis_services' && <View style={[styles.activeIndicator, { backgroundColor: '#14b8a6' }]} />}
+                        <Text style={[styles.menuLabel, activeMenu === 'marketanalysis_bookings' && styles.menuLabelActive]}>Booking Analysis</Text>
+                        {activeMenu === 'marketanalysis_bookings' && <View style={[styles.activeIndicator, { backgroundColor: '#6366f1' }]} />}
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.menuItem, styles.menuSubItem, activeMenu === 'marketanalysis_payments' && styles.menuItemActive]}
@@ -842,13 +858,13 @@ const menuItems = [
             <View style={styles.topBarContent}>
               <View style={styles.topBarLeft}>
                 <Text style={styles.topBarTitle}>
-                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'marketanalysis_subcategories' ? 'Subcategory Analysis' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'marketanalysis_services' ? 'Services Analysis' : activeMenu === 'marketanalysis_payments' ? 'Payments Analysis' : activeMenu === 'animations' ? 'Animations Management' : activeMenu === 'topdeals' ? 'Top Deals Management' : activeMenu === 'reviewsratings' ? 'Reviews & Ratings Management' : activeMenu === 'fags' ? 'FAQS & Process Management' : activeMenu === 'marketanalysis_categories' ? 'Category Analysis' : 'Dashboard Overview'}
+                  {activeMenu === 'bookings' ? 'Bookings Management' : activeMenu === 'payments' ? 'Payments Management' : activeMenu === 'customers' ? 'Customers Management' : activeMenu === 'workers' ? 'Workers Management' : activeMenu === 'quote' ? 'Quote Management' : activeMenu === 'categories' ? 'categories Management' : activeMenu === 'subcategories' ? 'Subcategories Management' : activeMenu === 'services' ? 'Services Management' : activeMenu === 'marketanalysis_bookings' ? 'Booking Analysis' : activeMenu === 'marketanalysis_payments' ? 'Payments Analysis' : activeMenu === 'animations' ? 'Animations Management' : activeMenu === 'topdeals' ? 'Top Deals Management' : activeMenu === 'reviewsratings' ? 'Reviews & Ratings Management' : activeMenu === 'fags' ? 'FAQS & Process Management' : 'Dashboard Overview'}
                 </Text>
                 <View style={styles.breadcrumb}>
                   <Text style={styles.breadcrumbText}>Home</Text>
                   <Ionicons name="chevron-forward" size={14} color="#94a3b8" />
                   <Text style={styles.breadcrumbActive}>
-                    {activeMenu === 'marketanalysis_categories' ? 'Category Analysis' : activeMenu === 'marketanalysis_subcategories' ? 'Subcategory Analysis' : activeMenu === 'marketanalysis_services' ? 'Services Analysis' : activeMenu === 'marketanalysis_payments' ? 'Payments Analysis' : menuItems.find(item => item.id === activeMenu)?.label || 'Dashboard'}
+                    {activeMenu === 'marketanalysis_bookings' ? 'Booking Analysis' : activeMenu === 'marketanalysis_payments' ? 'Payments Analysis' : menuItems.find(item => item.id === activeMenu)?.label || 'Dashboard'}
                   </Text>
                 </View>
               </View>
@@ -932,15 +948,9 @@ const menuItems = [
                 exportTrigger={exportTrigger}
               />
             </View>
-          ) : activeMenu === 'marketanalysis_categories' ? (
+          ) : activeMenu === 'marketanalysis_bookings' ? (
             <View style={styles.content}>
-              <CategoryAnalysis
-                onCategorySelect={(id, title) => {
-                  setSelectedCategoryId(id);
-                  setSelectedCategoryTitle(title);
-                  setActiveMenu('marketanalysis_subcategories');
-                }}
-              />
+              <BookingAnalysis />
             </View>
           ) : activeMenu === 'categories' ? (
             <View style={styles.content}>
@@ -948,22 +958,6 @@ const menuItems = [
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 exportTrigger={exportTrigger}
-              />
-            </View>
-          ) : activeMenu === 'marketanalysis_subcategories' ? (
-            <View style={styles.content}>
-              <SubcategoryAnalysis
-                categoryId={selectedCategoryId}
-                categoryTitle={selectedCategoryTitle}
-                onClearCategoryFilter={() => {
-                  setSelectedCategoryId(null);
-                  setSelectedCategoryTitle(null);
-                }}
-                onSubcategorySelect={(id, title) => {
-                  setSelectedSubcategoryId(id);
-                  setSelectedSubcategoryTitle(title);
-                  setActiveMenu('marketanalysis_services');
-                }}
               />
             </View>
           ) : activeMenu === 'subcategories' ? (
@@ -980,17 +974,6 @@ const menuItems = [
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 exportTrigger={exportTrigger}
-              />
-            </View>
-          ) : activeMenu === 'marketanalysis_services' ? (
-            <View style={styles.content}>
-              <ServicesAnalysis
-                subcategoryId={selectedSubcategoryId}
-                subcategoryTitle={selectedSubcategoryTitle}
-                onClearSubcategoryFilter={() => {
-                  setSelectedSubcategoryId(null);
-                  setSelectedSubcategoryTitle(null);
-                }}
               />
             </View>
           ) : activeMenu === 'marketanalysis_payments' ? (
@@ -1126,7 +1109,7 @@ const menuItems = [
                           <View style={styles.statInfo}>
                             <Text style={styles.statLabel}>{card.label}</Text>
                             <Text style={[styles.statValue, { fontSize: isDesktop ? 22 : isTablet ? 20 : 18 }]}> 
-                              {card.id === 'total-bookings' ? (totalBookingsCount !== null ? totalBookingsCount.toString() : '—') : card.id === 'active' ? (activeBookingsCount !== null ? activeBookingsCount.toString() : '—') : card.id === 'inprogress' ? (inprogressBookingsCount !== null ? inprogressBookingsCount.toString() : '—') : card.id === 'complete' ? (completedBookingsCount !== null ? completedBookingsCount.toString() : '—') : card.id === 'cancele' ? (canceledBookingsCount !== null ? canceledBookingsCount.toString() : '—') : card.id === 'reschedule' ? (rescheduledBookingsCount !== null ? rescheduledBookingsCount.toString() : '—') : card.id === 'customer' ? (customersCount !== null ? customersCount.toString() : '—') : card.id === 'active-workers' ? (activeWorkersCount !== null ? activeWorkersCount.toString() : '—') : card.id === 'revenue' ? formatINR(totalPaymentAmount) : card.value}
+                              {card.id === 'total-bookings' ? (totalBookingsCount !== null ? totalBookingsCount.toString() : '—') : card.id === 'active' ? (activeBookingsCount !== null ? activeBookingsCount.toString() : '—') : card.id === 'inprogress' ? (inprogressBookingsCount !== null ? inprogressBookingsCount.toString() : '—') : card.id === 'onhold' ? (onHoldBookingsCount !== null ? onHoldBookingsCount.toString() : '—') : card.id === 'complete' ? (completedBookingsCount !== null ? completedBookingsCount.toString() : '—') : card.id === 'cancele' ? (canceledBookingsCount !== null ? canceledBookingsCount.toString() : '—') : card.id === 'reschedule' ? (rescheduledBookingsCount !== null ? rescheduledBookingsCount.toString() : '—') : card.id === 'customer' ? (customersCount !== null ? customersCount.toString() : '—') : card.id === 'active-workers' ? (activeWorkersCount !== null ? activeWorkersCount.toString() : '—') : card.id === 'revenue' ? formatINR(totalPaymentAmount) : card.value}
                             </Text>
                           </View>
                         </TouchableOpacity>

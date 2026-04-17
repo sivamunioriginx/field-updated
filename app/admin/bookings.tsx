@@ -4,8 +4,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { createElement, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
-  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -20,7 +18,9 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import * as XLSX from 'xlsx';
-import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
+import { API_ENDPOINTS } from '../../constants/api';
+import ViewCustomer, { type ViewCustomerProps } from './viewcustomer';
+import ViewWorker from './viewworker';
 
 function WebDateInput({
   id,
@@ -135,46 +135,143 @@ interface Booking {
   rescheduled_by?: number; // 1 = Worker, 2 = Customer
   reschedule_reason?: string;
   reschedule_date?: string;
+  reschedule_requested_at?: string; // tbl_rescheduledbookings.created_at (admin "all" query)
   reschedule_status?: number; // Status from tbl_rescheduledbookings
+  start_time?: string; // tbl_track_bookings.start_time
+  complete_time?: string; // tbl_track_bookings.complete_time
+  hold_from?: string | null;
+  worker_hold_comments?: string | null;
+  customer_hold_comments?: string | null;
 }
 
-interface WorkerDetails {
-  id: number;
-  name: string;
-  mobile: string;
-  email?: string;
-  price?: number;
-  skill_id?: string;
-  pincode?: string;
-  mandal?: string;
-  city?: string;
-  district?: string;
-  state?: string;
-  country?: string;
-  address?: string;
-  profile_image?: string;
-  document1?: string[];
-  document2?: string[];
-  status?: number;
-  created_at?: string;
+function hasTimelineTimestamp(raw?: string | null): boolean {
+  if (raw == null) return false;
+  const t = String(raw).trim();
+  if (!t) return false;
+  if (t.startsWith('0000-00-00')) return false;
+  return true;
 }
 
-interface CustomerDetails {
-  id: number;
-  name: string;
-  mobile: string;
-  email?: string;
-  address?: string;
-  city?: string;
-  mandal?: string;
-  district?: string;
-  state?: string;
-  country?: string;
-  pincode?: string;
-  profile_image?: string;
-  document1?: string[];
-  status?: number;
-  created_at?: string;
+function buildBookingTimelineSteps(booking: Booking, formatDt: (raw: string) => string) {
+  const steps: {
+    label: string;
+    sub: string;
+    icon: 'calendar-outline' | 'checkmark-outline' | 'trash-outline' | 'time-outline' | 'briefcase-outline' | 'checkmark-circle-outline' | 'pause-circle-outline';
+    filled: boolean;
+    last: boolean;
+    connectorLabel?: string;
+  }[] = [];
+
+  if (hasTimelineTimestamp(booking.created_at)) {
+    steps.push({
+      label: 'BOOKING REQUESTED ON',
+      sub: formatDt(booking.created_at),
+      icon: 'calendar-outline',
+      filled: true,
+      last: false,
+    });
+  }
+  if (hasTimelineTimestamp(booking.created_at)) {
+    steps.push({
+      label: 'ACCEPTED ON',
+      sub: formatDt(booking.created_at),
+      icon: 'checkmark-outline',
+      filled: true,
+      last: false,
+    });
+  }
+  if (hasTimelineTimestamp(booking.canceled_date)) {
+    steps.push({
+      label: 'CANCEL REQUESTED ON',
+      sub: formatDt(booking.canceled_date!),
+      icon: 'trash-outline',
+      filled: true,
+      last: false,
+    });
+  }
+  const rescheduleAt = booking.reschedule_requested_at ?? booking.reschedule_date;
+  if (hasTimelineTimestamp(rescheduleAt)) {
+    steps.push({
+      label: 'RESCHEDULE REQUESTED ON',
+      sub: formatDt(rescheduleAt!),
+      icon: 'time-outline',
+      filled: true,
+      last: false,
+    });
+  }
+  if (hasTimelineTimestamp(booking.start_time)) {
+    steps.push({
+      label: 'JOB STARTED ON',
+      sub: formatDt(booking.start_time!),
+      icon: 'briefcase-outline',
+      filled: true,
+      last: false,
+    });
+  }
+  if (booking.status === 9 && hasTimelineTimestamp(booking.start_time)) {
+    const holdSub = hasTimelineTimestamp(booking.hold_from)
+      ? formatDt(booking.hold_from!)
+      : 'N/A';
+    steps.push({
+      label: 'ON HOLD FROM',
+      sub: holdSub,
+      icon: 'pause-circle-outline',
+      filled: true,
+      last: false,
+    });
+  }
+  const hasJobCompleteTime = hasTimelineTimestamp(booking.complete_time);
+  const hasJobStartTime = hasTimelineTimestamp(booking.start_time);
+
+  if (hasJobStartTime || booking.status === 3) {
+    const completedActive = booking.status === 3 && hasJobCompleteTime;
+    steps.push({
+      label: 'COMPLETED ON',
+      sub: completedActive ? formatDt(booking.complete_time!) : '',
+      icon: 'checkmark-circle-outline',
+      filled: completedActive,
+      last: true,
+      connectorLabel:
+        !completedActive && hasJobStartTime && (booking.status === 2 || booking.status === 9)
+          ? booking.status === 9
+            ? 'On hold'
+            : 'In progress'
+          : undefined,
+    });
+  }
+
+  return steps;
+}
+
+/** Match createStyles: timelineStepCard width, timelineBetween width, timelineStepsRow gap, timelineScrollContent paddingHorizontal */
+function getTimelineModalContentWidth(windowWidth: number, isDesktop: boolean, stepCount: number): number {
+  const maxCap = isDesktop ? Math.min(1360, windowWidth * 0.98) : windowWidth * 0.97;
+  const minW = isDesktop ? 320 : Math.min(300, windowWidth * 0.92);
+  if (stepCount <= 0) return minW;
+  const cardW = isDesktop ? 122 : 112;
+  const betweenW = isDesktop ? 44 : 36;
+  const rowGap = isDesktop ? 10 : 8;
+  const scrollPadH = isDesktop ? 24 : 16;
+  const rowContentW =
+    stepCount * cardW + Math.max(0, stepCount - 1) * betweenW + Math.max(0, 2 * stepCount - 2) * rowGap;
+  const innerW = rowContentW + scrollPadH * 2 + 24;
+  return Math.min(maxCap, Math.max(minW, innerW));
+}
+
+function bookingToViewCustomer(b: Booking): ViewCustomerProps['customer'] {
+  return {
+    id: b.user_id,
+    name: b.customer_name || 'N/A',
+    mobile: b.customer_mobile || b.contact_number || '',
+    email: '',
+    pincode: '',
+    address: '',
+    mandal: '',
+    city: '',
+    district: '',
+    state: '',
+    country: '',
+  };
 }
 
 interface BookingsProps {
@@ -221,6 +318,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [showRescheduleDatePicker, setShowRescheduleDatePicker] = useState(false);
+  const [timelineBooking, setTimelineBooking] = useState<Booking | null>(null);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState(() => formatDateToYYYYMMDD(new Date()));
   const [showFromCalendar, setShowFromCalendar] = useState(false);
@@ -228,25 +326,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const fromDateObj = fromDate ? new Date(fromDate + 'T12:00:00') : new Date();
   const toDateObj = toDate ? new Date(toDate + 'T12:00:00') : new Date();
   
-  // Worker details popup state
-  const [showWorkerPopup, setShowWorkerPopup] = useState(false);
-  const [selectedWorker, setSelectedWorker] = useState<WorkerDetails | null>(null);
-  const [workerDetailsLoading, setWorkerDetailsLoading] = useState(false);
-  // Worker popup section toggles (all closed by default)
-  const [showPersonalInfo, setShowPersonalInfo] = useState(false);
-  const [showDocuments, setShowDocuments] = useState(false);
-  const [showInvolvedBookings, setShowInvolvedBookings] = useState(false);
-  const [workerBookings, setWorkerBookings] = useState<Booking[]>([]);
-  const [workerBookingsLoading, setWorkerBookingsLoading] = useState(false);
-
-  // Customer details popup state
-  const [showCustomerPopup, setShowCustomerPopup] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetails | null>(null);
-  const [customerDetailsLoading, setCustomerDetailsLoading] = useState(false);
-  const [showCustomerPersonalInfo, setShowCustomerPersonalInfo] = useState(false);
-  const [showCustomerInvolvedBookings, setShowCustomerInvolvedBookings] = useState(false);
-  const [customerBookings, setCustomerBookings] = useState<Booking[]>([]);
-  const [customerBookingsLoading, setCustomerBookingsLoading] = useState(false);
+  const [viewingWorkerId, setViewingWorkerId] = useState<number | null>(null);
+  const [viewingCustomer, setViewingCustomer] = useState<ViewCustomerProps['customer'] | null>(null);
 
   // Polling popup state
   const [showPollingPopup, setShowPollingPopup] = useState(false);
@@ -260,6 +341,23 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const currentRescheduleDateRef = useRef<string>('');
   const currentOriginalBookingTimeRef = useRef<string>('');
   const paginatedBookingsRef = useRef<Booking[]>([]);
+
+  const openCustomerFromBooking = async (booking: Booking) => {
+    setOpenMenuId(null);
+    setMenuPosition(null);
+    if (!booking.user_id) return;
+    try {
+      const res = await fetch(API_ENDPOINTS.CUSTOMER_BY_ID(booking.user_id));
+      const data = await res.json();
+      if (data.success && data.customer) {
+        setViewingCustomer(data.customer);
+        return;
+      }
+    } catch {
+      /* fallback below */
+    }
+    setViewingCustomer(bookingToViewCustomer(booking));
+  };
 
   // Inject thin scrollbar style for status dropdown (web only)
   useEffect(() => {
@@ -300,20 +398,28 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     if (!exportTrigger || exportTrigger <= 0) return;
     const records = paginatedBookingsRef.current;
     if (records.length === 0) return;
-    const rows = records.map((b, i) => ({
-      'S.No': i + 1,
-      'Booking ID': b.booking_id,
-      'Status': getStatusLabel(b.status, b),
-      'Amount (₹)': b.amount != null ? b.amount : 'N/A',
-      'Payment Status': b.payment_status === 1 ? 'Paid' : 'Unpaid',
-      'Worker Name': b.worker_name || 'N/A',
-      'Customer Name': b.customer_name || 'N/A',
-      'Contact Number': b.contact_number || 'N/A',
-      'Work Location': b.work_location || 'N/A',
-      'Booked On': b.created_at ? formatDate(b.created_at) : 'N/A',
-      'Booking For': b.booking_time ? formatDate(b.booking_time) : 'N/A',
-      'Description': b.description || 'N/A',
-    }));
+    const rows = records.map((b, i) => {
+      const base: Record<string, string | number> = {
+        'S.No': i + 1,
+        'Booking ID': b.booking_id,
+        'Status': getStatusLabel(b.status, b),
+        'Amount (₹)': b.amount != null ? b.amount : 'N/A',
+        'Payment Status': b.payment_status === 1 ? 'Paid' : 'Unpaid',
+        'Worker Name': b.worker_name || 'N/A',
+        'Customer Name': b.customer_name || 'N/A',
+        'Contact Number': b.contact_number || 'N/A',
+        'Work Location': b.work_location || 'N/A',
+        'Booked On': b.created_at ? formatDate(b.created_at) : 'N/A',
+        'Booking For': b.booking_time ? formatDate(b.booking_time) : 'N/A',
+        'Description': b.description || 'N/A',
+      };
+      if (b.hold_from != null || b.worker_hold_comments != null || b.customer_hold_comments != null) {
+        base['Hold From'] = b.hold_from ? formatDate(b.hold_from) : 'N/A';
+        base['Worker comments'] = b.worker_hold_comments || 'N/A';
+        base['Customer comments'] = b.customer_hold_comments || 'N/A';
+      }
+      return base;
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Bookings');
@@ -326,12 +432,14 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportTrigger]);
 
-  const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false, isCancelReq: boolean = false, isRescheduleReq: boolean = false) => {
+  const fetchBookings = async (isCanceled: boolean = false, isRescheduled: boolean = false, isCancelReq: boolean = false, isRescheduleReq: boolean = false, isOnHold: boolean = false) => {
     try {
       setLoading(true);
       
       let url = API_ENDPOINTS.ADMIN_BOOKINGS;
-      if (isCancelReq) {
+      if (isOnHold) {
+        url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?onhold=true`;
+      } else if (isCancelReq) {
         url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?cancelreq=true`;
       } else if (isRescheduleReq) {
         url = `${API_ENDPOINTS.ADMIN_BOOKINGS}?reschedulereq=true`;
@@ -366,7 +474,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     const isRescheduled = statusFilter === 'reschedule';
     const isCancelReq = statusFilter === 'cancelreq';
     const isRescheduleReq = statusFilter === 'reschedulereq';
-    await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+    const isOnHold = statusFilter === 'onhold';
+    await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
     setRefreshing(false);
   };
 
@@ -375,7 +484,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     const isRescheduled = statusFilter === 'reschedule';
     const isCancelReq = statusFilter === 'cancelreq';
     const isRescheduleReq = statusFilter === 'reschedulereq';
-    fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+    const isOnHold = statusFilter === 'onhold';
+    fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
   }, [statusFilter]);
 
   const formatDate = (dateString: string) => {
@@ -404,6 +514,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       case 6: return 'Reschedule';
       case 7: return 'Cancel Request';
       case 8: return 'Reschedule Request';
+      case 9: return 'On Hold';
       default: return 'Unknown';
     }
   };
@@ -423,6 +534,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       case 6: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; // Yellow for Rescheduled
       case 7: return { bg: '#fed7aa', border: '#fdba74', text: '#ea580c' }; // Orange for Cancel Request
       case 8: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; // Yellow for Reschedule Request
+      case 9: return { bg: '#ffedd5', border: '#fdba74', text: '#c2410c' }; // Orange for On Hold
       default: return { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' };
     }
   };
@@ -511,6 +623,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       } else if (statusFilter === 'completed') {
         // Completed: status = 2 AND payment_status = 1
         filtered = filtered.filter(booking => booking.status === 3);
+      } else if (statusFilter === 'onhold') {
+        filtered = filtered.filter(booking => booking.status === 9);
       }
     }
 
@@ -539,6 +653,10 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     }
 
     // Deduplicate by booking_id - keep only the latest record for each booking_id
+    const pickHold = (a?: string | null, b?: string | null) => {
+      const t = (v?: string | null) => (v != null && String(v).trim() !== '' ? v : undefined);
+      return t(a) ?? t(b) ?? undefined;
+    };
     const bookingsMap = new Map<string, Booking>();
     filtered.forEach(booking => {
       const existing = bookingsMap.get(booking.booking_id);
@@ -548,9 +666,15 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         // Compare by created_at to get the latest one
         const existingTime = new Date(existing.created_at).getTime();
         const currentTime = new Date(booking.created_at).getTime();
-        if (currentTime > existingTime) {
-          bookingsMap.set(booking.booking_id, booking);
-        }
+        const newer = currentTime > existingTime ? booking : existing;
+        const older = currentTime > existingTime ? existing : booking;
+        const merged: Booking = {
+          ...newer,
+          hold_from: pickHold(newer.hold_from, older.hold_from),
+          worker_hold_comments: pickHold(newer.worker_hold_comments, older.worker_hold_comments),
+          customer_hold_comments: pickHold(newer.customer_hold_comments, older.customer_hold_comments),
+        };
+        bookingsMap.set(booking.booking_id, merged);
       }
     });
     filtered = Array.from(bookingsMap.values());
@@ -591,6 +715,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
     { value: 'all', label: 'All' },
     { value: 'active', label: 'Accepted' },
     { value: 'inprogress', label: 'InProgress' },
+    { value: 'onhold', label: 'On Hold' },
     { value: 'completed', label: 'Completed' },
     { value: 'reject', label: 'Reject' },
     { value: 'cancel', label: 'Cancel' },
@@ -648,7 +773,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
           const isRescheduled = statusFilter === 'reschedule';
           const isCancelReq = statusFilter === 'cancelreq';
           const isRescheduleReq = statusFilter === 'reschedulereq';
-          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+          const isOnHold = statusFilter === 'onhold';
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
           
           return;
         }
@@ -693,7 +819,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
           const isRescheduled = statusFilter === 'reschedule';
           const isCancelReq = statusFilter === 'cancelreq';
           const isRescheduleReq = statusFilter === 'reschedulereq';
-          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+          const isOnHold = statusFilter === 'onhold';
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
           
           return;
         }
@@ -737,113 +864,6 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
       }
     };
   }, []);
-
-  const fetchWorkerDetails = async (workerId: number) => {
-    if (!workerId) return;
-    // Reset all sections to closed
-    setShowPersonalInfo(false);
-    setShowDocuments(false);
-    setShowInvolvedBookings(false);
-    setWorkerBookings([]);
-    try {
-      setWorkerDetailsLoading(true);
-      setShowWorkerPopup(true);
-      setSelectedWorker(null);
-      const response = await fetch(API_ENDPOINTS.WORKER_BY_ID(String(workerId)));
-      const data = await response.json();
-      if (data.success) {
-        const worker = data.data;
-        // Backend returns "/uploads/documents/file1.jpg,file2.jpg" (comma-separated, wrong subfolder)
-        // Strip the prefix, split by comma, rebuild with correct /uploads/ root path
-        const parseDocPaths = (docString: string | null | undefined): string[] => {
-          if (!docString) return [];
-          const raw = docString.replace(/^\/uploads\/documents\//, '');
-          return raw.split(',').map((f: string) => f.trim()).filter(Boolean).map((f: string) => `/uploads/${f}`);
-        };
-        worker.document1 = parseDocPaths(worker.document1);
-        worker.document2 = parseDocPaths(worker.document2);
-        setSelectedWorker(worker);
-      }
-    } catch (error) {
-      console.error('❌ Error fetching worker details:', error);
-    } finally {
-      setWorkerDetailsLoading(false);
-    }
-    // Fetch this worker's involved bookings (status != 4, payment_status = 1)
-    try {
-      setWorkerBookingsLoading(true);
-      const bRes = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
-      const bData = await bRes.json();
-      if (bData.success) {
-        const all: Booking[] = bData.bookings;
-        // Deduplicate by booking_id, keep latest
-        const map = new Map<string, Booking>();
-        all
-          .filter(b => b.worker_id === workerId && b.status !== 4 && b.payment_status === 1)
-          .forEach(b => {
-            const existing = map.get(b.booking_id);
-            if (!existing || new Date(b.created_at) > new Date(existing.created_at)) {
-              map.set(b.booking_id, b);
-            }
-          });
-        setWorkerBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
-      }
-    } catch (error) {
-      console.error('❌ Error fetching worker bookings:', error);
-    } finally {
-      setWorkerBookingsLoading(false);
-    }
-  };
-
-  const fetchCustomerDetails = async (userId: number) => {
-    if (!userId) return;
-    setShowCustomerPersonalInfo(false);
-    setShowCustomerInvolvedBookings(false);
-    setCustomerBookings([]);
-    try {
-      setCustomerDetailsLoading(true);
-      setShowCustomerPopup(true);
-      setSelectedCustomer(null);
-      const response = await fetch(API_ENDPOINTS.UPDATE_SERVICESEEKER(String(userId)));
-      const data = await response.json();
-      if (data.success) {
-        const customer = data.data;
-        const parseDocPaths = (docString: string | null | undefined): string[] => {
-          if (!docString) return [];
-          const raw = docString.replace(/^\/uploads\/documents\//, '');
-          return raw.split(',').map((f: string) => f.trim()).filter(Boolean).map((f: string) => `/uploads/${f}`);
-        };
-        customer.document1 = parseDocPaths(customer.document1);
-        setSelectedCustomer(customer);
-      }
-    } catch (error) {
-      console.error('❌ Error fetching customer details:', error);
-    } finally {
-      setCustomerDetailsLoading(false);
-    }
-    try {
-      setCustomerBookingsLoading(true);
-      const bRes = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
-      const bData = await bRes.json();
-      if (bData.success) {
-        const all: Booking[] = bData.bookings;
-        const map = new Map<string, Booking>();
-        all
-          .filter(b => b.user_id === userId && b.status !== 4 && b.payment_status === 1)
-          .forEach(b => {
-            const existing = map.get(b.booking_id);
-            if (!existing || new Date(b.created_at) > new Date(existing.created_at)) {
-              map.set(b.booking_id, b);
-            }
-          });
-        setCustomerBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
-      }
-    } catch (error) {
-      console.error('❌ Error fetching customer bookings:', error);
-    } finally {
-      setCustomerBookingsLoading(false);
-    }
-  };
 
   const handleAssignWorker = async (booking: Booking) => {
     try {
@@ -935,7 +955,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         const isRescheduled = statusFilter === 'reschedule';
         const isCancelReq = statusFilter === 'cancelreq';
         const isRescheduleReq = statusFilter === 'reschedulereq';
-        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+        const isOnHold = statusFilter === 'onhold';
+        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
       } else {
         console.error('❌ Failed to accept cancel request:', data.message);
         Toast.show({
@@ -987,7 +1008,7 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
           const isRescheduled = false;
           const isCancelReq = false;
           const isRescheduleReqRefresh = true;
-          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReqRefresh);
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReqRefresh, false);
         } else {
           console.error('❌ Failed to reject reschedule request:', data.message);
           Toast.show({
@@ -1021,7 +1042,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
           const isRescheduled = statusFilter === 'reschedule';
           const isCancelReq = statusFilter === 'cancelreq';
           const isRescheduleReq = statusFilter === 'reschedulereq';
-          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+          const isOnHold = statusFilter === 'onhold';
+          await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
         } else {
           console.error('❌ Failed to reject cancel request:', data.message);
           Toast.show({
@@ -1058,7 +1080,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         const isRescheduled = statusFilter === 'reschedule';
         const isCancelReq = statusFilter === 'cancelreq';
         const isRescheduleReq = statusFilter === 'reschedulereq';
-        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+        const isOnHold = statusFilter === 'onhold';
+        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
       } else {
         Toast.show({ type: 'error', text1: 'Error', text2: data.message || 'Failed to update status' });
       }
@@ -1089,7 +1112,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         const isRescheduled = statusFilter === 'reschedule';
         const isCancelReq = statusFilter === 'cancelreq';
         const isRescheduleReq = statusFilter === 'reschedulereq';
-        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq);
+        const isOnHold = statusFilter === 'onhold';
+        await fetchBookings(isCanceled, isRescheduled, isCancelReq, isRescheduleReq, isOnHold);
       } else {
         Toast.show({ type: 'error', text1: 'Error', text2: data.message || 'Failed to update status' });
       }
@@ -1142,6 +1166,24 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
 
   const styles = createStyles(width, height);
 
+  if (viewingWorkerId !== null) {
+    return (
+      <ViewWorker
+        workerId={viewingWorkerId}
+        onBack={() => setViewingWorkerId(null)}
+      />
+    );
+  }
+
+  if (viewingCustomer !== null) {
+    return (
+      <ViewCustomer
+        customer={viewingCustomer}
+        onBack={() => setViewingCustomer(null)}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -1155,7 +1197,8 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const showEmptyTable = statusFilter === 'cancel' || 
                          statusFilter === 'reschedule' || 
                          statusFilter === 'cancelreq' || 
-                         statusFilter === 'reschedulereq';
+                         statusFilter === 'reschedulereq' ||
+                         statusFilter === 'onhold';
 
   if (bookings.length === 0 && !showEmptyTable) {
     return (
@@ -1172,6 +1215,15 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
   const filteredBookings = getFilteredAndSortedBookings();
   const paginatedBookings = getPaginatedBookings();
   paginatedBookingsRef.current = paginatedBookings;
+
+  const timelineStepsForModal = timelineBooking
+    ? buildBookingTimelineSteps(timelineBooking, formatDate)
+    : [];
+  const timelineModalDynamicWidth = getTimelineModalContentWidth(
+    width,
+    isDesktop,
+    timelineStepsForModal.length
+  );
 
   return (
     <ScrollView 
@@ -1433,6 +1485,22 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     <Ionicons name="document-text" size={isDesktop ? 16 : 14} color="#ffffff" />
                     <Text style={styles.tableHeaderText}>Description</Text>
                   </View>
+                  {statusFilter === 'onhold' && (
+                    <>
+                      <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 200 : isTablet ? 170 : 150 }]}>
+                        <Ionicons name="time-outline" size={isDesktop ? 16 : 14} color="#ffffff" />
+                        <Text style={styles.tableHeaderText}>Hold From</Text>
+                      </View>
+                      <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 260 : isTablet ? 220 : 180 }]}>
+                        <Ionicons name="chatbubble-outline" size={isDesktop ? 16 : 14} color="#ffffff" />
+                        <Text style={styles.tableHeaderText}>Worker comments</Text>
+                      </View>
+                      <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 260 : isTablet ? 220 : 180 }]}>
+                        <Ionicons name="chatbubbles-outline" size={isDesktop ? 16 : 14} color="#ffffff" />
+                        <Text style={styles.tableHeaderText}>Customer comments</Text>
+                      </View>
+                    </>
+                  )}
                 </>
               )}
               {(statusFilter === 'cancel' || statusFilter === 'cancelreq') && (
@@ -1598,7 +1666,9 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                     </View>
                   )}
                   <View style={[styles.tableCell, { width: isDesktop ? 140 : isTablet ? 120 : 100 }]}>
-                    <Text style={styles.tableCellText}>#{booking.booking_id}</Text>
+                    <TouchableOpacity onPress={() => setTimelineBooking(booking)} activeOpacity={0.75}>
+                      <Text style={[styles.tableCellText, styles.workerNameLink]}>#{booking.booking_id}</Text>
+                    </TouchableOpacity>
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 120 : isTablet ? 100 : 90 }]}>
                     {(statusFilter === 'reject' || statusFilter === 'reschedule' || statusFilter === 'cancelreq' || statusFilter === 'reschedulereq') ? (
@@ -1745,7 +1815,13 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 130 }]}>
                     {booking.worker_id ? (
-                      <TouchableOpacity onPress={() => fetchWorkerDetails(booking.worker_id)}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setViewingWorkerId(booking.worker_id);
+                          setOpenMenuId(null);
+                          setMenuPosition(null);
+                        }}
+                      >
                         <Text style={[styles.tableCellText, styles.workerNameLink]}>{booking.worker_name || 'N/A'}</Text>
                       </TouchableOpacity>
                     ) : (
@@ -1754,7 +1830,11 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                   </View>
                   <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 150 : 130 }]}>
                     {booking.user_id ? (
-                      <TouchableOpacity onPress={() => fetchCustomerDetails(booking.user_id)}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          void openCustomerFromBooking(booking);
+                        }}
+                      >
                         <Text style={[styles.tableCellText, styles.workerNameLink]}>{booking.customer_name || 'N/A'}</Text>
                       </TouchableOpacity>
                     ) : (
@@ -1778,6 +1858,23 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
                       <View style={[styles.tableCell, { width: isDesktop ? 300 : isTablet ? 250 : 200 }]}>
                         <Text style={styles.tableCellText}>{booking.description || 'N/A'}</Text>
                       </View>
+                      {statusFilter === 'onhold' && (
+                        <>
+                          <View style={[styles.tableCell, { width: isDesktop ? 200 : isTablet ? 170 : 150 }]}>
+                            <Text style={styles.tableCellText}>{booking.hold_from ? formatDate(booking.hold_from) : 'N/A'}</Text>
+                          </View>
+                          <View style={[styles.tableCell, { width: isDesktop ? 260 : isTablet ? 220 : 180, flexWrap: 'wrap', alignItems: 'flex-start' }]}>
+                            <Text style={[styles.tableCellText, { flexWrap: 'wrap', width: '100%' }]} numberOfLines={undefined}>
+                              {booking.worker_hold_comments || 'N/A'}
+                            </Text>
+                          </View>
+                          <View style={[styles.tableCell, { width: isDesktop ? 260 : isTablet ? 220 : 180, flexWrap: 'wrap', alignItems: 'flex-start' }]}>
+                            <Text style={[styles.tableCellText, { flexWrap: 'wrap', width: '100%' }]} numberOfLines={undefined}>
+                              {booking.customer_hold_comments || 'N/A'}
+                            </Text>
+                          </View>
+                        </>
+                      )}
                     </>
                   )}
                   {(statusFilter === 'cancel' || statusFilter === 'cancelreq') && (
@@ -2046,6 +2143,137 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         </View>
       </Modal>
 
+      {/* Booking ID → status timeline */}
+      <Modal
+        visible={timelineBooking !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTimelineBooking(null)}
+      >
+        <View style={styles.workerModalOverlay}>
+          <View
+            style={[
+              styles.workerModalContent,
+              styles.timelineModalContent,
+              styles.timelineModalOffset,
+              { width: timelineModalDynamicWidth, maxWidth: timelineModalDynamicWidth },
+            ]}
+          >
+            <LinearGradient
+              colors={['#6366f1', '#7c3aed', '#8b5cf6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.timelineModalHeader}
+            >
+              <View style={styles.workerModalHeaderTitleRow}>
+                <View style={styles.timelineTitleRowLeft}>
+                  <View style={styles.timelineTitleIconWrap}>
+                    <Ionicons name="git-branch-outline" size={isDesktop ? 18 : 17} color="#fff" />
+                  </View>
+                  {timelineBooking ? (
+                    <Text style={styles.timelineModalTitle} numberOfLines={1}>
+                      Booking status
+                      <Text style={styles.timelineModalIdInline}>{`  ·  #${timelineBooking.booking_id}`}</Text>
+                    </Text>
+                  ) : (
+                    <Text style={styles.timelineModalTitle} numberOfLines={1}>
+                      Booking status
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={() => setTimelineBooking(null)} style={styles.timelineModalClose}>
+                  <Ionicons name="close" size={isDesktop ? 20 : 19} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+            {timelineBooking ? (
+              <View style={styles.timelineModalBody}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.timelineScrollView}
+                  contentContainerStyle={styles.timelineScrollContent}
+                >
+                  <View style={styles.timelineStepsRow}>
+                    {timelineStepsForModal.map((step, i) => {
+                      const borderColor = !step.filled
+                        ? '#94a3b8'
+                        : step.last
+                          ? '#ea580c'
+                          : '#0d9488';
+                      return (
+                        <React.Fragment key={`${step.label}-${i}`}>
+                          {i > 0 ? (
+                            <View
+                              style={[
+                                styles.timelineBetween,
+                                step.connectorLabel
+                                  ? { paddingTop: isDesktop ? 64 : 60 }
+                                  : null,
+                              ]}
+                            >
+                              {step.connectorLabel ? (
+                                <Text style={styles.timelineConnectorLabel}>{step.connectorLabel}</Text>
+                              ) : null}
+                              <View style={styles.timelineArrowRow}>
+                                <View
+                                  style={[
+                                    styles.timelineArrowStem,
+                                    timelineStepsForModal[i - 1].filled
+                                      ? styles.timelineArrowStemActive
+                                      : styles.timelineArrowStemIdle,
+                                  ]}
+                                />
+                                <View
+                                  style={[
+                                    styles.timelineArrowHead,
+                                    timelineStepsForModal[i - 1].filled
+                                      ? styles.timelineArrowHeadActive
+                                      : styles.timelineArrowHeadIdle,
+                                  ]}
+                                />
+                              </View>
+                            </View>
+                          ) : null}
+                          <View
+                            style={[
+                              styles.timelineStepCard,
+                              step.filled && styles.timelineStepCardFilled,
+                              step.last && step.filled && styles.timelineStepCardComplete,
+                            ]}
+                          >
+                            <Text style={styles.timelineStepLabel} numberOfLines={3}>
+                              {step.label}
+                            </Text>
+                            <View
+                              style={[
+                                styles.timelineNodeNew,
+                                step.last ? styles.timelineNodeCircleNew : null,
+                                {
+                                  borderColor,
+                                  backgroundColor: step.filled ? `${borderColor}14` : '#f8fafc',
+                                },
+                                step.filled && !step.last ? styles.timelineNodeGlow : null,
+                                step.filled && step.last ? styles.timelineNodeGlowLast : null,
+                              ]}
+                            >
+                              <Ionicons name={step.icon} size={isDesktop ? 22 : 20} color={borderColor} />
+                            </View>
+                            <Text style={styles.timelineStepDate} numberOfLines={2}>
+                              {step.sub}
+                            </Text>
+                          </View>
+                        </React.Fragment>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
       {/* Cancel Booking Modal */}
       <Modal
         visible={showCancelModal}
@@ -2252,630 +2480,6 @@ export default function Bookings({ searchQuery: externalSearchQuery, onSearchCha
         </View>
       </Modal>
 
-      {/* Worker Details Modal */}
-      <Modal
-        visible={showWorkerPopup}
-        transparent={true}
-        animationType="none"
-        onRequestClose={() => setShowWorkerPopup(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowWorkerPopup(false)}>
-          <View style={styles.workerModalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.workerModalContent}>
-
-                {/* ── Gradient Header ── */}
-                <View style={styles.workerModalHeader}>
-                  {/* decorative blobs */}
-                  <View style={styles.workerHeaderBlob1} />
-                  <View style={styles.workerHeaderBlob2} />
-                  <View style={styles.workerModalHeaderTitleRow}>
-                    <Text style={styles.workerModalTitle}>Worker Details</Text>
-                    <TouchableOpacity onPress={() => setShowWorkerPopup(false)} style={styles.workerModalClose}>
-                      <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* ── Floating Avatar ── */}
-                <View style={styles.workerAvatarOuter}>
-                  {workerDetailsLoading ? (
-                    <View style={[styles.workerProfilePlaceholder, { borderWidth: 0 }]}>
-                      <ActivityIndicator size="small" color="#6366f1" />
-                    </View>
-                  ) : selectedWorker?.profile_image ? (
-                    <Image
-                      source={{ uri: `${BASE_URL}${selectedWorker.profile_image}` }}
-                      style={styles.workerProfileImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.workerProfilePlaceholder}>
-                      <Ionicons name="person" size={isDesktop ? 44 : 38} color="#c7d2fe" />
-                    </View>
-                  )}
-                </View>
-
-                {workerDetailsLoading ? (
-                  <View style={styles.workerModalLoading}>
-                    <Text style={styles.workerModalLoadingText}>Loading worker details...</Text>
-                  </View>
-                ) : selectedWorker ? (
-                  <>
-                    {/* ── Name + Status (fixed, outside scroll) ── */}
-                    <View style={styles.workerProfileNameSection}>
-                      <Text style={styles.workerProfileName}>{selectedWorker.name}</Text>
-                      <View style={[styles.workerStatusBadge, {
-                        backgroundColor: selectedWorker.status === 1 ? '#dcfce7' : '#fee2e2',
-                        borderColor: selectedWorker.status === 1 ? '#86efac' : '#fca5a5'
-                      }]}>
-                        <Text style={[styles.workerStatusText, { color: selectedWorker.status === 1 ? '#16a34a' : '#dc2626' }]}>
-                          {selectedWorker.status === 1 ? '● Active' : '● Inactive'}
-                        </Text>
-                      </View>
-                    </View>
-
-                  <ScrollView showsVerticalScrollIndicator={false} style={styles.workerModalScroll}>
-                    <View style={styles.workerSectionsWrapper}>
-
-                    {/* ── Personal Info & Documents Section ── */}
-                    <View style={styles.workerSection}>
-                      <TouchableOpacity
-                        style={styles.workerSectionHeader}
-                        onPress={() => setShowPersonalInfo(v => !v)}
-                        activeOpacity={0.75}
-                      >
-                        <View style={styles.workerSectionHeaderLeft}>
-                          <View style={styles.workerSectionIconBox}>
-                            <Ionicons name="person-outline" size={16} color="#6366f1" />
-                          </View>
-                          <Text style={styles.workerSectionTitle}>Personal Info</Text>
-                        </View>
-                        <Ionicons
-                          name={showPersonalInfo ? 'chevron-up' : 'chevron-down'}
-                          size={18} color="#6366f1"
-                        />
-                      </TouchableOpacity>
-
-                      {showPersonalInfo && (
-                        <View style={styles.workerSectionContent}>
-                          {/* — Contact & Basic Details — */}
-                          <View style={styles.workerDetailRow}>
-                            <View style={styles.workerDetailIconWrap}>
-                              <Ionicons name="call-outline" size={15} color="#6366f1" />
-                            </View>
-                            <View style={styles.workerDetailContent}>
-                              <Text style={styles.workerDetailLabel}>Mobile</Text>
-                              <Text style={styles.workerDetailValue}>{selectedWorker.mobile || 'N/A'}</Text>
-                            </View>
-                          </View>
-
-                          {selectedWorker.email ? (
-                            <View style={styles.workerDetailRow}>
-                              <View style={styles.workerDetailIconWrap}>
-                                <Ionicons name="mail-outline" size={15} color="#6366f1" />
-                              </View>
-                              <View style={styles.workerDetailContent}>
-                                <Text style={styles.workerDetailLabel}>Email</Text>
-                                <Text style={styles.workerDetailValue}>{selectedWorker.email}</Text>
-                              </View>
-                            </View>
-                          ) : null}
-
-                          {selectedWorker.price != null ? (
-                            <View style={styles.workerDetailRow}>
-                              <View style={styles.workerDetailIconWrap}>
-                                <Ionicons name="cash-outline" size={15} color="#6366f1" />
-                              </View>
-                              <View style={styles.workerDetailContent}>
-                                <Text style={styles.workerDetailLabel}>Price</Text>
-                                <Text style={styles.workerDetailValue}>₹{selectedWorker.price}</Text>
-                              </View>
-                            </View>
-                          ) : null}
-
-                          {(selectedWorker.address || selectedWorker.city || selectedWorker.mandal || selectedWorker.district || selectedWorker.state || selectedWorker.country || selectedWorker.pincode) ? (
-                            <View style={styles.workerDetailRow}>
-                              <View style={styles.workerDetailIconWrap}>
-                                <Ionicons name="location-outline" size={15} color="#6366f1" />
-                              </View>
-                              <View style={styles.workerDetailContent}>
-                                <Text style={styles.workerDetailLabel}>Address</Text>
-                                <Text style={styles.workerDetailValue}>
-                                  {[
-                                    selectedWorker.address,
-                                    selectedWorker.city,
-                                    selectedWorker.mandal,
-                                    selectedWorker.district,
-                                    selectedWorker.state,
-                                    selectedWorker.country,
-                                  ].filter(Boolean).join(', ')}
-                                  {selectedWorker.pincode ? ` - ${selectedWorker.pincode}` : ''}
-                                </Text>
-                              </View>
-                            </View>
-                          ) : null}
-
-                          {selectedWorker.created_at ? (
-                            <View style={styles.workerDetailRow}>
-                              <View style={styles.workerDetailIconWrap}>
-                                <Ionicons name="calendar-outline" size={15} color="#6366f1" />
-                              </View>
-                              <View style={styles.workerDetailContent}>
-                                <Text style={styles.workerDetailLabel}>Joined On</Text>
-                                <Text style={styles.workerDetailValue}>{formatDate(selectedWorker.created_at)}</Text>
-                              </View>
-                            </View>
-                          ) : null}
-
-                          {/* — Documents sub-section — */}
-                          <View style={styles.workerDocDivider}>
-                            <Ionicons name="document-text-outline" size={14} color="#6366f1" />
-                            <Text style={styles.workerDocDividerText}>
-                              Documents
-                              {((selectedWorker.document1?.length ?? 0) + (selectedWorker.document2?.length ?? 0)) > 0
-                                ? ` (${(selectedWorker.document1?.length ?? 0) + (selectedWorker.document2?.length ?? 0)})`
-                                : ''}
-                            </Text>
-                          </View>
-
-                          {/* Personal Documents */}
-                          {selectedWorker.document1 && selectedWorker.document1.length > 0 ? (
-                            <View style={styles.workerDocSection}>
-                              <View style={styles.workerDocSectionHeader}>
-                                <View style={styles.workerDetailIconWrap}>
-                                  <Ionicons name="document-outline" size={14} color="#6366f1" />
-                                </View>
-                                <Text style={styles.workerDocSectionTitle}>
-                                  Personal Documents ({selectedWorker.document1.length})
-                                </Text>
-                              </View>
-                              {selectedWorker.document1.map((docPath, docIdx) => (
-                                <View key={`doc1-${docIdx}`} style={styles.workerDocRow}>
-                                  <View style={styles.workerDocIndexBadge}>
-                                    <Text style={styles.workerDocIndexText}>{docIdx + 1}</Text>
-                                  </View>
-                                  <Image
-                                    source={{ uri: `${BASE_URL}${docPath}` }}
-                                    style={styles.workerDocThumb}
-                                    resizeMode="cover"
-                                  />
-                                  <TouchableOpacity
-                                    style={styles.workerDocViewBtn}
-                                    onPress={() => Linking.openURL(`${BASE_URL}${docPath}`)}
-                                  >
-                                    <Ionicons name="eye-outline" size={14} color="#ffffff" />
-                                    <Text style={styles.workerDocViewText}>View</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </View>
-                          ) : null}
-
-                          {/* Professional Documents */}
-                          {selectedWorker.document2 && selectedWorker.document2.length > 0 ? (
-                            <View style={[styles.workerDocSection, { borderBottomWidth: 0 }]}>
-                              <View style={styles.workerDocSectionHeader}>
-                                <View style={styles.workerDetailIconWrap}>
-                                  <Ionicons name="document-text-outline" size={14} color="#6366f1" />
-                                </View>
-                                <Text style={styles.workerDocSectionTitle}>
-                                  Professional Documents ({selectedWorker.document2.length})
-                                </Text>
-                              </View>
-                              {selectedWorker.document2.map((docPath, docIdx) => (
-                                <View key={`doc2-${docIdx}`} style={styles.workerDocRow}>
-                                  <View style={styles.workerDocIndexBadge}>
-                                    <Text style={styles.workerDocIndexText}>{docIdx + 1}</Text>
-                                  </View>
-                                  <Image
-                                    source={{ uri: `${BASE_URL}${docPath}` }}
-                                    style={styles.workerDocThumb}
-                                    resizeMode="cover"
-                                  />
-                                  <TouchableOpacity
-                                    style={styles.workerDocViewBtn}
-                                    onPress={() => Linking.openURL(`${BASE_URL}${docPath}`)}
-                                  >
-                                    <Ionicons name="eye-outline" size={14} color="#ffffff" />
-                                    <Text style={styles.workerDocViewText}>View</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </View>
-                          ) : null}
-
-                          {(!selectedWorker.document1 || selectedWorker.document1.length === 0) &&
-                           (!selectedWorker.document2 || selectedWorker.document2.length === 0) ? (
-                            <Text style={styles.workerSectionEmpty}>No documents uploaded.</Text>
-                          ) : null}
-                        </View>
-                      )}
-                    </View>
-
-                    {/* ── Previously Involved Bookings Section ── */}
-                    <View style={styles.workerSection}>
-                      <TouchableOpacity
-                        style={styles.workerSectionHeader}
-                        onPress={() => setShowInvolvedBookings(v => !v)}
-                        activeOpacity={0.75}
-                      >
-                        <View style={styles.workerSectionHeaderLeft}>
-                          <View style={styles.workerSectionIconBox}>
-                            <Ionicons name="calendar-outline" size={16} color="#6366f1" />
-                          </View>
-                          <Text style={styles.workerSectionTitle}>Involved Bookings</Text>
-                          {workerBookings.length > 0 && (
-                            <View style={styles.workerSectionBadge}>
-                              <Text style={styles.workerSectionBadgeText}>{workerBookings.length}</Text>
-                            </View>
-                          )}
-                        </View>
-                        <Ionicons
-                          name={showInvolvedBookings ? 'chevron-up' : 'chevron-down'}
-                          size={18} color="#6366f1"
-                        />
-                      </TouchableOpacity>
-
-                      {showInvolvedBookings && (
-                        <View style={styles.workerSectionContent}>
-                          {workerBookingsLoading ? (
-                            <View style={styles.workerBookingLoadingRow}>
-                              <ActivityIndicator size="small" color="#6366f1" />
-                              <Text style={styles.workerBookingLoadingText}>Loading bookings...</Text>
-                            </View>
-                          ) : workerBookings.length === 0 ? (
-                            <Text style={styles.workerSectionEmpty}>No bookings found.</Text>
-                          ) : (
-                            workerBookings.map((b, idx) => {
-                              const sc = getStatusColor(b.status);
-                              return (
-                                <View key={b.id} style={[styles.workerBookingItem, idx === workerBookings.length - 1 && { borderBottomWidth: 0 }]}>
-                                  {/* Row 1: Booking ID + Status badge */}
-                                  <View style={styles.workerBookingRow1}>
-                                    <Text style={styles.workerBookingId}>#{b.booking_id}</Text>
-                                    <View style={[styles.workerBookingBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
-                                      <Text style={[styles.workerBookingBadgeText, { color: sc.text }]}>
-                                        {getStatusLabel(b.status)}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                  {/* Booking Time */}
-                                  {b.booking_time ? (
-                                    <View style={styles.workerBookingField}>
-                                      <Ionicons name="time-outline" size={12} color="#94a3b8" />
-                                      <Text style={styles.workerBookingFieldText}>{formatDate(b.booking_time)}</Text>
-                                    </View>
-                                  ) : null}
-                                  {/* Row 2: Amount + Customer */}
-                                  <View style={styles.workerBookingRow2}>
-                                    <View style={styles.workerBookingField}>
-                                      <Ionicons name="cash-outline" size={12} color="#94a3b8" />
-                                      <Text style={styles.workerBookingFieldText}>
-                                        {b.amount != null ? `₹${b.amount}` : 'N/A'}
-                                      </Text>
-                                    </View>
-                                    <View style={styles.workerBookingField}>
-                                      <Ionicons name="person-outline" size={12} color="#94a3b8" />
-                                      <Text style={styles.workerBookingFieldText} numberOfLines={1}>
-                                        {b.customer_name || 'N/A'}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                  {/* Row 3: Work Location */}
-                                  {b.work_location ? (
-                                    <View style={styles.workerBookingField}>
-                                      <Ionicons name="location-outline" size={12} color="#94a3b8" />
-                                      <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={1}>
-                                        {b.work_location}
-                                      </Text>
-                                    </View>
-                                  ) : null}
-                                  {/* Row 4: Description */}
-                                  {b.description ? (
-                                    <View style={styles.workerBookingField}>
-                                      <Ionicons name="document-text-outline" size={12} color="#94a3b8" />
-                                      <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={2}>
-                                        {b.description}
-                                      </Text>
-                                    </View>
-                                  ) : null}
-                                </View>
-                              );
-                            })
-                          )}
-                        </View>
-                      )}
-                    </View>
-                    </View>
-                  </ScrollView>
-                  </>
-                ) : (
-                  <View style={styles.workerModalLoading}>
-                    <Text style={styles.workerModalLoadingText}>Worker details not found.</Text>
-                  </View>
-                )}
-
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Customer Details Modal */}
-      <Modal
-        visible={showCustomerPopup}
-        transparent={true}
-        animationType="none"
-        onRequestClose={() => setShowCustomerPopup(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowCustomerPopup(false)}>
-          <View style={styles.workerModalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.workerModalContent}>
-
-                {/* Header */}
-                <View style={styles.workerModalHeader}>
-                  <View style={styles.workerHeaderBlob1} />
-                  <View style={styles.workerHeaderBlob2} />
-                  <View style={styles.workerModalHeaderTitleRow}>
-                    <Text style={styles.workerModalTitle}>Customer Details</Text>
-                    <TouchableOpacity onPress={() => setShowCustomerPopup(false)} style={styles.workerModalClose}>
-                      <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Floating Avatar */}
-                <View style={styles.workerAvatarOuter}>
-                  {customerDetailsLoading ? (
-                    <View style={[styles.workerProfilePlaceholder, { borderWidth: 0 }]}>
-                      <ActivityIndicator size="small" color="#6366f1" />
-                    </View>
-                  ) : selectedCustomer?.profile_image ? (
-                    <Image
-                      source={{ uri: `${BASE_URL}${selectedCustomer.profile_image}` }}
-                      style={styles.workerProfileImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.workerProfilePlaceholder}>
-                      <Ionicons name="person" size={isDesktop ? 44 : 38} color="#c7d2fe" />
-                    </View>
-                  )}
-                </View>
-
-                {customerDetailsLoading ? (
-                  <View style={styles.workerModalLoading}>
-                    <Text style={styles.workerModalLoadingText}>Loading customer details...</Text>
-                  </View>
-                ) : selectedCustomer ? (
-                  <>
-                    {/* Name */}
-                    <View style={styles.workerProfileNameSection}>
-                      <Text style={styles.workerProfileName}>{selectedCustomer.name}</Text>
-                    </View>
-
-                    <ScrollView showsVerticalScrollIndicator={false} style={styles.workerModalScroll}>
-                      <View style={styles.workerSectionsWrapper}>
-
-                        {/* Personal Info Section */}
-                        <View style={styles.workerSection}>
-                          <TouchableOpacity
-                            style={styles.workerSectionHeader}
-                            onPress={() => setShowCustomerPersonalInfo(v => !v)}
-                            activeOpacity={0.75}
-                          >
-                            <View style={styles.workerSectionHeaderLeft}>
-                              <View style={styles.workerSectionIconBox}>
-                                <Ionicons name="person-outline" size={16} color="#6366f1" />
-                              </View>
-                              <Text style={styles.workerSectionTitle}>Personal Info</Text>
-                            </View>
-                            <Ionicons
-                              name={showCustomerPersonalInfo ? 'chevron-up' : 'chevron-down'}
-                              size={18} color="#6366f1"
-                            />
-                          </TouchableOpacity>
-
-                          {showCustomerPersonalInfo && (
-                            <View style={styles.workerSectionContent}>
-                              <View style={styles.workerDetailRow}>
-                                <View style={styles.workerDetailIconWrap}>
-                                  <Ionicons name="call-outline" size={15} color="#6366f1" />
-                                </View>
-                                <View style={styles.workerDetailContent}>
-                                  <Text style={styles.workerDetailLabel}>Mobile</Text>
-                                  <Text style={styles.workerDetailValue}>{selectedCustomer.mobile || 'N/A'}</Text>
-                                </View>
-                              </View>
-
-                              {selectedCustomer.email ? (
-                                <View style={styles.workerDetailRow}>
-                                  <View style={styles.workerDetailIconWrap}>
-                                    <Ionicons name="mail-outline" size={15} color="#6366f1" />
-                                  </View>
-                                  <View style={styles.workerDetailContent}>
-                                    <Text style={styles.workerDetailLabel}>Email</Text>
-                                    <Text style={styles.workerDetailValue}>{selectedCustomer.email}</Text>
-                                  </View>
-                                </View>
-                              ) : null}
-
-                              {(selectedCustomer.address || selectedCustomer.city || selectedCustomer.mandal || selectedCustomer.district || selectedCustomer.state || selectedCustomer.country || selectedCustomer.pincode) ? (
-                                <View style={styles.workerDetailRow}>
-                                  <View style={styles.workerDetailIconWrap}>
-                                    <Ionicons name="location-outline" size={15} color="#6366f1" />
-                                  </View>
-                                  <View style={styles.workerDetailContent}>
-                                    <Text style={styles.workerDetailLabel}>Address</Text>
-                                    <Text style={styles.workerDetailValue}>
-                                      {[
-                                        selectedCustomer.address,
-                                        selectedCustomer.city,
-                                        selectedCustomer.mandal,
-                                        selectedCustomer.district,
-                                        selectedCustomer.state,
-                                        selectedCustomer.country,
-                                      ].filter(Boolean).join(', ')}
-                                      {selectedCustomer.pincode ? ` - ${selectedCustomer.pincode}` : ''}
-                                    </Text>
-                                  </View>
-                                </View>
-                              ) : null}
-
-                              {selectedCustomer.created_at ? (
-                                <View style={styles.workerDetailRow}>
-                                  <View style={styles.workerDetailIconWrap}>
-                                    <Ionicons name="calendar-outline" size={15} color="#6366f1" />
-                                  </View>
-                                  <View style={styles.workerDetailContent}>
-                                    <Text style={styles.workerDetailLabel}>Joined On</Text>
-                                    <Text style={styles.workerDetailValue}>{formatDate(selectedCustomer.created_at)}</Text>
-                                  </View>
-                                </View>
-                              ) : null}
-
-                              {/* Personal Documents */}
-                              {selectedCustomer.document1 && selectedCustomer.document1.length > 0 ? (
-                                <>
-                                  <View style={styles.workerDocDivider}>
-                                    <Ionicons name="document-text-outline" size={14} color="#6366f1" />
-                                    <Text style={styles.workerDocDividerText}>
-                                      Documents ({selectedCustomer.document1.length})
-                                    </Text>
-                                  </View>
-                                  <View style={[styles.workerDocSection, { borderBottomWidth: 0 }]}>
-                                    {selectedCustomer.document1.map((docPath, docIdx) => (
-                                      <View key={`cdoc-${docIdx}`} style={styles.workerDocRow}>
-                                        <View style={styles.workerDocIndexBadge}>
-                                          <Text style={styles.workerDocIndexText}>{docIdx + 1}</Text>
-                                        </View>
-                                        <Image
-                                          source={{ uri: `${BASE_URL}${docPath}` }}
-                                          style={styles.workerDocThumb}
-                                          resizeMode="cover"
-                                        />
-                                        <TouchableOpacity
-                                          style={styles.workerDocViewBtn}
-                                          onPress={() => Linking.openURL(`${BASE_URL}${docPath}`)}
-                                        >
-                                          <Ionicons name="eye-outline" size={14} color="#ffffff" />
-                                          <Text style={styles.workerDocViewText}>View</Text>
-                                        </TouchableOpacity>
-                                      </View>
-                                    ))}
-                                  </View>
-                                </>
-                              ) : null}
-                            </View>
-                          )}
-                        </View>
-
-                        {/* Involved Bookings Section */}
-                        <View style={styles.workerSection}>
-                          <TouchableOpacity
-                            style={styles.workerSectionHeader}
-                            onPress={() => setShowCustomerInvolvedBookings(v => !v)}
-                            activeOpacity={0.75}
-                          >
-                            <View style={styles.workerSectionHeaderLeft}>
-                              <View style={styles.workerSectionIconBox}>
-                                <Ionicons name="calendar-outline" size={16} color="#6366f1" />
-                              </View>
-                              <Text style={styles.workerSectionTitle}>Involved Bookings</Text>
-                              {customerBookings.length > 0 && (
-                                <View style={styles.workerSectionBadge}>
-                                  <Text style={styles.workerSectionBadgeText}>{customerBookings.length}</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Ionicons
-                              name={showCustomerInvolvedBookings ? 'chevron-up' : 'chevron-down'}
-                              size={18} color="#6366f1"
-                            />
-                          </TouchableOpacity>
-
-                          {showCustomerInvolvedBookings && (
-                            <View style={styles.workerSectionContent}>
-                              {customerBookingsLoading ? (
-                                <View style={styles.workerBookingLoadingRow}>
-                                  <ActivityIndicator size="small" color="#6366f1" />
-                                  <Text style={styles.workerBookingLoadingText}>Loading bookings...</Text>
-                                </View>
-                              ) : customerBookings.length === 0 ? (
-                                <Text style={styles.workerSectionEmpty}>No bookings found.</Text>
-                              ) : (
-                                customerBookings.map((b) => {
-                                  const sc = getStatusColor(b.status);
-                                  return (
-                                    <View key={b.id} style={styles.workerBookingItem}>
-                                      <View style={styles.workerBookingRow1}>
-                                        <Text style={styles.workerBookingId}>#{b.booking_id}</Text>
-                                        <View style={[styles.workerBookingBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
-                                          <Text style={[styles.workerBookingBadgeText, { color: sc.text }]}>
-                                            {getStatusLabel(b.status)}
-                                          </Text>
-                                        </View>
-                                      </View>
-                                      {b.booking_time ? (
-                                        <View style={styles.workerBookingField}>
-                                          <Ionicons name="time-outline" size={12} color="#94a3b8" />
-                                          <Text style={styles.workerBookingFieldText}>{formatDate(b.booking_time)}</Text>
-                                        </View>
-                                      ) : null}
-                                      <View style={styles.workerBookingRow2}>
-                                        <View style={styles.workerBookingField}>
-                                          <Ionicons name="cash-outline" size={12} color="#94a3b8" />
-                                          <Text style={styles.workerBookingFieldText}>
-                                            {b.amount != null ? `₹${b.amount}` : 'N/A'}
-                                          </Text>
-                                        </View>
-                                        <View style={styles.workerBookingField}>
-                                          <Ionicons name="construct-outline" size={12} color="#94a3b8" />
-                                          <Text style={styles.workerBookingFieldText} numberOfLines={1}>
-                                            {b.worker_name || 'N/A'}
-                                          </Text>
-                                        </View>
-                                      </View>
-                                      {b.work_location ? (
-                                        <View style={styles.workerBookingField}>
-                                          <Ionicons name="location-outline" size={12} color="#94a3b8" />
-                                          <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={1}>
-                                            {b.work_location}
-                                          </Text>
-                                        </View>
-                                      ) : null}
-                                      {b.description ? (
-                                        <View style={styles.workerBookingField}>
-                                          <Ionicons name="document-text-outline" size={12} color="#94a3b8" />
-                                          <Text style={[styles.workerBookingFieldText, { flex: 1 }]} numberOfLines={2}>
-                                            {b.description}
-                                          </Text>
-                                        </View>
-                                      ) : null}
-                                    </View>
-                                  );
-                                })
-                              )}
-                            </View>
-                          )}
-                        </View>
-
-                      </View>
-                    </ScrollView>
-                  </>
-                ) : (
-                  <View style={styles.workerModalLoading}>
-                    <Text style={styles.workerModalLoadingText}>Customer details not found.</Text>
-                  </View>
-                )}
-
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
 
       {/* Polling Popup Modal */}
       <Modal
@@ -4072,6 +3676,208 @@ const createStyles = (width: number, height: number) => {
       fontWeight: '700',
       textTransform: 'uppercase',
       letterSpacing: 0.4,
+    },
+    timelineModalContent: {
+      maxWidth: 1360,
+      width: isDesktop ? Math.min(1260, width * 0.98) : '97%',
+      overflow: 'hidden',
+      backgroundColor: '#ffffff',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.65)',
+      shadowColor: '#312e81',
+      shadowOffset: { width: 0, height: 24 },
+      shadowOpacity: 0.22,
+      shadowRadius: 40,
+      elevation: 24,
+    },
+    timelineModalOffset: {
+      marginLeft: isDesktop ? 255 : 206,
+    },
+    timelineModalHeader: {
+      paddingTop: isDesktop ? 10 : 8,
+      paddingHorizontal: isDesktop ? 20 : 14,
+      paddingBottom: isDesktop ? 10 : 8,
+    },
+    timelineTitleRowLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: isDesktop ? 12 : 10,
+      flex: 1,
+      minWidth: 0,
+      paddingRight: 8,
+    },
+    timelineTitleIconWrap: {
+      width: isDesktop ? 36 : 34,
+      height: isDesktop ? 36 : 34,
+      borderRadius: 11,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    timelineModalTitle: {
+      fontSize: isDesktop ? 17 : 15,
+      fontWeight: '800',
+      color: '#ffffff',
+      letterSpacing: 0.25,
+      flex: 1,
+      minWidth: 0,
+    },
+    timelineModalIdInline: {
+      fontSize: isDesktop ? 14 : 13,
+      fontWeight: '600',
+      color: 'rgba(255,255,255,0.82)',
+    },
+    timelineModalClose: {
+      width: isDesktop ? 36 : 34,
+      height: isDesktop ? 36 : 34,
+      borderRadius: 18,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    timelineModalBody: {
+      backgroundColor: '#f1f5f9',
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255,255,255,0.28)',
+    },
+    timelineScrollView: {
+      maxHeight: isDesktop ? 340 : 310,
+    },
+    timelineScrollContent: {
+      paddingHorizontal: isDesktop ? 24 : 16,
+      paddingVertical: isDesktop ? 24 : 20,
+      paddingBottom: isDesktop ? 28 : 24,
+    },
+    timelineStepsRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: isDesktop ? 10 : 8,
+    },
+    timelineBetween: {
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingTop: isDesktop ? 78 : 74,
+      width: isDesktop ? 44 : 36,
+    },
+    timelineConnectorLabel: {
+      fontSize: isDesktop ? 10 : 9,
+      fontWeight: '700',
+      color: '#0d9488',
+      marginBottom: isDesktop ? 5 : 4,
+      textAlign: 'center',
+    },
+    timelineArrowRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    timelineArrowStem: {
+      height: 4,
+      borderRadius: 2,
+      width: isDesktop ? 24 : 20,
+    },
+    timelineArrowStemActive: {
+      backgroundColor: '#14b8a6',
+      shadowColor: '#0d9488',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.45,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    timelineArrowStemIdle: {
+      backgroundColor: '#cbd5e1',
+    },
+    timelineArrowHead: {
+      width: 0,
+      height: 0,
+      marginLeft: -0.5,
+      backgroundColor: 'transparent',
+      borderStyle: 'solid',
+      borderTopColor: 'transparent',
+      borderBottomColor: 'transparent',
+    },
+    timelineArrowHeadActive: {
+      borderTopWidth: isDesktop ? 8 : 7,
+      borderBottomWidth: isDesktop ? 8 : 7,
+      borderLeftWidth: isDesktop ? 12 : 10,
+      borderLeftColor: '#14b8a6',
+    },
+    timelineArrowHeadIdle: {
+      borderTopWidth: isDesktop ? 8 : 7,
+      borderBottomWidth: isDesktop ? 8 : 7,
+      borderLeftWidth: isDesktop ? 12 : 10,
+      borderLeftColor: '#cbd5e1',
+    },
+    timelineStepCard: {
+      width: isDesktop ? 122 : 112,
+      backgroundColor: '#ffffff',
+      borderRadius: 18,
+      paddingTop: isDesktop ? 15 : 13,
+      paddingBottom: isDesktop ? 17 : 15,
+      paddingHorizontal: 9,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      shadowColor: '#334155',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.09,
+      shadowRadius: 16,
+      elevation: 5,
+    },
+    timelineStepCardFilled: {
+      borderColor: '#5eead4',
+      backgroundColor: '#f0fdfa',
+    },
+    timelineStepCardComplete: {
+      borderColor: '#fdba74',
+      backgroundColor: '#fffbeb',
+    },
+    timelineStepLabel: {
+      fontSize: isDesktop ? 9 : 8,
+      fontWeight: '800',
+      color: '#0f172a',
+      textAlign: 'center',
+      textTransform: 'uppercase',
+      letterSpacing: 0.35,
+      lineHeight: isDesktop ? 12 : 11,
+      marginBottom: isDesktop ? 14 : 12,
+      minHeight: isDesktop ? 34 : 32,
+    },
+    timelineNodeNew: {
+      width: isDesktop ? 50 : 46,
+      height: isDesktop ? 50 : 46,
+      borderRadius: 14,
+      borderWidth: 2.5,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    timelineNodeCircleNew: {
+      borderRadius: 25,
+      width: isDesktop ? 52 : 48,
+      height: isDesktop ? 52 : 48,
+    },
+    timelineNodeGlow: {
+      shadowColor: '#0d9488',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.4,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    timelineNodeGlowLast: {
+      shadowColor: '#ea580c',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.45,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    timelineStepDate: {
+      marginTop: isDesktop ? 12 : 10,
+      fontSize: isDesktop ? 10 : 9,
+      color: '#475569',
+      textAlign: 'center',
+      fontWeight: '600',
+      lineHeight: isDesktop ? 14 : 13,
     },
   });
 };

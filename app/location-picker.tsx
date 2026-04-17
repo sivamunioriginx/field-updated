@@ -1168,4 +1168,3 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     },
   });
 };
-

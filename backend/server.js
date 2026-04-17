@@ -1394,17 +1394,69 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
       }
     } else {
       // For other status updates, just update the current booking
-      let query = 'UPDATE tbl_bookings SET status = ?';
-      let params = [status];
-
       const { reschedule_date, reschedule_reason, cancel_reason, reschedule_type, cancel_type } = req.body;
 
-      query += ' WHERE id = ?';
+      if (status === 2) {
+        const [pendRows] = await pool.execute(
+          'SELECT start_verification_code FROM tbl_track_bookings WHERE bookingid = ?',
+          [bookingId]
+        );
+        const pendingCode = pendRows[0]?.start_verification_code;
+        if (pendingCode) {
+          const submitted = (req.body.verification_code || req.body.start_verification_code || '')
+            .toString()
+            .trim();
+          if (submitted !== String(pendingCode)) {
+            return res.status(400).json({
+              success: false,
+              message: 'Customer verification code is required to start this booking'
+            });
+          }
+        }
+      }
+
+      if (status === 3) {
+        const [pendRows] = await pool.execute(
+          'SELECT complete_verification_code FROM tbl_track_bookings WHERE bookingid = ?',
+          [bookingId]
+        );
+        const pendingComplete = pendRows[0]?.complete_verification_code;
+        if (pendingComplete) {
+          const submitted = (req.body.verification_code || req.body.complete_verification_code || '')
+            .toString()
+            .trim();
+          if (submitted !== String(pendingComplete)) {
+            return res.status(400).json({
+              success: false,
+              message: 'Customer verification code is required to complete this booking'
+            });
+          }
+        }
+      }
+
+      const query = 'UPDATE tbl_bookings SET status = ?';
+      const params = [status];
+
+      const queryWhere = ' WHERE id = ?';
       params.push(bookingId);
 
-      const [result] = await pool.execute(query, params);
+      const [result] = await pool.execute(query + queryWhere, params);
 
       if (result.affectedRows > 0) {
+        if (status === 2) {
+          await pool.execute(
+            `INSERT INTO tbl_track_bookings (bookingid, start_verification_code, complete_verification_code, start_time, complete_time)
+             VALUES (?, NULL, NULL, NOW(), NULL)
+             ON DUPLICATE KEY UPDATE start_verification_code = NULL, start_time = NOW()`,
+            [bookingId]
+          );
+        }
+        if (status === 3) {
+          await pool.execute(
+            `UPDATE tbl_track_bookings SET complete_verification_code = NULL, complete_time = NOW() WHERE bookingid = ?`,
+            [bookingId]
+          );
+        }
         // If status is 5 (cancel request), upsert into tbl_canceledbookings
         if (status === 5 && cancel_reason) {
           const cancelType = cancel_type !== undefined ? cancel_type : (req.body.type !== undefined ? req.body.type : 1);
@@ -3465,6 +3517,702 @@ const sendNotification = async (token, title, body, data = {}) => {
   }
 };
 
+// Worker requests job start: generate code, store on booking, notify customer (seeker)
+app.post('/api/bookings/:bookingId/request-start', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { worker_id } = req.body;
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id, user_id, booking_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (Number(b.status) !== 1) {
+      return res.status(400).json({ success: false, message: 'Booking must be accepted before starting' });
+    }
+
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+
+    await pool.execute(
+      `INSERT INTO tbl_track_bookings (bookingid, start_verification_code, complete_verification_code, start_time, complete_time)
+       VALUES (?, ?, NULL, NULL, NULL)
+       ON DUPLICATE KEY UPDATE start_verification_code = VALUES(start_verification_code), start_time = NULL`,
+      [bookingId, code]
+    );
+
+    const [wRows] = await pool.execute('SELECT name FROM tbl_workers WHERE id = ?', [b.worker_id]);
+    const workerName = wRows[0]?.name || 'your professional';
+
+    const [userTokens] = await pool.execute(
+      'SELECT fcm_token FROM tbl_push_tokens WHERE user_id = ? AND user_type = ?',
+      [b.user_id, 'seeker']
+    );
+
+    const token = userTokens[0]?.fcm_token;
+    let pushOk = false;
+    if (token) {
+      const result = await sendNotification(
+        token,
+        'Job start verification code',
+        `${workerName} is ready to start Work. Your code: ${code}. Share it only with them.`,
+        {
+          type: 'booking_start_code',
+          booking_id: String(b.booking_id),
+          tbl_booking_id: String(bookingId),
+          code: String(code)
+        }
+      );
+      pushOk = result.success;
+    }
+
+    res.json({
+      success: true,
+      message: pushOk
+        ? 'Verification code sent to the customer'
+        : 'Code generated. Customer can view it in their bookings if push was unavailable.',
+      pushSent: pushOk
+    });
+  } catch (error) {
+    console.error('❌ request-start error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Clear pending start code when worker UI timer expires (45s), or if app missed the call server still enforces TTL on confirm
+app.post('/api/bookings/:bookingId/expire-start-code', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { worker_id } = req.body;
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (Number(b.status) !== 1) {
+      return res.json({ success: true, message: 'No pending start code for this booking' });
+    }
+
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    await pool.execute(
+      'UPDATE tbl_track_bookings SET start_verification_code = NULL WHERE bookingid = ?',
+      [bookingId]
+    );
+
+    res.json({ success: true, message: 'Start verification code cleared' });
+  } catch (error) {
+    console.error('❌ expire-start-code error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+const START_CODE_TTL_SECONDS = 50;
+
+// Worker confirms start with code from customer
+app.post('/api/bookings/:bookingId/confirm-start', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { code, worker_id } = req.body;
+
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ success: false, message: 'Verification code is required' });
+    }
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (Number(b.status) !== 1) {
+      return res.status(400).json({ success: false, message: 'Booking is not in a state that allows start' });
+    }
+
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    const [trackRows] = await pool.execute(
+      'SELECT start_verification_code, updated_at FROM tbl_track_bookings WHERE bookingid = ?',
+      [bookingId]
+    );
+    const pending = trackRows[0]?.start_verification_code;
+    if (!pending) {
+      return res.status(400).json({
+        success: false,
+        message: 'No verification code pending. Tap Start again to send a new code.'
+      });
+    }
+
+    if (trackRows[0].updated_at) {
+      const issuedMs = new Date(trackRows[0].updated_at).getTime();
+      if (Number.isFinite(issuedMs) && Date.now() - issuedMs > START_CODE_TTL_SECONDS * 1000) {
+        await pool.execute(
+          'UPDATE tbl_track_bookings SET start_verification_code = NULL WHERE bookingid = ?',
+          [bookingId]
+        );
+        return res.status(400).json({
+          success: false,
+          message: 'Verification code has expired. Resend a new code.'
+        });
+      }
+    }
+
+    if (String(code).trim() !== String(pending)) {
+      return res.status(400).json({ success: false, message: 'Invalid verification code' });
+    }
+
+    const [upd] = await pool.execute('UPDATE tbl_bookings SET status = 2 WHERE id = ?', [bookingId]);
+
+    if (upd.affectedRows === 0) {
+      return res.status(400).json({ success: false, message: 'Could not start booking' });
+    }
+
+    await pool.execute(
+      `INSERT INTO tbl_track_bookings (bookingid, start_verification_code, complete_verification_code, start_time, complete_time)
+       VALUES (?, NULL, NULL, NOW(), NULL)
+       ON DUPLICATE KEY UPDATE start_verification_code = NULL, start_time = NOW()`,
+      [bookingId]
+    );
+
+    res.json({ success: true, message: 'Job started' });
+  } catch (error) {
+    console.error('❌ confirm-start error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Worker requests job complete: generate code in tbl_track_bookings, notify customer
+app.post('/api/bookings/:bookingId/request-complete', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { worker_id } = req.body;
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id, user_id, booking_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (Number(b.status) !== 2) {
+      return res.status(400).json({ success: false, message: 'Booking must be in progress before completing' });
+    }
+
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+
+    await pool.execute(
+      `INSERT INTO tbl_track_bookings (bookingid, start_verification_code, complete_verification_code, start_time, complete_time)
+       VALUES (?, NULL, ?, NULL, NULL)
+       ON DUPLICATE KEY UPDATE complete_verification_code = VALUES(complete_verification_code)`,
+      [bookingId, code]
+    );
+
+    const [wRows] = await pool.execute('SELECT name FROM tbl_workers WHERE id = ?', [b.worker_id]);
+    const workerName = wRows[0]?.name || 'your professional';
+
+    const [userTokens] = await pool.execute(
+      'SELECT fcm_token FROM tbl_push_tokens WHERE user_id = ? AND user_type = ?',
+      [b.user_id, 'seeker']
+    );
+
+    const token = userTokens[0]?.fcm_token;
+    let pushOk = false;
+    if (token) {
+      const result = await sendNotification(
+        token,
+        'Job completion verification code',
+        `${workerName} is finishing the work. Your code: ${code}. Share it only with them to confirm completion if you are satisfied with the work.`,
+        {
+          type: 'booking_complete_code',
+          booking_id: String(b.booking_id),
+          tbl_booking_id: String(bookingId),
+          code: String(code)
+        }
+      );
+      pushOk = result.success;
+    }
+
+    res.json({
+      success: true,
+      message: pushOk
+        ? 'Verification code sent to the customer'
+        : 'Code generated. Customer can view it in their bookings if push was unavailable.',
+      pushSent: pushOk
+    });
+  } catch (error) {
+    console.error('❌ request-complete error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+app.post('/api/bookings/:bookingId/expire-complete-code', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { worker_id } = req.body;
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (Number(b.status) !== 2) {
+      return res.json({ success: true, message: 'No pending complete code for this booking' });
+    }
+
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    await pool.execute(
+      'UPDATE tbl_track_bookings SET complete_verification_code = NULL WHERE bookingid = ?',
+      [bookingId]
+    );
+
+    res.json({ success: true, message: 'Completion verification code cleared' });
+  } catch (error) {
+    console.error('❌ expire-complete-code error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Worker confirms complete with code from customer
+app.post('/api/bookings/:bookingId/confirm-complete', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { code, worker_id } = req.body;
+
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ success: false, message: 'Verification code is required' });
+    }
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (Number(b.status) !== 2) {
+      return res.status(400).json({ success: false, message: 'Booking is not in progress' });
+    }
+
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    const [trackRows] = await pool.execute(
+      'SELECT complete_verification_code, updated_at FROM tbl_track_bookings WHERE bookingid = ?',
+      [bookingId]
+    );
+    const pending = trackRows[0]?.complete_verification_code;
+    if (!pending) {
+      return res.status(400).json({
+        success: false,
+        message: 'No verification code pending. Tap Complete Job again to send a new code.'
+      });
+    }
+
+    if (trackRows[0].updated_at) {
+      const issuedMs = new Date(trackRows[0].updated_at).getTime();
+      if (Number.isFinite(issuedMs) && Date.now() - issuedMs > START_CODE_TTL_SECONDS * 1000) {
+        await pool.execute(
+          'UPDATE tbl_track_bookings SET complete_verification_code = NULL WHERE bookingid = ?',
+          [bookingId]
+        );
+        return res.status(400).json({
+          success: false,
+          message: 'Verification code has expired. Resend a new code.'
+        });
+      }
+    }
+
+    if (String(code).trim() !== String(pending)) {
+      return res.status(400).json({ success: false, message: 'Invalid verification code' });
+    }
+
+    const [upd] = await pool.execute('UPDATE tbl_bookings SET status = 3 WHERE id = ?', [bookingId]);
+
+    if (upd.affectedRows === 0) {
+      return res.status(400).json({ success: false, message: 'Could not complete booking' });
+    }
+
+    await pool.execute(
+      'UPDATE tbl_track_bookings SET complete_verification_code = NULL, complete_time = NOW() WHERE bookingid = ?',
+      [bookingId]
+    );
+
+    res.json({ success: true, message: 'Job completed' });
+  } catch (error) {
+    console.error('❌ confirm-complete error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+/** First onhold_time for this booking (any user_type), for aligning new rows with an existing on-hold record */
+async function selectExistingWorkCommentOnholdTimeForBooking(bookingId) {
+  const [rows] = await pool.execute(
+    'SELECT onhold_time FROM tbl_workcomments WHERE bookingid = ? ORDER BY id ASC LIMIT 1',
+    [bookingId]
+  );
+  return rows[0]?.onhold_time ?? null;
+}
+
+// Worker on-hold: status 2 -> 9 + upsert worker comment; status 9 -> upsert only (comments update does not change onhold_time)
+app.post('/api/bookings/:bookingId/worker-on-hold-comment', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { worker_id, comments } = req.body;
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+    const commentText = comments != null ? String(comments).trim() : '';
+    if (!commentText) {
+      return res.status(400).json({ success: false, message: 'comments is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    const st = Number(b.status);
+    if (st === 2) {
+      const [upd] = await pool.execute('UPDATE tbl_bookings SET status = 9 WHERE id = ?', [bookingId]);
+      if (upd.affectedRows === 0) {
+        return res.status(400).json({ success: false, message: 'Could not update booking' });
+      }
+    } else if (st !== 9) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking must be in progress or on hold to save on-hold comments'
+      });
+    }
+
+    const [wcRows] = await pool.execute(
+      'SELECT id FROM tbl_workcomments WHERE bookingid = ? AND user_type = 1',
+      [bookingId]
+    );
+    if (wcRows.length > 0) {
+      await pool.execute(
+        'UPDATE tbl_workcomments SET comments = ? WHERE bookingid = ? AND user_type = 1',
+        [commentText, bookingId]
+      );
+    } else {
+      const existingOnhold = await selectExistingWorkCommentOnholdTimeForBooking(bookingId);
+      if (existingOnhold != null) {
+        await pool.execute(
+          'INSERT INTO tbl_workcomments (bookingid, onhold_time, user_type, comments) VALUES (?, ?, 1, ?)',
+          [bookingId, existingOnhold, commentText]
+        );
+      } else {
+        await pool.execute(
+          'INSERT INTO tbl_workcomments (bookingid, onhold_time, user_type, comments) VALUES (?, NOW(), 1, ?)',
+          [bookingId, commentText]
+        );
+      }
+    }
+
+    const [wc] = await pool.execute(
+      'SELECT comments, onhold_time, created_at, updated_at FROM tbl_workcomments WHERE bookingid = ? AND user_type = 1 LIMIT 1',
+      [bookingId]
+    );
+    const row = wc[0] || {};
+
+    res.json({
+      success: true,
+      message: 'On-hold comments saved',
+      data: {
+        comments: row.comments,
+        onhold_time: row.onhold_time,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('❌ worker-on-hold-comment error:', error);
+    const msg = error && error.code === 'ER_DUP_ENTRY'
+      ? 'Database still allows only one work comment per booking. Run: ALTER TABLE tbl_workcomments DROP INDEX uk_workcomments_booking; ALTER TABLE tbl_workcomments ADD UNIQUE KEY uk_workcomments_booking_user (bookingid, user_type); (adjust index name via SHOW INDEX FROM tbl_workcomments)'
+      : 'Internal server error';
+    res.status(error && error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ success: false, message: msg });
+  }
+});
+
+// Customer on-hold: status 2 -> 9 + upsert customer comment (user_type = 2); status 9 -> upsert comments only
+app.post('/api/bookings/:bookingId/customer-on-hold-comment', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { user_id, comments } = req.body;
+
+    if (user_id == null || user_id === '') {
+      return res.status(400).json({ success: false, message: 'user_id is required' });
+    }
+    const commentText = comments != null ? String(comments).trim() : '';
+    if (!commentText) {
+      return res.status(400).json({ success: false, message: 'comments is required' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, user_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    const b = rows[0];
+    if (String(user_id) !== String(b.user_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+
+    const st = Number(b.status);
+    if (st === 2) {
+      const [upd] = await pool.execute('UPDATE tbl_bookings SET status = 9 WHERE id = ?', [bookingId]);
+      if (upd.affectedRows === 0) {
+        return res.status(400).json({ success: false, message: 'Could not update booking' });
+      }
+    } else if (st !== 9) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking must be in progress or on hold to save comments'
+      });
+    }
+
+    const [wcRows] = await pool.execute(
+      'SELECT id FROM tbl_workcomments WHERE bookingid = ? AND user_type = 2',
+      [bookingId]
+    );
+    if (wcRows.length > 0) {
+      await pool.execute(
+        'UPDATE tbl_workcomments SET comments = ? WHERE bookingid = ? AND user_type = 2',
+        [commentText, bookingId]
+      );
+    } else {
+      const existingOnhold = await selectExistingWorkCommentOnholdTimeForBooking(bookingId);
+      if (existingOnhold != null) {
+        await pool.execute(
+          'INSERT INTO tbl_workcomments (bookingid, onhold_time, user_type, comments) VALUES (?, ?, 2, ?)',
+          [bookingId, existingOnhold, commentText]
+        );
+      } else {
+        await pool.execute(
+          'INSERT INTO tbl_workcomments (bookingid, onhold_time, user_type, comments) VALUES (?, NOW(), 2, ?)',
+          [bookingId, commentText]
+        );
+      }
+    }
+
+    const [wc] = await pool.execute(
+      'SELECT comments, onhold_time, created_at, updated_at FROM tbl_workcomments WHERE bookingid = ? AND user_type = 2 LIMIT 1',
+      [bookingId]
+    );
+    const row = wc[0] || {};
+
+    res.json({
+      success: true,
+      message: 'Comments saved',
+      data: {
+        comments: row.comments,
+        onhold_time: row.onhold_time,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('❌ customer-on-hold-comment error:', error);
+    const msg = error && error.code === 'ER_DUP_ENTRY'
+      ? 'Database still allows only one work comment per booking. Run: ALTER TABLE tbl_workcomments DROP INDEX uk_workcomments_booking; ALTER TABLE tbl_workcomments ADD UNIQUE KEY uk_workcomments_booking_user (bookingid, user_type); (adjust index name via SHOW INDEX FROM tbl_workcomments)'
+      : 'Internal server error';
+    res.status(error && error.code === 'ER_DUP_ENTRY' ? 409 : 500).json({ success: false, message: msg });
+  }
+});
+
+// Customer: read tbl_workcomments for on-hold booking (status 9); comment_user_type 1 = worker, 2 = customer
+app.get('/api/bookings/:bookingId/customer-work-comment', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const user_id = req.query.user_id;
+    const commentUserType = parseInt(req.query.comment_user_type, 10);
+
+    if (user_id == null || user_id === '') {
+      return res.status(400).json({ success: false, message: 'user_id is required' });
+    }
+    if (commentUserType !== 1 && commentUserType !== 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'comment_user_type query must be 1 (worker) or 2 (customer)'
+      });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, user_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+    const b = rows[0];
+    if (String(user_id) !== String(b.user_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+    if (Number(b.status) !== 9) {
+      return res.status(400).json({ success: false, message: 'Booking is not on hold' });
+    }
+
+    const [wc] = await pool.execute(
+      'SELECT comments, onhold_time, created_at, updated_at FROM tbl_workcomments WHERE bookingid = ? AND user_type = ? LIMIT 1',
+      [bookingId, commentUserType]
+    );
+    if (!wc.length) {
+      return res.json({ success: true, found: false, data: null });
+    }
+
+    const row = wc[0];
+    res.json({
+      success: true,
+      found: true,
+      data: {
+        comments: row.comments,
+        onhold_time: row.onhold_time,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('customer-work-comment GET error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Worker: read tbl_workcomments for on-hold booking (status 9); comment_user_type 1 = worker, 2 = customer
+app.get('/api/bookings/:bookingId/worker-work-comment', async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const worker_id = req.query.worker_id;
+    const commentUserType = parseInt(req.query.comment_user_type, 10);
+
+    if (worker_id == null || worker_id === '') {
+      return res.status(400).json({ success: false, message: 'worker_id is required' });
+    }
+    if (commentUserType !== 1 && commentUserType !== 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'comment_user_type query must be 1 (worker) or 2 (customer)'
+      });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, status, worker_id FROM tbl_bookings WHERE id = ?',
+      [bookingId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+    const b = rows[0];
+    if (String(worker_id) !== String(b.worker_id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized for this booking' });
+    }
+    if (Number(b.status) !== 9) {
+      return res.status(400).json({ success: false, message: 'Booking is not on hold' });
+    }
+
+    const [wc] = await pool.execute(
+      'SELECT comments, onhold_time, created_at, updated_at FROM tbl_workcomments WHERE bookingid = ? AND user_type = ? LIMIT 1',
+      [bookingId, commentUserType]
+    );
+    if (!wc.length) {
+      return res.json({ success: true, found: false, data: null });
+    }
+
+    const row = wc[0];
+    res.json({
+      success: true,
+      found: true,
+      data: {
+        comments: row.comments,
+        onhold_time: row.onhold_time,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('worker-work-comment GET error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // Send booking alert notification with high priority
 // Calculate distance between two coordinates using Haversine formula
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -4090,6 +4838,8 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
         b.created_at,
         b.description,
         b.work_documents,
+        tb.start_verification_code,
+        tb.complete_verification_code,
         w.name as worker_name,
         w.mobile as worker_mobile,
         c.status as cancel_status,
@@ -4101,6 +4851,7 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
         r.reschedule_reason,
         r.reschedule_date
       FROM tbl_bookings b
+      LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
       LEFT JOIN tbl_workers w ON b.worker_id = w.id
       LEFT JOIN tbl_canceledbookings c ON b.id = CAST(TRIM(c.bookingid) AS UNSIGNED)
       LEFT JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
@@ -4949,7 +5700,7 @@ app.post('/api/send-manual-alert', async (req, res) => {
 
 app.get('/api/admin/bookings', async (req, res) => {
   try {
-    const { canceled, rescheduled, cancelreq, reschedulereq } = req.query;
+    const { canceled, rescheduled, cancelreq, reschedulereq, onhold } = req.query;
 
     let query;
 
@@ -4973,11 +5724,14 @@ app.get('/api/admin/bookings', async (req, res) => {
           w.mobile as worker_mobile,
           s.name as customer_name,
           s.mobile as customer_mobile,
+          tb.start_time,
+          tb.complete_time,
           c.type as canceled_by,
           c.cancel_reason,
           c.created_at as canceled_date,
           c.status as cancel_status
         FROM tbl_bookings b
+        LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         INNER JOIN tbl_canceledbookings c ON (
@@ -5014,11 +5768,14 @@ app.get('/api/admin/bookings', async (req, res) => {
           w.mobile as worker_mobile,
           s.name as customer_name,
           s.mobile as customer_mobile,
+          tb.start_time,
+          tb.complete_time,
           r.type as rescheduled_by,
           r.reschedule_reason,
           r.created_at as reschedule_date,
           r.status as reschedule_status
         FROM tbl_bookings b
+        LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         INNER JOIN tbl_rescheduledbookings r ON b.id = CAST(TRIM(r.bookingid) AS UNSIGNED)
@@ -5047,11 +5804,14 @@ app.get('/api/admin/bookings', async (req, res) => {
           w.mobile as worker_mobile,
           s.name as customer_name,
           s.mobile as customer_mobile,
+          tb.start_time,
+          tb.complete_time,
           c.type as canceled_by,
           c.cancel_reason,
           c.created_at as canceled_date,
           c.status as cancel_status
         FROM tbl_bookings b
+        LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         INNER JOIN tbl_canceledbookings c ON (
@@ -5083,11 +5843,14 @@ app.get('/api/admin/bookings', async (req, res) => {
           w.mobile as worker_mobile,
           s.name as customer_name,
           s.mobile as customer_mobile,
+          tb.start_time,
+          tb.complete_time,
           r.type as rescheduled_by,
           r.reschedule_reason,
           r.created_at as reschedule_date,
           r.status as reschedule_status
         FROM tbl_bookings b
+        LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         INNER JOIN tbl_rescheduledbookings r ON (
@@ -5099,6 +5862,56 @@ app.get('/api/admin/bookings', async (req, res) => {
       `;
 
       console.log('🔍 Fetching rescheduled bookings (b.status=6 AND b.payment_status=1 AND r.status=1 AND b.id=r.bookingid)');
+    } else if (onhold === 'true') {
+      // tbl_workcomments.bookingid = tbl_bookings.id (numeric). Multiple rows can share the same
+      // booking_id string; comments may be stored on a sibling id. Resolve comments by booking_id group.
+      query = `
+        SELECT 
+          b.id,
+          b.booking_id,
+          b.worker_id,
+          b.user_id,
+          b.contact_number,
+          b.work_location,
+          b.booking_time,
+          b.status,
+          b.payment_status,
+          b.amount,
+          b.created_at,
+          b.description,
+          w.name as worker_name,
+          w.mobile as worker_mobile,
+          s.name as customer_name,
+          s.mobile as customer_mobile,
+          tb.start_time,
+          tb.complete_time,
+          (
+            SELECT MIN(wc0.onhold_time)
+            FROM tbl_workcomments wc0
+            INNER JOIN tbl_bookings b0 ON b0.id = wc0.bookingid
+            WHERE b0.booking_id = b.booking_id
+          ) as hold_from,
+          (
+            SELECT wc1.comments FROM tbl_workcomments wc1
+            INNER JOIN tbl_bookings b1 ON b1.id = wc1.bookingid
+            WHERE b1.booking_id = b.booking_id AND wc1.user_type = 1
+            ORDER BY wc1.id DESC LIMIT 1
+          ) as worker_hold_comments,
+          (
+            SELECT wc2.comments FROM tbl_workcomments wc2
+            INNER JOIN tbl_bookings b2 ON b2.id = wc2.bookingid
+            WHERE b2.booking_id = b.booking_id AND wc2.user_type = 2
+            ORDER BY wc2.id DESC LIMIT 1
+          ) as customer_hold_comments
+        FROM tbl_bookings b
+        LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
+        LEFT JOIN tbl_workers w ON b.worker_id = w.id
+        LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
+        WHERE b.status = 9 AND b.payment_status = 1
+        ORDER BY b.id DESC
+      `;
+
+      console.log('🔍 Fetching on-hold bookings (b.status=9 AND b.payment_status=1)');
     } else {
       // Regular bookings query (All) - include cancel_status and reschedule_status for status 5/6 display
       query = `
@@ -5119,9 +5932,20 @@ app.get('/api/admin/bookings', async (req, res) => {
           w.mobile as worker_mobile,
           s.name as customer_name,
           s.mobile as customer_mobile,
+          tb.start_time,
+          tb.complete_time,
+          c.created_at as canceled_date,
           c.status as cancel_status,
-          r.status as reschedule_status
+          r.created_at as reschedule_requested_at,
+          r.status as reschedule_status,
+          (
+            SELECT MIN(wc0.onhold_time)
+            FROM tbl_workcomments wc0
+            INNER JOIN tbl_bookings b0 ON b0.id = wc0.bookingid
+            WHERE b0.booking_id = b.booking_id
+          ) as hold_from
         FROM tbl_bookings b
+        LEFT JOIN tbl_track_bookings tb ON tb.bookingid = b.id
         LEFT JOIN tbl_workers w ON b.worker_id = w.id
         LEFT JOIN tbl_serviceseeker s ON b.user_id = s.id
         LEFT JOIN tbl_canceledbookings c ON b.id = CAST(TRIM(c.bookingid) AS UNSIGNED)
@@ -5140,6 +5964,8 @@ app.get('/api/admin/bookings', async (req, res) => {
       console.log(`✅ Found ${bookings.length} canceled bookings`);
     } else if (rescheduled === 'true') {
       console.log(`✅ Found ${bookings.length} rescheduled bookings`);
+    } else if (onhold === 'true') {
+      console.log(`✅ Found ${bookings.length} on-hold bookings`);
     }
 
     res.json({
@@ -5224,6 +6050,44 @@ app.get('/api/admin/customers', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch customers',
+      error: error.message
+    });
+  }
+});
+
+// Single customer by id
+app.get('/api/admin/customers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = `
+      SELECT 
+        id,
+        name,
+        mobile,
+        email,
+        pincode,
+        address,
+        mandal,
+        city,
+        district,
+        state,
+        country,
+        profile_image,
+        document1,
+        created_at
+      FROM tbl_serviceseeker
+      WHERE id = ?
+    `;
+    const [rows] = await pool.query(query, [id]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+    res.json({ success: true, customer: rows[0] });
+  } catch (error) {
+    console.error('❌ Error fetching admin customer:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch customer',
       error: error.message
     });
   }
@@ -5600,6 +6464,122 @@ app.get('/api/admin/analysis/service-bookings', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch service analysis',
+      error: error.message
+    });
+  }
+});
+
+// Booking analysis: summary + table by service with category, subcategory, counts, amounts
+// Query params: fromDate, toDate (YYYY-MM-DD) — same rules as category-bookings; optional legacy `date` sets both ends to one day
+app.get('/api/admin/analysis/booking-breakdown', async (req, res) => {
+  try {
+    let { fromDate, toDate } = req.query;
+    if (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date))) {
+      fromDate = req.query.date;
+      toDate = req.query.date;
+    }
+    const hasFrom = fromDate && /^\d{4}-\d{2}-\d{2}$/.test(String(fromDate));
+    const hasTo = toDate && /^\d{4}-\d{2}-\d{2}$/.test(String(toDate));
+    let dateCondition = '';
+    const joinParams = [];
+    if (hasFrom && hasTo) {
+      dateCondition = ' AND DATE(b.created_at) BETWEEN ? AND ?';
+      joinParams.push(fromDate, toDate);
+    } else if (hasFrom) {
+      dateCondition = ' AND DATE(b.created_at) >= ?';
+      joinParams.push(fromDate);
+    } else if (hasTo) {
+      dateCondition = ' AND DATE(b.created_at) <= ?';
+      joinParams.push(toDate);
+    } else {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      dateCondition = ' AND DATE(b.created_at) = ?';
+      joinParams.push(today);
+      fromDate = today;
+      toDate = today;
+    }
+
+    const [rows] = await pool.query(
+      `SELECT
+        s.id AS serviceId,
+        s.name AS serviceName,
+        sc.id AS subcategoryId,
+        sc.name AS subcategoryTitle,
+        c.id AS categoryId,
+        c.title AS categoryTitle,
+        COUNT(DISTINCT b.id) AS bookingCount,
+        COALESCE(SUM(b.amount), 0) AS totalAmount
+      FROM tbl_services s
+      INNER JOIN tbl_subcategory sc ON s.subcategory_id = sc.id
+      INNER JOIN tbl_category c ON sc.category_id = c.id
+      LEFT JOIN tbl_bookings b ON b.description IS NOT NULL
+        AND b.description != ''
+        AND REPLACE(b.description, 'Booking for ', '') NOT LIKE '%service(s)%'
+        AND CONCAT(', ', TRIM(REPLACE(b.description, 'Booking for ', '')), ', ') LIKE CONCAT('%, ', s.name, ', %')
+        ${dateCondition}
+      WHERE s.status = 1
+      GROUP BY s.id, s.name, sc.id, sc.name, c.id, c.title
+      HAVING bookingCount > 0
+      ORDER BY bookingCount DESC, s.name ASC`,
+      joinParams
+    );
+
+    let countWhere = '';
+    const countParams = [];
+    if (hasFrom && hasTo) {
+      countWhere = 'DATE(created_at) BETWEEN ? AND ?';
+      countParams.push(fromDate, toDate);
+    } else if (hasFrom) {
+      countWhere = 'DATE(created_at) >= ?';
+      countParams.push(fromDate);
+    } else if (hasTo) {
+      countWhere = 'DATE(created_at) <= ?';
+      countParams.push(toDate);
+    } else {
+      countWhere = 'DATE(created_at) = ?';
+      countParams.push(joinParams[0]);
+    }
+
+    const [[tot]] = await pool.query(
+      `SELECT COUNT(DISTINCT id) AS totalBookings FROM tbl_bookings WHERE ${countWhere}`,
+      countParams
+    );
+
+    const [[sumAmt]] = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) AS totalAmount FROM tbl_bookings WHERE ${countWhere}`,
+      countParams
+    );
+
+    const [[catRow]] = await pool.query('SELECT COUNT(*) AS n FROM tbl_category WHERE status = 1');
+    const [[subRow]] = await pool.query('SELECT COUNT(*) AS n FROM tbl_subcategory WHERE status = 1');
+    const [[svcRow]] = await pool.query('SELECT COUNT(*) AS n FROM tbl_services WHERE status = 1');
+
+    res.json({
+      success: true,
+      summary: {
+        fromDate: hasFrom || (!hasFrom && !hasTo) ? String(fromDate) : null,
+        toDate: hasTo || (!hasFrom && !hasTo) ? String(toDate) : null,
+        totalBookings: Number(tot?.totalBookings) || 0,
+        totalAmount: Number(sumAmt?.totalAmount) || 0,
+        totalCategories: Number(catRow?.n) || 0,
+        totalSubcategories: Number(subRow?.n) || 0,
+        totalServices: Number(svcRow?.n) || 0,
+      },
+      data: rows.map((r) => ({
+        serviceId: r.serviceId,
+        serviceName: r.serviceName,
+        subcategoryTitle: r.subcategoryTitle,
+        categoryTitle: r.categoryTitle,
+        bookingCount: Number(r.bookingCount) || 0,
+        totalAmount: Number(r.totalAmount) || 0,
+      })),
+    });
+  } catch (error) {
+    console.error('❌ Error fetching booking breakdown analysis:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking analysis',
       error: error.message
     });
   }

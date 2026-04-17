@@ -3,8 +3,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -18,8 +16,9 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import * as XLSX from 'xlsx';
-import { API_ENDPOINTS, BASE_URL } from '../../constants/api';
+import { API_ENDPOINTS } from '../../constants/api';
 import EditWorker from './editworker';
+import ViewWorker from './viewworker';
 
 let DateTimePicker: React.ComponentType<any> | null = null;
 if (Platform.OS !== 'web') {
@@ -140,52 +139,6 @@ interface Worker {
   created_at?: string;
 }
 
-interface WorkerPopupData {
-  id: number;
-  name: string;
-  mobile: string;
-  email?: string;
-  price?: number;
-  skill_id?: string;
-  pincode?: string;
-  mandal?: string;
-  city?: string;
-  district?: string;
-  state?: string;
-  country?: string;
-  address?: string;
-  profile_image?: string;
-  document1?: string[];
-  document2?: string[];
-  status?: number;
-  created_at?: string;
-}
-
-interface WBooking {
-  id: number;
-  booking_id: string;
-  worker_id: number;
-  user_id: number;
-  work_location: string;
-  booking_time: string;
-  status: number;
-  payment_status: number;
-  amount?: number;
-  created_at: string;
-  description: string;
-  customer_name: string;
-}
-
-interface WReview {
-  booking_id: string;
-  worker_id: number;
-  customer_name: string;
-  booking_for: string;
-  rating: number;
-  review: string;
-  created_at: string;
-}
-
 interface WorkersProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -219,17 +172,7 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [menuWorker, setMenuWorker] = useState<Worker | null>(null);
   const menuButtonRefs = useRef<{ [key: number]: any }>({});
-  // Worker popup state
-  const [showWorkerPopup, setShowWorkerPopup] = useState(false);
-  const [selectedWorkerData, setSelectedWorkerData] = useState<WorkerPopupData | null>(null);
-  const [workerDetailsLoading, setWorkerDetailsLoading] = useState(false);
-  const [showPersonalInfo, setShowPersonalInfo] = useState(false);
-  const [showInvolvedBookings, setShowInvolvedBookings] = useState(false);
-  const [workerBookings, setWorkerBookings] = useState<WBooking[]>([]);
-  const [workerBookingsLoading, setWorkerBookingsLoading] = useState(false);
-  const [showWorkerReviews, setShowWorkerReviews] = useState(false);
-  const [workerReviews, setWorkerReviews] = useState<WReview[]>([]);
-  const [workerReviewsLoading, setWorkerReviewsLoading] = useState(false);
+  const [viewingWorkerId, setViewingWorkerId] = useState<number | null>(null);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -353,16 +296,6 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
     }
   };
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-  const getStatusLabel = (s: number) => {
-    switch (s) { case 1: return 'Accepted'; case 2: return 'In Progress'; case 3: return 'Completed'; case 4: return 'Reject'; case 5: return 'Canceled'; case 6: return 'Rescheduled'; case 7: return 'Cancel Request'; case 8: return 'Reschedule Request'; default: return 'Unknown'; }
-  };
-
-  const getStatusColor = (s: number) => {
-    switch (s) { case 1: return { bg: '#dcfce7', border: '#86efac', text: '#16a34a' }; case 2: return { bg: '#dbeafe', border: '#93c5fd', text: '#2563eb' }; case 3: return { bg: '#f3e8ff', border: '#c084fc', text: '#9333ea' }; case 4: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; case 5: return { bg: '#fee2e2', border: '#fca5a5', text: '#dc2626' }; case 6: return { bg: '#fef3c7', border: '#fde047', text: '#ca8a04' }; case 7: return { bg: '#fed7aa', border: '#fdba74', text: '#ea580c' }; default: return { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' }; }
-  };
-
   const closeMenu = () => { setOpenMenuId(null); setMenuPosition(null); setMenuWorker(null); };
 
   const handleMenuToggle = (worker: Worker) => {
@@ -377,59 +310,8 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
     }
   };
 
-  const fetchWorkerDetails = async (workerId: number) => {
-    if (!workerId) return;
-    setShowPersonalInfo(false);
-    setShowInvolvedBookings(false);
-    setShowWorkerReviews(false);
-    setWorkerBookings([]);
-    setWorkerReviews([]);
-    setWorkerDetailsLoading(true);
-    setShowWorkerPopup(true);
-    setSelectedWorkerData(null);
-    try {
-      const res = await fetch(API_ENDPOINTS.WORKER_BY_ID(String(workerId)));
-      const data = await res.json();
-      if (data.success) {
-        const w = data.data;
-        const parse = (s: string | null | undefined): string[] => {
-          if (!s) return [];
-          return s.replace(/^\/uploads\/documents\//, '').split(',').map((f: string) => f.trim()).filter(Boolean).map((f: string) => `/uploads/${f}`);
-        };
-        w.document1 = parse(w.document1);
-        w.document2 = parse(w.document2);
-        setSelectedWorkerData(w);
-      }
-    } catch { /* silent */ }
-    finally { setWorkerDetailsLoading(false); }
-    try {
-      setWorkerBookingsLoading(true);
-      const bRes = await fetch(API_ENDPOINTS.ADMIN_BOOKINGS);
-      const bData = await bRes.json();
-      if (bData.success) {
-        const all: WBooking[] = bData.bookings;
-        const map = new Map<string, WBooking>();
-        all.filter(b => b.worker_id === workerId && b.status !== 4 && b.payment_status === 1).forEach(b => {
-          const ex = map.get(b.booking_id);
-          if (!ex || new Date(b.created_at) > new Date(ex.created_at)) map.set(b.booking_id, b);
-        });
-        setWorkerBookings(Array.from(map.values()).sort((a, b) => b.id - a.id));
-      }
-    } catch { /* silent */ }
-    finally { setWorkerBookingsLoading(false); }
-    try {
-      setWorkerReviewsLoading(true);
-      const rRes = await fetch(API_ENDPOINTS.ADMIN_REVIEWS_RATINGS);
-      const rData = await rRes.json();
-      if (rData.success) {
-        setWorkerReviews((rData.reviews as WReview[]).filter(r => r.worker_id === workerId));
-      }
-    } catch { /* silent */ }
-    finally { setWorkerReviewsLoading(false); }
-  };
-
   const handleView = (worker: Worker) => {
-    fetchWorkerDetails(worker.id);
+    setViewingWorkerId(worker.id);
   };
 
   const handleEdit = (worker: Worker) => {
@@ -484,6 +366,15 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
         onSave={() => {
           fetchWorkers(); // Refresh the workers list after save
         }}
+      />
+    );
+  }
+
+  if (viewingWorkerId !== null) {
+    return (
+      <ViewWorker
+        workerId={viewingWorkerId}
+        onBack={() => setViewingWorkerId(null)}
       />
     );
   }
@@ -869,239 +760,6 @@ export default function Workers({ searchQuery: externalSearchQuery, onSearchChan
                 </View>
             </Pressable>
           )}
-        </Pressable>
-      </Modal>
-
-      {/* ── Worker Details Modal ── */}
-      <Modal visible={showWorkerPopup} transparent animationType="slide" onRequestClose={() => setShowWorkerPopup(false)}>
-        <Pressable onPress={() => setShowWorkerPopup(false)} style={styles.cvModalOverlay}>
-          <Pressable onPress={(e) => e.stopPropagation()}>
-            <View style={styles.cvModalContent}>
-              {/* Header */}
-              <View style={styles.cvModalHeader}>
-                <View style={styles.cvHeaderBlob1} />
-                <View style={styles.cvHeaderBlob2} />
-                <View style={styles.cvModalHeaderTitleRow}>
-                  <Text style={styles.cvModalTitle}>Worker Details</Text>
-                  <TouchableOpacity onPress={() => setShowWorkerPopup(false)} style={styles.cvModalClose}>
-                    <Ionicons name="close" size={isDesktop ? 20 : 18} color="#ffffff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {/* Avatar */}
-              <View style={styles.cvAvatarOuter}>
-                {workerDetailsLoading ? (
-                  <ActivityIndicator size="small" color="#6366f1" />
-                ) : selectedWorkerData?.profile_image ? (
-                  <Image source={{ uri: `${BASE_URL}${selectedWorkerData.profile_image}` }} style={styles.cvProfileImage} resizeMode="cover" />
-                ) : (
-                  <View style={styles.cvProfilePlaceholder}><Ionicons name="person" size={isDesktop ? 44 : 38} color="#c7d2fe" /></View>
-                )}
-              </View>
-              {/* Name + Status */}
-              <View style={styles.cvProfileNameSection}>
-                <Text style={styles.cvProfileName}>{selectedWorkerData?.name || 'N/A'}</Text>
-                {selectedWorkerData && (
-                  <View style={[styles.cvSectionBadge, { marginTop: 6, backgroundColor: selectedWorkerData.status === 1 ? '#dcfce7' : '#fee2e2', borderWidth: 1, borderColor: selectedWorkerData.status === 1 ? '#86efac' : '#fca5a5' }]}>
-                    <Text style={[styles.cvSectionBadgeText, { color: selectedWorkerData.status === 1 ? '#16a34a' : '#dc2626' }]}>
-                      {selectedWorkerData.status === 1 ? '● Active' : '● Inactive'}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              {workerDetailsLoading ? (
-                <View style={{ padding: 32, alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color="#6366f1" />
-                  <Text style={styles.cvBookingLoadingText}>Loading worker details...</Text>
-                </View>
-              ) : selectedWorkerData ? (
-                <ScrollView showsVerticalScrollIndicator={false} style={styles.cvModalScroll}>
-                  <View style={styles.cvSectionsWrapper}>
-                    {/* Personal Info */}
-                    <View style={styles.cvSection}>
-                      <TouchableOpacity style={styles.cvSectionHeader} onPress={() => setShowPersonalInfo(v => !v)} activeOpacity={0.75}>
-                        <View style={styles.cvSectionHeaderLeft}>
-                          <View style={styles.cvSectionIconBox}><Ionicons name="person-outline" size={16} color="#6366f1" /></View>
-                          <Text style={styles.cvSectionTitle}>Personal Info</Text>
-                        </View>
-                        <Ionicons name={showPersonalInfo ? 'chevron-up' : 'chevron-down'} size={18} color="#6366f1" />
-                      </TouchableOpacity>
-                      {showPersonalInfo && (
-                        <View style={styles.cvSectionContent}>
-                          <View style={styles.cvDetailRow}>
-                            <View style={styles.cvDetailIconWrap}><Ionicons name="call-outline" size={15} color="#6366f1" /></View>
-                            <View style={styles.cvDetailContent}>
-                              <Text style={styles.cvDetailLabel}>Mobile</Text>
-                              <Text style={styles.cvDetailValue}>{selectedWorkerData.mobile || 'N/A'}</Text>
-                            </View>
-                          </View>
-                          {selectedWorkerData.email ? (
-                            <View style={styles.cvDetailRow}>
-                              <View style={styles.cvDetailIconWrap}><Ionicons name="mail-outline" size={15} color="#6366f1" /></View>
-                              <View style={styles.cvDetailContent}>
-                                <Text style={styles.cvDetailLabel}>Email</Text>
-                                <Text style={styles.cvDetailValue}>{selectedWorkerData.email}</Text>
-                              </View>
-                            </View>
-                          ) : null}
-                          {selectedWorkerData.price != null ? (
-                            <View style={styles.cvDetailRow}>
-                              <View style={styles.cvDetailIconWrap}><Ionicons name="cash-outline" size={15} color="#6366f1" /></View>
-                              <View style={styles.cvDetailContent}>
-                                <Text style={styles.cvDetailLabel}>Price</Text>
-                                <Text style={styles.cvDetailValue}>₹{selectedWorkerData.price}</Text>
-                              </View>
-                            </View>
-                          ) : null}
-                          {(selectedWorkerData.address || selectedWorkerData.district || selectedWorkerData.state) ? (
-                            <View style={styles.cvDetailRow}>
-                              <View style={styles.cvDetailIconWrap}><Ionicons name="location-outline" size={15} color="#6366f1" /></View>
-                              <View style={styles.cvDetailContent}>
-                                <Text style={styles.cvDetailLabel}>Address</Text>
-                                <Text style={styles.cvDetailValue}>
-                                  {[selectedWorkerData.address, selectedWorkerData.city, selectedWorkerData.mandal, selectedWorkerData.district, selectedWorkerData.state, selectedWorkerData.country].filter(Boolean).join(', ')}
-                                  {selectedWorkerData.pincode ? ` - ${selectedWorkerData.pincode}` : ''}
-                                </Text>
-                              </View>
-                            </View>
-                          ) : null}
-                          {selectedWorkerData.created_at ? (
-                            <View style={styles.cvDetailRow}>
-                              <View style={styles.cvDetailIconWrap}><Ionicons name="calendar-outline" size={15} color="#6366f1" /></View>
-                              <View style={styles.cvDetailContent}>
-                                <Text style={styles.cvDetailLabel}>Joined On</Text>
-                                <Text style={styles.cvDetailValue}>{formatDate(selectedWorkerData.created_at)}</Text>
-                              </View>
-                            </View>
-                          ) : null}
-                          {selectedWorkerData.document1 && selectedWorkerData.document1.length > 0 ? (
-                            <>
-                              <View style={styles.cvDocDivider}>
-                                <Ionicons name="document-outline" size={14} color="#6366f1" />
-                                <Text style={styles.cvDocDividerText}>Personal Docs ({selectedWorkerData.document1.length})</Text>
-                              </View>
-                              {selectedWorkerData.document1.map((p, i) => (
-                                <View key={i} style={styles.cvDocRow}>
-                                  <View style={styles.cvDocIndexBadge}><Text style={styles.cvDocIndexText}>{i + 1}</Text></View>
-                                  <Image source={{ uri: `${BASE_URL}${p}` }} style={styles.cvDocThumb} resizeMode="cover" />
-                                  <TouchableOpacity style={styles.cvDocViewBtn} onPress={() => Linking.openURL(`${BASE_URL}${p}`)}>
-                                    <Ionicons name="eye-outline" size={14} color="#ffffff" /><Text style={styles.cvDocViewText}>View</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </>
-                          ) : null}
-                          {selectedWorkerData.document2 && selectedWorkerData.document2.length > 0 ? (
-                            <>
-                              <View style={styles.cvDocDivider}>
-                                <Ionicons name="document-text-outline" size={14} color="#6366f1" />
-                                <Text style={styles.cvDocDividerText}>Professional Docs ({selectedWorkerData.document2.length})</Text>
-                              </View>
-                              {selectedWorkerData.document2.map((p, i) => (
-                                <View key={i} style={styles.cvDocRow}>
-                                  <View style={styles.cvDocIndexBadge}><Text style={styles.cvDocIndexText}>{i + 1}</Text></View>
-                                  <Image source={{ uri: `${BASE_URL}${p}` }} style={styles.cvDocThumb} resizeMode="cover" />
-                                  <TouchableOpacity style={styles.cvDocViewBtn} onPress={() => Linking.openURL(`${BASE_URL}${p}`)}>
-                                    <Ionicons name="eye-outline" size={14} color="#ffffff" /><Text style={styles.cvDocViewText}>View</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </>
-                          ) : null}
-                          {(!selectedWorkerData.document1?.length && !selectedWorkerData.document2?.length) && (
-                            <Text style={styles.cvSectionEmpty}>No documents uploaded.</Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                    {/* Involved Bookings */}
-                    <View style={styles.cvSection}>
-                      <TouchableOpacity style={styles.cvSectionHeader} onPress={() => setShowInvolvedBookings(v => !v)} activeOpacity={0.75}>
-                        <View style={styles.cvSectionHeaderLeft}>
-                          <View style={styles.cvSectionIconBox}><Ionicons name="calendar-outline" size={16} color="#6366f1" /></View>
-                          <Text style={styles.cvSectionTitle}>Involved Bookings</Text>
-                          {workerBookings.length > 0 && <View style={styles.cvSectionBadge}><Text style={styles.cvSectionBadgeText}>{workerBookings.length}</Text></View>}
-                        </View>
-                        <Ionicons name={showInvolvedBookings ? 'chevron-up' : 'chevron-down'} size={18} color="#6366f1" />
-                      </TouchableOpacity>
-                      {showInvolvedBookings && (
-                        <View style={styles.cvSectionContent}>
-                          {workerBookingsLoading ? (
-                            <View style={styles.cvBookingLoadingRow}><ActivityIndicator size="small" color="#6366f1" /><Text style={styles.cvBookingLoadingText}>Loading bookings...</Text></View>
-                          ) : workerBookings.length === 0 ? (
-                            <Text style={styles.cvSectionEmpty}>No bookings found.</Text>
-                          ) : (
-                            workerBookings.map((b) => {
-                              const sc = getStatusColor(b.status);
-                              return (
-                                <View key={b.id} style={styles.cvBookingItem}>
-                                  <View style={styles.cvBookingRow1}>
-                                    <Text style={styles.cvBookingId}>#{b.booking_id}</Text>
-                                    <View style={[styles.cvBookingBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}><Text style={[styles.cvBookingBadgeText, { color: sc.text }]}>{getStatusLabel(b.status)}</Text></View>
-                                  </View>
-                                  {b.booking_time ? <View style={styles.cvBookingField}><Ionicons name="time-outline" size={12} color="#94a3b8" /><Text style={styles.cvBookingFieldText}>{formatDate(b.booking_time)}</Text></View> : null}
-                                  <View style={styles.cvBookingRow2}>
-                                    <View style={styles.cvBookingField}><Ionicons name="cash-outline" size={12} color="#94a3b8" /><Text style={styles.cvBookingFieldText}>{b.amount != null ? `₹${b.amount}` : 'N/A'}</Text></View>
-                                    <View style={styles.cvBookingField}><Ionicons name="person-outline" size={12} color="#94a3b8" /><Text style={styles.cvBookingFieldText} numberOfLines={1}>{b.customer_name || 'N/A'}</Text></View>
-                                  </View>
-                                  {b.work_location ? <View style={styles.cvBookingField}><Ionicons name="location-outline" size={12} color="#94a3b8" /><Text style={[styles.cvBookingFieldText, { flex: 1 }]} numberOfLines={1}>{b.work_location}</Text></View> : null}
-                                  {b.description ? <View style={styles.cvBookingField}><Ionicons name="document-text-outline" size={12} color="#94a3b8" /><Text style={[styles.cvBookingFieldText, { flex: 1 }]} numberOfLines={2}>{b.description}</Text></View> : null}
-                                </View>
-                              );
-                            })
-                          )}
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Reviews & Ratings */}
-                    <View style={styles.cvSection}>
-                      <TouchableOpacity style={styles.cvSectionHeader} onPress={() => setShowWorkerReviews(v => !v)} activeOpacity={0.75}>
-                        <View style={styles.cvSectionHeaderLeft}>
-                          <View style={styles.cvSectionIconBox}><Ionicons name="star-outline" size={16} color="#6366f1" /></View>
-                          <Text style={styles.cvSectionTitle}>Reviews & Ratings</Text>
-                          {workerReviews.length > 0 && <View style={styles.cvSectionBadge}><Text style={styles.cvSectionBadgeText}>{workerReviews.length}</Text></View>}
-                        </View>
-                        <Ionicons name={showWorkerReviews ? 'chevron-up' : 'chevron-down'} size={18} color="#6366f1" />
-                      </TouchableOpacity>
-                      {showWorkerReviews && (
-                        <View style={styles.cvSectionContent}>
-                          {workerReviewsLoading ? (
-                            <View style={styles.cvBookingLoadingRow}><ActivityIndicator size="small" color="#6366f1" /><Text style={styles.cvBookingLoadingText}>Loading reviews...</Text></View>
-                          ) : workerReviews.length === 0 ? (
-                            <Text style={styles.cvSectionEmpty}>No reviews found.</Text>
-                          ) : (
-                            workerReviews.map((r, idx) => (
-                              <View key={`wr-${idx}`} style={styles.cvReviewItem}>
-                                <View style={styles.cvReviewRow1}>
-                                  <Text style={styles.cvReviewBookingId}>#{r.booking_id}</Text>
-                                  <View style={styles.cvStarsRow}>
-                                    {[1,2,3,4,5].map(s => (
-                                      <Ionicons key={s} name={s <= r.rating ? 'star' : 'star-outline'} size={14} color={s <= r.rating ? '#f59e0b' : '#d1d5db'} />
-                                    ))}
-                                    <Text style={styles.cvRatingText}>{r.rating}/5</Text>
-                                  </View>
-                                </View>
-                                {r.customer_name ? <View style={styles.cvBookingField}><Ionicons name="person-outline" size={12} color="#94a3b8" /><Text style={styles.cvBookingFieldText} numberOfLines={1}>{r.customer_name}</Text></View> : null}
-                                {r.booking_for ? <View style={styles.cvBookingField}><Ionicons name="briefcase-outline" size={12} color="#94a3b8" /><Text style={[styles.cvBookingFieldText, { flex: 1 }]} numberOfLines={1}>{r.booking_for}</Text></View> : null}
-                                {r.review ? <View style={styles.cvReviewTextBox}><Text style={styles.cvReviewText}>{r.review}</Text></View> : null}
-                                <View style={styles.cvBookingField}><Ionicons name="time-outline" size={12} color="#94a3b8" /><Text style={styles.cvBookingFieldText}>{formatDate(r.created_at)}</Text></View>
-                              </View>
-                            ))
-                          )}
-                        </View>
-                      )}
-                    </View>
-
-                  </View>
-                </ScrollView>
-              ) : (
-                <View style={{ padding: 32, alignItems: 'center' }}>
-                  <Text style={styles.cvBookingLoadingText}>Worker details not found.</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
         </Pressable>
       </Modal>
 
@@ -1633,60 +1291,5 @@ const createStyles = (width: number) => {
     statusTextInactive: {
       color: '#dc2626',
     },
-    // Worker Details Modal — same design as customers.tsx cv* styles
-    cvModalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.65)', justifyContent: 'center', alignItems: 'center' },
-    cvModalContent: { backgroundColor: '#ffffff', borderRadius: isDesktop ? 24 : 18, width: isDesktop ? 560 : isTablet ? 480 : '95%', maxWidth: 580, maxHeight: isDesktop ? '92%' : '94%', shadowColor: '#6366f1', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.25, shadowRadius: 32, elevation: 20, overflow: 'hidden' },
-    cvModalHeader: { backgroundColor: '#6366f1', paddingTop: isDesktop ? 20 : 16, paddingHorizontal: isDesktop ? 24 : 18, paddingBottom: isDesktop ? 56 : 48, overflow: 'hidden' },
-    cvHeaderBlob1: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(139,92,246,0.4)', top: -60, right: -40 },
-    cvHeaderBlob2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(99,102,241,0.3)', bottom: -20, left: 20 },
-    cvModalHeaderTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    cvModalTitle: { fontSize: isDesktop ? 18 : 16, fontWeight: '800', color: '#ffffff', letterSpacing: 0.3 },
-    cvModalClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-    cvAvatarOuter: { alignSelf: 'center', marginTop: isDesktop ? -48 : -40, width: isDesktop ? 96 : 80, height: isDesktop ? 96 : 80, borderRadius: isDesktop ? 48 : 40, borderWidth: 4, borderColor: '#ffffff', backgroundColor: '#eef2ff', overflow: 'hidden', shadowColor: '#6366f1', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 10 },
-    cvProfileImage: { width: '100%', height: '100%' },
-    cvProfilePlaceholder: { width: '100%', height: '100%', backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center' },
-    cvProfileNameSection: { alignItems: 'center', paddingTop: isDesktop ? 12 : 10, paddingBottom: isDesktop ? 16 : 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-    cvProfileName: { fontSize: isDesktop ? 22 : 18, fontWeight: '800', color: '#0f172a', textAlign: 'center', letterSpacing: 0.2 },
-    cvModalScroll: { maxHeight: isDesktop ? 400 : 340 },
-    cvSectionsWrapper: { paddingHorizontal: isDesktop ? 20 : 14, paddingVertical: isDesktop ? 14 : 10, gap: isDesktop ? 10 : 8 },
-    cvSection: { backgroundColor: '#ffffff', borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden', shadowColor: '#94a3b8', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
-    cvSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isDesktop ? 18 : 14, paddingVertical: isDesktop ? 14 : 12, backgroundColor: '#fafbff' },
-    cvSectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-    cvSectionIconBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center' },
-    cvSectionTitle: { fontSize: isDesktop ? 14 : 13, fontWeight: '700', color: '#1e293b' },
-    cvSectionContent: { paddingHorizontal: isDesktop ? 18 : 14, paddingTop: isDesktop ? 4 : 2, paddingBottom: isDesktop ? 14 : 10, backgroundColor: '#ffffff' },
-    cvSectionBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
-    cvSectionBadgeText: { fontSize: 11, fontWeight: '800', color: '#ffffff' },
-    cvSectionEmpty: { fontSize: isDesktop ? 13 : 12, color: '#94a3b8', textAlign: 'center', paddingVertical: isDesktop ? 14 : 10 },
-    cvDetailRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: isDesktop ? 10 : 9, borderBottomWidth: 1, borderBottomColor: '#f8fafc', gap: 12 },
-    cvDetailIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center', marginTop: 1 },
-    cvDetailContent: { flex: 1, justifyContent: 'center' },
-    cvDetailLabel: { fontSize: isDesktop ? 10 : 9, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
-    cvDetailValue: { fontSize: isDesktop ? 14 : 13, fontWeight: '600', color: '#1e293b', lineHeight: isDesktop ? 20 : 18 },
-    cvDocDivider: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: isDesktop ? 14 : 10, marginBottom: isDesktop ? 10 : 8, paddingTop: isDesktop ? 14 : 10, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
-    cvDocDividerText: { fontSize: isDesktop ? 12 : 11, fontWeight: '800', color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.8 },
-    cvDocRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: isDesktop ? 6 : 5 },
-    cvDocIndexBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center' },
-    cvDocIndexText: { fontSize: 11, fontWeight: '800', color: '#ffffff' },
-    cvDocThumb: { flex: 1, height: isDesktop ? 70 : 58, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' },
-    cvDocViewBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#6366f1', paddingHorizontal: isDesktop ? 14 : 11, paddingVertical: isDesktop ? 9 : 7, borderRadius: 10 },
-    cvDocViewText: { color: '#ffffff', fontSize: isDesktop ? 13 : 12, fontWeight: '700' },
-    cvBookingLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: isDesktop ? 14 : 10 },
-    cvBookingLoadingText: { fontSize: isDesktop ? 13 : 12, color: '#64748b' },
-    cvBookingItem: { backgroundColor: '#f8fafc', borderRadius: 12, padding: isDesktop ? 12 : 10, marginBottom: isDesktop ? 8 : 6, borderWidth: 1, borderColor: '#e2e8f0', gap: 6 },
-    cvBookingRow1: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-    cvBookingId: { fontSize: isDesktop ? 13 : 12, fontWeight: '800', color: '#6366f1' },
-    cvBookingBadge: { paddingHorizontal: isDesktop ? 10 : 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
-    cvBookingBadgeText: { fontSize: isDesktop ? 11 : 10, fontWeight: '700' },
-    cvBookingRow2: { flexDirection: 'row', gap: isDesktop ? 12 : 10, flexWrap: 'wrap' },
-    cvBookingField: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    cvBookingFieldText: { fontSize: isDesktop ? 12 : 11, color: '#475569', fontWeight: '500' },
-    cvReviewItem: { backgroundColor: '#f8fafc', borderRadius: 12, padding: isDesktop ? 12 : 10, marginBottom: isDesktop ? 8 : 6, borderWidth: 1, borderColor: '#e2e8f0', gap: 6 },
-    cvReviewRow1: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-    cvReviewBookingId: { fontSize: isDesktop ? 13 : 12, fontWeight: '800', color: '#6366f1' },
-    cvStarsRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-    cvRatingText: { fontSize: isDesktop ? 11 : 10, fontWeight: '700', color: '#f59e0b', marginLeft: 4 },
-    cvReviewTextBox: { backgroundColor: '#eef2ff', borderRadius: 8, paddingHorizontal: isDesktop ? 10 : 8, paddingVertical: isDesktop ? 7 : 5 },
-    cvReviewText: { fontSize: isDesktop ? 12 : 11, color: '#1e293b', lineHeight: isDesktop ? 18 : 16, fontStyle: 'italic' },
   });
 };

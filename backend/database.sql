@@ -150,6 +150,36 @@ CREATE TABLE tbl_bookings (
   FOREIGN KEY (worker_id) REFERENCES tbl_workers(id) ON DELETE CASCADE
 );
 
+-- Job start/complete verification and timestamps (bookingid = tbl_bookings.id)
+CREATE TABLE IF NOT EXISTS tbl_track_bookings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  bookingid INT NOT NULL,
+  start_verification_code VARCHAR(6) NULL,
+  complete_verification_code VARCHAR(6) NULL,
+  start_time DATETIME NULL,
+  complete_time DATETIME NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_track_booking (bookingid)
+);
+
+-- Worker/customer on-hold work comments (bookingid = tbl_bookings.id)
+CREATE TABLE IF NOT EXISTS tbl_workcomments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  bookingid INT NOT NULL,
+  onhold_time DATETIME NULL,
+  user_type TINYINT NOT NULL COMMENT '1 = worker, 2 = customer',
+  comments TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_workcomments_booking_user (bookingid, user_type)
+);
+
+-- Existing DB may still have UNIQUE(bookingid) only — that blocks a second row (worker + customer).
+-- Fix (replace index name with yours from: SHOW INDEX FROM tbl_workcomments;):
+-- ALTER TABLE tbl_workcomments DROP INDEX uk_workcomments_booking;
+-- ALTER TABLE tbl_workcomments ADD UNIQUE KEY uk_workcomments_booking_user (bookingid, user_type);
+
 -- Create tbl_workerlocation table
 CREATE TABLE IF NOT EXISTS `tbl_workerlocation` (
   `id` int(11) NOT NULL AUTO_INCREMENT,

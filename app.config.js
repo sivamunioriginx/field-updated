@@ -2,13 +2,17 @@ import 'dotenv/config';
 
 const IS_CUSTOMER_APP = process.env.EXPO_PUBLIC_APP_VARIANT === 'customer';
 
+const appIcon = IS_CUSTOMER_APP
+  ? './assets/images/icon-customer.jpeg'
+  : './assets/images/icon-worker.jpeg';
+
 export default {
   expo: {
     name: IS_CUSTOMER_APP ? "Customer" : "Worker",
     slug: IS_CUSTOMER_APP ? "field-customer" : "field-worker",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/images/icon.png",
+    icon: appIcon,
     scheme: IS_CUSTOMER_APP ? "fieldcustomer" : "fieldworker",
     userInterfaceStyle: "automatic",
     splash: {
@@ -28,7 +32,7 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/images/adaptive-icon.png",
+        foregroundImage: appIcon,
         backgroundColor: "#ffffff"
       },
       package: IS_CUSTOMER_APP

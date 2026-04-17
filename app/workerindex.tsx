@@ -33,6 +33,20 @@ interface Worker {
   document2?: string;
 }
 
+function formatWorkCommentDate(value: string | Date | null | undefined) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 interface Booking {
   id: number;
   booking_id: string;
@@ -110,6 +124,40 @@ export default function Index() {
   const [rescheduleError, setRescheduleError] = useState('');
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [rescheduleSuccess, setRescheduleSuccess] = useState(false);
+  const [startCodeModalVisible, setStartCodeModalVisible] = useState(false);
+  const [startVerifyBooking, setStartVerifyBooking] = useState<Booking | null>(null);
+  const [startCodeInput, setStartCodeInput] = useState('');
+  const [startCodeRequestLoading, setStartCodeRequestLoading] = useState(false);
+  const [startCodeSubmitLoading, setStartCodeSubmitLoading] = useState(false);
+  const [startVerifyDeadline, setStartVerifyDeadline] = useState<number | null>(null);
+  const [startVerifyTimerTick, setStartVerifyTimerTick] = useState(0);
+  const startCodeOtpRefs = useRef<(TextInput | null)[]>([]);
+  const expireStartCodeSentKeyRef = useRef<string | null>(null);
+  const [completeCodeModalVisible, setCompleteCodeModalVisible] = useState(false);
+  const [completeVerifyBooking, setCompleteVerifyBooking] = useState<Booking | null>(null);
+  const [completeCodeInput, setCompleteCodeInput] = useState('');
+  const [completeCodeRequestLoading, setCompleteCodeRequestLoading] = useState(false);
+  const [completeCodeSubmitLoading, setCompleteCodeSubmitLoading] = useState(false);
+  const [completeVerifyDeadline, setCompleteVerifyDeadline] = useState<number | null>(null);
+  const [completeVerifyTimerTick, setCompleteVerifyTimerTick] = useState(0);
+  const completeCodeOtpRefs = useRef<(TextInput | null)[]>([]);
+  const expireCompleteCodeSentKeyRef = useRef<string | null>(null);
+  const [jobCommentsPopupVisible, setJobCommentsPopupVisible] = useState(false);
+  const [jobCommentsBooking, setJobCommentsBooking] = useState<Booking | null>(null);
+  const [jobCommentsText, setJobCommentsText] = useState('');
+  const [jobCommentsError, setJobCommentsError] = useState('');
+  const [jobCommentsSubmitLoading, setJobCommentsSubmitLoading] = useState(false);
+  const [viewWorkCommentVisible, setViewWorkCommentVisible] = useState(false);
+  const [viewWorkCommentBooking, setViewWorkCommentBooking] = useState<Booking | null>(null);
+  const [viewWorkCommentUserType, setViewWorkCommentUserType] = useState<1 | 2 | null>(null);
+  const [viewWorkCommentHasRow, setViewWorkCommentHasRow] = useState(false);
+  const [viewWorkCommentText, setViewWorkCommentText] = useState('');
+  const [viewWorkCommentSubmittedLabel, setViewWorkCommentSubmittedLabel] = useState('');
+  const [viewWorkCommentUpdatedLabel, setViewWorkCommentUpdatedLabel] = useState('');
+  const [viewWorkCommentLoading, setViewWorkCommentLoading] = useState(false);
+  const [viewWorkCommentSaving, setViewWorkCommentSaving] = useState(false);
+  const [viewWorkCommentLoadError, setViewWorkCommentLoadError] = useState('');
+  const [viewWorkCommentError, setViewWorkCommentError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -720,7 +768,7 @@ export default function Index() {
       // For other tabs, use selectedStatus
       let statusParam = '';
       if (activeTab === 'notifications') {
-        statusParam = '?status=1,2,5,6';
+        statusParam = '?status=1,2,5,6,9';
       } else {
         statusParam = selectedStatus === 'all' ? '' : `?status=${selectedStatus}`;
       }
@@ -745,6 +793,11 @@ export default function Index() {
           
           // Status 2 (In Progress) - show as is
           if (booking.status === 2) {
+            return true;
+          }
+
+          // Status 9 (On hold / worker comments submitted)
+          if (booking.status === 9) {
             return true;
           }
           
@@ -924,6 +977,155 @@ export default function Index() {
     setRejectPopupVisible(false);
     setRejectReason('');
     setRejectingBookingId(null);
+  };
+
+  const showJobCommentsPopup = (booking: Booking) => {
+    setJobCommentsBooking(booking);
+    setJobCommentsText('');
+    setJobCommentsError('');
+    setJobCommentsPopupVisible(true);
+  };
+
+  const closeJobCommentsPopup = () => {
+    setJobCommentsPopupVisible(false);
+    setJobCommentsBooking(null);
+    setJobCommentsText('');
+    setJobCommentsError('');
+    setJobCommentsSubmitLoading(false);
+  };
+
+  const handleJobCommentsSubmit = async () => {
+    if (!jobCommentsBooking) return;
+    const trimmed = jobCommentsText.trim();
+    if (!trimmed) {
+      setJobCommentsError('Comments are required');
+      return;
+    }
+    const workerId = user?.id || id || worker?.id;
+    if (!workerId) {
+      Alert.alert('Error', 'Could not determine worker account.');
+      return;
+    }
+    setJobCommentsError('');
+    setJobCommentsSubmitLoading(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.WORKER_BOOKING_ONHOLD_COMMENT(jobCommentsBooking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: workerId, comments: trimmed }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        Alert.alert('Error', result.message || 'Could not submit comments.');
+        return;
+      }
+      Alert.alert('Submitted', `Comments for booking #${jobCommentsBooking.booking_id} were submitted.`);
+      closeJobCommentsPopup();
+      fetchBookings();
+    } catch {
+      Alert.alert('Error', 'Network error. Please try again.');
+    } finally {
+      setJobCommentsSubmitLoading(false);
+    }
+  };
+
+  const closeViewWorkCommentPopup = () => {
+    setViewWorkCommentVisible(false);
+    setViewWorkCommentBooking(null);
+    setViewWorkCommentUserType(null);
+    setViewWorkCommentHasRow(false);
+    setViewWorkCommentText('');
+    setViewWorkCommentSubmittedLabel('');
+    setViewWorkCommentUpdatedLabel('');
+    setViewWorkCommentLoadError('');
+    setViewWorkCommentError('');
+    setViewWorkCommentLoading(false);
+    setViewWorkCommentSaving(false);
+  };
+
+  const applyWorkCommentLabels = (data: {
+    onhold_time?: string | Date | null;
+    created_at?: string | Date | null;
+    updated_at?: string | Date | null;
+  }) => {
+    setViewWorkCommentSubmittedLabel(formatWorkCommentDate(data.onhold_time ?? data.created_at));
+    setViewWorkCommentUpdatedLabel(formatWorkCommentDate(data.updated_at));
+  };
+
+  const openViewWorkCommentPopup = async (booking: Booking, commentUserType: 1 | 2) => {
+    setViewWorkCommentBooking(booking);
+    setViewWorkCommentUserType(commentUserType);
+    setViewWorkCommentVisible(true);
+    setViewWorkCommentLoadError('');
+    setViewWorkCommentError('');
+    setViewWorkCommentText('');
+    setViewWorkCommentSubmittedLabel('');
+    setViewWorkCommentUpdatedLabel('');
+    setViewWorkCommentHasRow(false);
+    const workerId = user?.id || id || worker?.id;
+    if (!workerId) {
+      setViewWorkCommentLoadError('Could not determine worker account.');
+      return;
+    }
+    setViewWorkCommentLoading(true);
+    try {
+      const url = `${API_ENDPOINTS.WORKER_BOOKING_WORK_COMMENT(booking.id)}?worker_id=${encodeURIComponent(String(workerId))}&comment_user_type=${commentUserType}`;
+      const res = await fetch(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        setViewWorkCommentLoadError(json.message || 'Could not load comments.');
+        return;
+      }
+      if (!json.found || !json.data) {
+        setViewWorkCommentHasRow(false);
+        return;
+      }
+      setViewWorkCommentHasRow(true);
+      setViewWorkCommentText(String(json.data.comments ?? ''));
+      applyWorkCommentLabels(json.data);
+    } catch {
+      setViewWorkCommentLoadError('Network error.');
+    } finally {
+      setViewWorkCommentLoading(false);
+    }
+  };
+
+  const handleSaveWorkComment = async () => {
+    if (!viewWorkCommentBooking || viewWorkCommentUserType !== 1) return;
+    const trimmed = viewWorkCommentText.trim();
+    if (!trimmed) {
+      setViewWorkCommentError('Comments are required');
+      return;
+    }
+    const workerId = user?.id || id || worker?.id;
+    if (!workerId) {
+      Alert.alert('Error', 'Could not determine worker account.');
+      return;
+    }
+    setViewWorkCommentError('');
+    setViewWorkCommentSaving(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.WORKER_BOOKING_ONHOLD_COMMENT(viewWorkCommentBooking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: workerId, comments: trimmed }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        Alert.alert('Error', json.message || 'Could not save.');
+        return;
+      }
+      if (json.data) {
+        setViewWorkCommentHasRow(true);
+        setViewWorkCommentText(String(json.data.comments ?? ''));
+        applyWorkCommentLabels(json.data);
+      }
+      Alert.alert('Saved', 'Comments updated.');
+    } catch {
+      Alert.alert('Error', 'Network error.');
+    } finally {
+      setViewWorkCommentSaving(false);
+    }
   };
 
   const showCancelPopup = (booking: Booking) => {
@@ -1209,7 +1411,11 @@ export default function Index() {
   };
 
 
-  const handleBookingAction = async (bookingId: number, action: 'accept' | 'reject' | 'complete' | 'cancel' | 'reschedule' | 'start') => {
+  const handleBookingAction = async (
+    bookingId: number,
+    action: 'accept' | 'reject' | 'complete' | 'cancel' | 'reschedule' | 'start',
+    options?: { verificationCode?: string }
+  ) => {
     try {
       if (action === 'accept') {
         // Update booking status to 1 (Accepted)
@@ -1260,28 +1466,43 @@ export default function Index() {
           console.error('Failed to reject booking');
         }
       } else if (action === 'complete') {
-        // Update booking status to 3 (Completed)
-        const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(bookingId), {
-          method: 'PUT',
+        const code = options?.verificationCode?.trim();
+        if (!code) {
+          Alert.alert('Verification required', 'Enter the code your customer received.');
+          return;
+        }
+        const workerId = user?.id || worker?.id;
+        const response = await fetch(API_ENDPOINTS.CONFIRM_BOOKING_COMPLETE(bookingId), {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ status: 3 }),
+          body: JSON.stringify({
+            code,
+            worker_id: workerId != null ? Number(workerId) : undefined,
+          }),
         });
+        const result = await response.json().catch(() => ({}));
 
-        if (response.ok) {
-          // Update local state immediately
-          setBookings(prevBookings => 
-            prevBookings.map(booking => 
-              booking.id === bookingId 
-                ? { ...booking, status: 3 }
-                : booking
+        if (response.ok && result.success !== false) {
+          setBookings(prevBookings =>
+            prevBookings.map(booking =>
+              booking.id === bookingId ? { ...booking, status: 3 } : booking
             )
           );
-          // Refresh bookings to show updated status
           fetchBookings();
+          setCompleteCodeModalVisible(false);
+          setCompleteVerifyBooking(null);
+          setCompleteCodeInput('');
+          setCompleteVerifyDeadline(null);
+          expireCompleteCodeSentKeyRef.current = null;
         } else {
-          console.error('Failed to complete booking');
+          Alert.alert(
+            'Invalid code',
+            typeof result.message === 'string'
+              ? result.message
+              : 'The code does not match. Ask your customer to check the code in their app.'
+          );
         }
       } else if (action === 'cancel') {
         // Update booking status to 3 (Cancelled)
@@ -1315,32 +1536,387 @@ export default function Index() {
           [{ text: 'OK' }]
         );
       } else if (action === 'start') {
-        // Update booking status to 2 (Inprogress)
-        const response = await fetch(API_ENDPOINTS.UPDATE_BOOKING_STATUS(bookingId), {
-          method: 'PUT',
+        const code = options?.verificationCode?.trim();
+        if (!code) {
+          Alert.alert('Verification required', 'Enter the code your customer received.');
+          return;
+        }
+        const workerId = user?.id || worker?.id;
+        const response = await fetch(API_ENDPOINTS.CONFIRM_BOOKING_START(bookingId), {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ status: 2 }),
+          body: JSON.stringify({
+            code,
+            worker_id: workerId != null ? Number(workerId) : undefined,
+          }),
         });
+        const result = await response.json().catch(() => ({}));
 
-        if (response.ok) {
-          // Update local state immediately
-          setBookings(prevBookings => 
-            prevBookings.map(booking => 
-              booking.id === bookingId 
-                ? { ...booking, status: 2 }
-                : booking
+        if (response.ok && result.success !== false) {
+          setBookings(prevBookings =>
+            prevBookings.map(booking =>
+              booking.id === bookingId ? { ...booking, status: 2 } : booking
             )
           );
-          // Refresh bookings to show updated status
           fetchBookings();
+          setStartCodeModalVisible(false);
+          setStartVerifyBooking(null);
+          setStartCodeInput('');
         } else {
-          console.error('Failed to start booking');
+          Alert.alert(
+            'Invalid code',
+            typeof result.message === 'string'
+              ? result.message
+              : 'The code does not match. Ask your customer to check the code in their app.'
+          );
         }
       }
     } catch (error) {
       console.error(`Error updating booking status:`, error);
+    }
+  };
+
+  const closeStartCodeModal = () => {
+    setStartCodeModalVisible(false);
+    setStartVerifyBooking(null);
+    setStartCodeInput('');
+    setStartVerifyDeadline(null);
+    expireStartCodeSentKeyRef.current = null;
+    Keyboard.dismiss();
+  };
+
+  const closeCompleteCodeModal = () => {
+    setCompleteCodeModalVisible(false);
+    setCompleteVerifyBooking(null);
+    setCompleteCodeInput('');
+    setCompleteVerifyDeadline(null);
+    expireCompleteCodeSentKeyRef.current = null;
+    Keyboard.dismiss();
+  };
+
+  useEffect(() => {
+    if (!startCodeModalVisible || startVerifyDeadline === null) return;
+    const id = setInterval(() => setStartVerifyTimerTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [startCodeModalVisible, startVerifyDeadline]);
+
+  const startVerifySecondsLeft =
+    startVerifyDeadline !== null
+      ? Math.max(0, Math.ceil((startVerifyDeadline - Date.now()) / 1000))
+      : 0;
+  const startVerifyExpired =
+    startCodeModalVisible && startVerifyDeadline !== null && startVerifySecondsLeft === 0;
+
+  useEffect(() => {
+    if (!startCodeModalVisible || !startVerifyBooking || startVerifyDeadline === null) {
+      return;
+    }
+    if (Date.now() < startVerifyDeadline) {
+      return;
+    }
+    const key = `${startVerifyBooking.id}-${startVerifyDeadline}`;
+    if (expireStartCodeSentKeyRef.current === key) {
+      return;
+    }
+    expireStartCodeSentKeyRef.current = key;
+    const workerId = user?.id || worker?.id;
+    if (!workerId) return;
+    fetch(API_ENDPOINTS.EXPIRE_BOOKING_START_CODE(startVerifyBooking.id), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worker_id: Number(workerId) }),
+    }).catch(() => {});
+  }, [
+    startCodeModalVisible,
+    startVerifyBooking,
+    startVerifyDeadline,
+    startVerifyTimerTick,
+    user?.id,
+    worker?.id,
+  ]);
+
+  useEffect(() => {
+    if (!startCodeModalVisible) return;
+    const t = setTimeout(() => {
+      startCodeOtpRefs.current[0]?.focus();
+    }, 280);
+    return () => clearTimeout(t);
+  }, [startCodeModalVisible]);
+
+  const handleResendStartCode = async () => {
+    if (!startVerifyBooking) return;
+    const workerId = user?.id || worker?.id;
+    if (!workerId) return;
+    setStartCodeRequestLoading(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.REQUEST_BOOKING_START(startVerifyBooking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: Number(workerId) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        setStartCodeInput('');
+        setStartVerifyDeadline(Date.now() + 45000);
+        setStartVerifyTimerTick((n) => n + 1);
+        setTimeout(() => startCodeOtpRefs.current[0]?.focus(), 200);
+      } else {
+        Alert.alert(
+          'Unable to resend',
+          typeof data.message === 'string' ? data.message : 'Please try again.'
+        );
+      }
+    } catch {
+      Alert.alert('Error', 'Network error. Please try again.');
+    } finally {
+      setStartCodeRequestLoading(false);
+    }
+  };
+
+  const handleStartOtpChange = (text: string, index: number) => {
+    if (
+      startVerifyDeadline !== null &&
+      Date.now() >= startVerifyDeadline
+    ) {
+      return;
+    }
+    const digitsOnly = text.replace(/\D/g, '');
+    if (digitsOnly.length >= 1) {
+      const char = digitsOnly.slice(-1);
+      const next = (startCodeInput.slice(0, index) + char + startCodeInput.slice(index + 1)).slice(0, 6);
+      setStartCodeInput(next);
+      if (index < 5) {
+        startCodeOtpRefs.current[index + 1]?.focus();
+      }
+    } else {
+      const next = startCodeInput.slice(0, index) + startCodeInput.slice(index + 1);
+      setStartCodeInput(next);
+    }
+  };
+
+  const handleStartOtpKeyPress = (key: string, index: number) => {
+    if (key !== 'Backspace') return;
+    if (!startCodeInput[index] && index > 0) {
+      startCodeOtpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleStartButtonPress = async (booking: Booking) => {
+    const workerId = user?.id || worker?.id;
+    if (!workerId) return;
+    setStartVerifyBooking(booking);
+    setStartCodeInput('');
+    setStartCodeRequestLoading(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.REQUEST_BOOKING_START(booking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: Number(workerId) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        setStartVerifyDeadline(Date.now() + 45000);
+        setStartCodeModalVisible(true);
+      } else {
+        Alert.alert(
+          'Unable to start',
+          typeof data.message === 'string' ? data.message : 'Please try again.'
+        );
+        setStartVerifyBooking(null);
+      }
+    } catch {
+      Alert.alert('Error', 'Network error. Please try again.');
+      setStartVerifyBooking(null);
+    } finally {
+      setStartCodeRequestLoading(false);
+    }
+  };
+
+  const handleStartCodeSubmit = async () => {
+    if (!startVerifyBooking) return;
+    if (startVerifyExpired) {
+      Alert.alert('', 'This code has expired. Tap Resend to get a new code.');
+      return;
+    }
+    const code = startCodeInput.replace(/\D/g, '').slice(0, 6);
+    if (code.length < 6) {
+      Alert.alert('', 'Enter all 6 digits from your customer.');
+      return;
+    }
+    setStartCodeSubmitLoading(true);
+    try {
+      await handleBookingAction(startVerifyBooking.id, 'start', { verificationCode: code });
+    } finally {
+      setStartCodeSubmitLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!completeCodeModalVisible || completeVerifyDeadline === null) return;
+    const id = setInterval(() => setCompleteVerifyTimerTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [completeCodeModalVisible, completeVerifyDeadline]);
+
+  const completeVerifySecondsLeft =
+    completeVerifyDeadline !== null
+      ? Math.max(0, Math.ceil((completeVerifyDeadline - Date.now()) / 1000))
+      : 0;
+  const completeVerifyExpired =
+    completeCodeModalVisible &&
+    completeVerifyDeadline !== null &&
+    completeVerifySecondsLeft === 0;
+
+  useEffect(() => {
+    if (
+      !completeCodeModalVisible ||
+      !completeVerifyBooking ||
+      completeVerifyDeadline === null
+    ) {
+      return;
+    }
+    if (Date.now() < completeVerifyDeadline) {
+      return;
+    }
+    const key = `${completeVerifyBooking.id}-${completeVerifyDeadline}`;
+    if (expireCompleteCodeSentKeyRef.current === key) {
+      return;
+    }
+    expireCompleteCodeSentKeyRef.current = key;
+    const workerId = user?.id || worker?.id;
+    if (!workerId) return;
+    fetch(API_ENDPOINTS.EXPIRE_BOOKING_COMPLETE_CODE(completeVerifyBooking.id), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worker_id: Number(workerId) }),
+    }).catch(() => {});
+  }, [
+    completeCodeModalVisible,
+    completeVerifyBooking,
+    completeVerifyDeadline,
+    completeVerifyTimerTick,
+    user?.id,
+    worker?.id,
+  ]);
+
+  useEffect(() => {
+    if (!completeCodeModalVisible) return;
+    const t = setTimeout(() => {
+      completeCodeOtpRefs.current[0]?.focus();
+    }, 280);
+    return () => clearTimeout(t);
+  }, [completeCodeModalVisible]);
+
+  const handleResendCompleteCode = async () => {
+    if (!completeVerifyBooking) return;
+    const workerId = user?.id || worker?.id;
+    if (!workerId) return;
+    setCompleteCodeRequestLoading(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.REQUEST_BOOKING_COMPLETE(completeVerifyBooking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: Number(workerId) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        setCompleteCodeInput('');
+        setCompleteVerifyDeadline(Date.now() + 45000);
+        setCompleteVerifyTimerTick((n) => n + 1);
+        setTimeout(() => completeCodeOtpRefs.current[0]?.focus(), 200);
+      } else {
+        Alert.alert(
+          'Unable to resend',
+          typeof data.message === 'string' ? data.message : 'Please try again.'
+        );
+      }
+    } catch {
+      Alert.alert('Error', 'Network error. Please try again.');
+    } finally {
+      setCompleteCodeRequestLoading(false);
+    }
+  };
+
+  const handleCompleteOtpChange = (text: string, index: number) => {
+    if (completeVerifyDeadline !== null && Date.now() >= completeVerifyDeadline) {
+      return;
+    }
+    const digitsOnly = text.replace(/\D/g, '');
+    if (digitsOnly.length >= 1) {
+      const char = digitsOnly.slice(-1);
+      const next = (
+        completeCodeInput.slice(0, index) +
+        char +
+        completeCodeInput.slice(index + 1)
+      ).slice(0, 6);
+      setCompleteCodeInput(next);
+      if (index < 5) {
+        completeCodeOtpRefs.current[index + 1]?.focus();
+      }
+    } else {
+      const next =
+        completeCodeInput.slice(0, index) + completeCodeInput.slice(index + 1);
+      setCompleteCodeInput(next);
+    }
+  };
+
+  const handleCompleteOtpKeyPress = (key: string, index: number) => {
+    if (key !== 'Backspace') return;
+    if (!completeCodeInput[index] && index > 0) {
+      completeCodeOtpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleCompleteButtonPress = async (booking: Booking) => {
+    const workerId = user?.id || worker?.id;
+    if (!workerId) return;
+    setCompleteVerifyBooking(booking);
+    setCompleteCodeInput('');
+    setCompleteCodeRequestLoading(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.REQUEST_BOOKING_COMPLETE(booking.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: Number(workerId) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        setCompleteVerifyDeadline(Date.now() + 45000);
+        setCompleteCodeModalVisible(true);
+      } else {
+        Alert.alert(
+          'Unable to complete',
+          typeof data.message === 'string' ? data.message : 'Please try again.'
+        );
+        setCompleteVerifyBooking(null);
+      }
+    } catch {
+      Alert.alert('Error', 'Network error. Please try again.');
+      setCompleteVerifyBooking(null);
+    } finally {
+      setCompleteCodeRequestLoading(false);
+    }
+  };
+
+  const handleCompleteCodeSubmit = async () => {
+    if (!completeVerifyBooking) return;
+    if (completeVerifyExpired) {
+      Alert.alert('', 'This code has expired. Tap Resend to get a new code.');
+      return;
+    }
+    const code = completeCodeInput.replace(/\D/g, '').slice(0, 6);
+    if (code.length < 6) {
+      Alert.alert('', 'Enter all 6 digits from your customer.');
+      return;
+    }
+    setCompleteCodeSubmitLoading(true);
+    try {
+      await handleBookingAction(completeVerifyBooking.id, 'complete', {
+        verificationCode: code,
+      });
+    } finally {
+      setCompleteCodeSubmitLoading(false);
     }
   };
 
@@ -1734,7 +2310,8 @@ export default function Index() {
                                 effectiveStatus === 5 && styles.statusBadgeCancelled,
                                 effectiveStatus === 6 && styles.statusBadgeActive,
                                 effectiveStatus === 7 && styles.statusBadgePending,
-                                effectiveStatus === 8 && styles.statusBadgePending
+                                effectiveStatus === 8 && styles.statusBadgePending,
+                                effectiveStatus === 9 && styles.statusBadgeOnHold
                               ]}>
                                 <Text style={[
                                   styles.statusText,
@@ -1746,7 +2323,8 @@ export default function Index() {
                                   effectiveStatus === 5 && styles.statusTextCancelled,
                                   effectiveStatus === 6 && styles.statusTextActive,
                                   effectiveStatus === 7 && styles.statusTextPending,
-                                  effectiveStatus === 8 && styles.statusTextPending
+                                  effectiveStatus === 8 && styles.statusTextPending,
+                                  effectiveStatus === 9 && styles.statusTextOnHold
                                 ]}>
                                   {effectiveStatus === 0 ? 'Pending' : 
                                    effectiveStatus === 1 ? 'Active' : 
@@ -1757,6 +2335,7 @@ export default function Index() {
                                    effectiveStatus === 6 ? 'Rescheduled' : 
                                    effectiveStatus === 7 ? 'Cancel Request' : 
                                    effectiveStatus === 8 ? 'Reschedule Request' : 
+                                   effectiveStatus === 9 ? 'On Hold' : 
                                    `Status ${effectiveStatus}`}
                                 </Text>
                               </View>
@@ -1881,7 +2460,8 @@ export default function Index() {
                                   <>
                                     <TouchableOpacity 
                                       style={[styles.actionButton, styles.completeButton]}
-                                      onPress={() => handleBookingAction(booking.id, 'start')}
+                                      onPress={() => handleStartButtonPress(booking)}
+                                      disabled={startCodeRequestLoading}
                                     >
                                       <Ionicons name="checkmark-circle" size={moderateScale(14)} color="#ffffff" />
                                       <Text style={styles.actionButtonText} numberOfLines={1}>Start</Text>
@@ -1905,61 +2485,93 @@ export default function Index() {
                                   </>
                                 );
                               } else if (effectiveStatus === 2) {
-                                // Show only Complete Job button for status 2
+                                // Show Complete Job and upload comments for status 2
                                 return (
-                                  <TouchableOpacity 
-                                    style={[styles.actionButton, styles.completeButton, styles.completeButtonFull]}
-                                    onPress={() => handleBookingAction(booking.id, 'complete')}
-                                  >
-                                    <Ionicons name="checkmark-circle" size={moderateScale(18)} color="#ffffff" />
-                                    <Text style={styles.actionButtonText}>Complete Job</Text>
-                                  </TouchableOpacity>
+                                  <>
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.completeButton]}
+                                      onPress={() => handleCompleteButtonPress(booking)}
+                                      disabled={completeCodeRequestLoading}
+                                    >
+                                      <Ionicons name="checkmark-circle" size={moderateScale(18)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText}>Complete Job</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                      style={[styles.actionButton, styles.uploadCommentsButton]}
+                                      onPress={() => showJobCommentsPopup(booking)}
+                                      disabled={completeCodeRequestLoading}
+                                    >
+                                      <Ionicons name="chatbubble-ellipses-outline" size={moderateScale(16)} color="#ffffff" />
+                                      <Text style={styles.actionButtonText} numberOfLines={1}>Upload comments</Text>
+                                    </TouchableOpacity>
+                                  </>
                                 );
                               } else {
                                 // Show status info for other statuses
                                 return (
                                   <View style={styles.statusInfoContainer}>
-                                    <Text style={styles.statusInfoText}>
-                                      {effectiveStatus === 5 ? (booking.canceled_at ? (() => {
-                                        const canceledDate = new Date(booking.canceled_at);
-                                        const formattedDate = canceledDate.toLocaleString("en-GB", {
-                                          day: '2-digit',
-                                          month: '2-digit',
-                                          year: 'numeric',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                          hour12: true
-                                        });
-                                        return `Canceled on ${formattedDate}`;
-                                      })() : 'Booking was cancelled') : 
-                                       effectiveStatus === 4 ? 'You missed this booking - someone else accepted it' : 
-                                       effectiveStatus === 6 ? (booking.reschedule_date ? (() => {
-                                         const rescheduleDate = new Date(booking.reschedule_date);
-                                         const formattedDate = rescheduleDate.toLocaleString("en-GB", {
-                                           day: '2-digit',
-                                           month: '2-digit',
-                                           year: 'numeric',
-                                           hour: '2-digit',
-                                           minute: '2-digit',
-                                           hour12: true
-                                         });
-                                         return `Rescheduled For ${formattedDate}`;
-                                       })() : 'Rescheduled') : 
-                                       effectiveStatus === 7 ? 'Your Cancel request submitted - waiting for admin approval' : 
-                                       effectiveStatus === 8 ? (booking.reschedule_date ? (() => {
-                                         const rescheduleDate = new Date(booking.reschedule_date);
-                                         const formattedDate = rescheduleDate.toLocaleString("en-GB", {
-                                           day: '2-digit',
-                                           month: '2-digit',
-                                           year: 'numeric',
-                                           hour: '2-digit',
-                                           minute: '2-digit',
-                                           hour12: true
-                                         });
-                                         return `Your Reschedule request submitted for ${formattedDate} - waiting for admin approval`;
-                                       })() : 'Your Reschedule request submitted - waiting for admin approval') : 
-                                       'Job Completed'}
-                                    </Text>
+                                    {effectiveStatus === 9 ? (
+                                      <View style={styles.onHoldStatusBlock}>
+                                        <View style={styles.viewWorkCommentsButtonRow}>
+                                          <TouchableOpacity
+                                            style={styles.viewWorkCommentsChip}
+                                            onPress={() => openViewWorkCommentPopup(booking, 2)}
+                                          >
+                                            <Ionicons name="eye-outline" size={moderateScale(16)} color="#5b21b6" />
+                                            <Text style={styles.viewWorkCommentsChipText}>customer comments</Text>
+                                          </TouchableOpacity>
+                                          <TouchableOpacity
+                                            style={styles.viewWorkCommentsChip}
+                                            onPress={() => openViewWorkCommentPopup(booking, 1)}
+                                          >
+                                            <Ionicons name="chatbox-ellipses-outline" size={moderateScale(16)} color="#5b21b6" />
+                                            <Text style={styles.viewWorkCommentsChipText}>your comments</Text>
+                                          </TouchableOpacity>
+                                        </View>
+                                      </View>
+                                    ) : (
+                                      <Text style={styles.statusInfoText}>
+                                        {effectiveStatus === 5 ? (booking.canceled_at ? (() => {
+                                          const canceledDate = new Date(booking.canceled_at);
+                                          const formattedDate = canceledDate.toLocaleString("en-GB", {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            hour12: true
+                                          });
+                                          return `Canceled on ${formattedDate}`;
+                                        })() : 'Booking was cancelled') : 
+                                         effectiveStatus === 4 ? 'You missed this booking - someone else accepted it' : 
+                                         effectiveStatus === 6 ? (booking.reschedule_date ? (() => {
+                                           const rescheduleDate = new Date(booking.reschedule_date);
+                                           const formattedDate = rescheduleDate.toLocaleString("en-GB", {
+                                             day: '2-digit',
+                                             month: '2-digit',
+                                             year: 'numeric',
+                                             hour: '2-digit',
+                                             minute: '2-digit',
+                                             hour12: true
+                                           });
+                                           return `Rescheduled For ${formattedDate}`;
+                                         })() : 'Rescheduled') : 
+                                         effectiveStatus === 7 ? 'Your Cancel request submitted - waiting for admin approval' : 
+                                         effectiveStatus === 8 ? (booking.reschedule_date ? (() => {
+                                           const rescheduleDate = new Date(booking.reschedule_date);
+                                           const formattedDate = rescheduleDate.toLocaleString("en-GB", {
+                                             day: '2-digit',
+                                             month: '2-digit',
+                                             year: 'numeric',
+                                             hour: '2-digit',
+                                             minute: '2-digit',
+                                             hour12: true
+                                           });
+                                           return `Your Reschedule request submitted for ${formattedDate} - waiting for admin approval`;
+                                         })() : 'Your Reschedule request submitted - waiting for admin approval') : 
+                                         'Job Completed'}
+                                      </Text>
+                                    )}
                                   </View>
                                 );
                               }
@@ -2169,6 +2781,427 @@ export default function Index() {
                   >
                     <Text style={styles.submitButtonText}>Submit</Text>
                   </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {jobCommentsPopupVisible && jobCommentsBooking && (
+            <View style={[styles.popupOverlay, styles.popupOverlayStackTop]}>
+              <View style={styles.jobCommentsModalCard}>
+                <TouchableOpacity
+                  onPress={closeJobCommentsPopup}
+                  style={styles.startVerifyCloseFab}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={moderateScale(20)} color="#64748b" />
+                </TouchableOpacity>
+
+                <View style={styles.jobCommentsHero}>
+                  <View style={styles.jobCommentsIconCircle}>
+                    <Ionicons name="chatbubbles-outline" size={moderateScale(30)} color="#7c3aed" />
+                  </View>
+                  <Text style={styles.jobCommentsTitleText}>Upload comments</Text>
+                  <Text style={styles.jobCommentsSubtitleText}>
+                    Share notes about the work, site conditions, or anything.
+                  </Text>
+                  <View style={styles.jobCommentsBookingChip}>
+                    <Ionicons name="pricetag-outline" size={moderateScale(18)} color="#6d28d9" />
+                    <Text style={styles.jobCommentsBookingChipText}>
+                      Booking #{jobCommentsBooking.booking_id}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.jobCommentsForm}>
+                  <View style={styles.jobCommentsFieldLabelRow}>
+                    <Text style={styles.jobCommentsFieldLabel}>Your comments</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.jobCommentsInput, jobCommentsError ? styles.jobCommentsInputError : null]}
+                    placeholder="Write your comments here…"
+                    placeholderTextColor="#94a3b8"
+                    value={jobCommentsText}
+                    onChangeText={(text) => {
+                      setJobCommentsText(text);
+                      if (jobCommentsError) setJobCommentsError('');
+                    }}
+                    multiline
+                    numberOfLines={5}
+                    textAlignVertical="top"
+                  />
+                  {jobCommentsError ? (
+                    <View style={styles.jobCommentsErrorRow}>
+                      <Ionicons name="alert-circle" size={moderateScale(18)} color="#e11d48" />
+                      <Text style={styles.jobCommentsErrorText}>{jobCommentsError}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.startVerifyActionsRow}>
+                  <TouchableOpacity
+                    style={styles.startVerifyBtnGhost}
+                    onPress={closeJobCommentsPopup}
+                    disabled={jobCommentsSubmitLoading}
+                  >
+                    <Text style={styles.startVerifyBtnGhostText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.jobCommentsSubmitBtn,
+                      (!jobCommentsText.trim() || jobCommentsSubmitLoading) && styles.jobCommentsSubmitBtnDisabled,
+                    ]}
+                    onPress={handleJobCommentsSubmit}
+                    disabled={!jobCommentsText.trim() || jobCommentsSubmitLoading}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.jobCommentsSubmitBtnText}>
+                      {jobCommentsSubmitLoading ? 'Submitting…' : 'Submit'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {viewWorkCommentVisible && viewWorkCommentBooking && viewWorkCommentUserType != null && (
+            <View style={styles.popupOverlay}>
+              <View style={styles.jobCommentsModalCard}>
+                <TouchableOpacity
+                  onPress={closeViewWorkCommentPopup}
+                  style={styles.startVerifyCloseFab}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={moderateScale(20)} color="#64748b" />
+                </TouchableOpacity>
+
+                <View style={styles.jobCommentsHero}>
+                  <View style={styles.jobCommentsIconCircle}>
+                    <Ionicons name="document-text-outline" size={moderateScale(28)} color="#7c3aed" />
+                  </View>
+                  <Text style={styles.jobCommentsTitleText}>
+                    {viewWorkCommentUserType === 2 ? 'Customer comments' : 'Your comments'}
+                  </Text>
+                  <View style={styles.jobCommentsBookingChip}>
+                    <Ionicons name="pricetag-outline" size={moderateScale(18)} color="#6d28d9" />
+                    <Text style={styles.jobCommentsBookingChipText}>
+                      Booking #{viewWorkCommentBooking.booking_id}
+                    </Text>
+                  </View>
+                </View>
+
+                {viewWorkCommentLoading ? (
+                  <Text style={styles.viewWorkCommentMetaText}>Loading…</Text>
+                ) : viewWorkCommentLoadError ? (
+                  <Text style={styles.jobCommentsErrorText}>{viewWorkCommentLoadError}</Text>
+                ) : !viewWorkCommentHasRow ||
+                  (viewWorkCommentUserType === 2 &&
+                    viewWorkCommentHasRow &&
+                    !viewWorkCommentText.trim()) ? (
+                  <>
+                    <Text style={styles.viewWorkCommentEmptyText}>
+                      {viewWorkCommentUserType === 2
+                        ? 'There is no comment from customer.'
+                        : 'There is no comment from you.'}
+                    </Text>
+                    {viewWorkCommentUserType === 1 ? (
+                      <TouchableOpacity
+                        style={styles.viewWorkCommentAddCommentsButton}
+                        onPress={() => showJobCommentsPopup(viewWorkCommentBooking)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.viewWorkCommentAddCommentsButtonText}>Add comments</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </>
+                ) : viewWorkCommentUserType === 2 ? (
+                  <>
+                    <Text style={styles.viewWorkCommentMetaText}>
+                      Submitted: {viewWorkCommentSubmittedLabel}
+                    </Text>
+                    <Text style={styles.viewWorkCommentMetaText}>
+                      Last updated: {viewWorkCommentUpdatedLabel}
+                    </Text>
+                    <Text style={styles.viewWorkCommentReadOnlyText}>{viewWorkCommentText}</Text>
+                    <TouchableOpacity
+                      style={styles.viewWorkCommentEmptyCloseButton}
+                      onPress={closeViewWorkCommentPopup}
+                    >
+                      <Text style={styles.viewWorkCommentEmptyCloseButtonText}>Close</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.viewWorkCommentMetaText}>
+                      Submitted: {viewWorkCommentSubmittedLabel}
+                    </Text>
+                    <Text style={styles.viewWorkCommentMetaText}>
+                      Last updated: {viewWorkCommentUpdatedLabel}
+                    </Text>
+                    <View style={styles.jobCommentsForm}>
+                      <Text style={styles.jobCommentsFieldLabel}>Comments</Text>
+                      <TextInput
+                        style={[styles.jobCommentsInput, viewWorkCommentError ? styles.jobCommentsInputError : null]}
+                        placeholder="Your comments…"
+                        placeholderTextColor="#94a3b8"
+                        value={viewWorkCommentText}
+                        onChangeText={(t) => {
+                          setViewWorkCommentText(t);
+                          if (viewWorkCommentError) setViewWorkCommentError('');
+                        }}
+                        multiline
+                        numberOfLines={6}
+                        textAlignVertical="top"
+                        editable={!viewWorkCommentSaving}
+                      />
+                      {viewWorkCommentError ? (
+                        <View style={styles.jobCommentsErrorRow}>
+                          <Ionicons name="alert-circle" size={moderateScale(18)} color="#e11d48" />
+                          <Text style={styles.jobCommentsErrorText}>{viewWorkCommentError}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.startVerifyActionsRow}>
+                      <TouchableOpacity
+                        style={styles.startVerifyBtnGhost}
+                        onPress={closeViewWorkCommentPopup}
+                        disabled={viewWorkCommentSaving}
+                      >
+                        <Text style={styles.startVerifyBtnGhostText}>Close</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.jobCommentsSubmitBtn,
+                          (!viewWorkCommentText.trim() || viewWorkCommentSaving) && styles.jobCommentsSubmitBtnDisabled,
+                        ]}
+                        onPress={handleSaveWorkComment}
+                        disabled={!viewWorkCommentText.trim() || viewWorkCommentSaving}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.jobCommentsSubmitBtnText}>
+                          {viewWorkCommentSaving ? 'Saving…' : 'Save'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          )}
+
+          {startCodeModalVisible && startVerifyBooking && (
+            <View style={styles.popupOverlay}>
+              <View style={styles.startVerifyModalCard}>
+                <TouchableOpacity
+                  onPress={closeStartCodeModal}
+                  style={styles.startVerifyCloseFab}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={moderateScale(20)} color="#64748b" />
+                </TouchableOpacity>
+
+                <View style={styles.startVerifyHero}>
+                  <View style={styles.startVerifyIconCircle}>
+                    <Ionicons name="shield-checkmark" size={moderateScale(28)} color="#2563eb" />
+                  </View>
+                  <Text style={styles.startVerifyTitleText}>Verify to start job</Text>
+                  <Text style={styles.startVerifySubtitleText}>
+                    Your customer received a 6-digit code in their app and notification. Enter it
+                    below to begin this booking.
+                  </Text>
+                  <View style={styles.startVerifyBookingChip}>
+                    <Text style={styles.startVerifyBookingChipText}>
+                      #{startVerifyBooking.booking_id}
+                    </Text>
+                  </View>
+                  {startVerifyExpired ? (
+                    <Text style={styles.startVerifyExpiredText}>
+                      Time's up. Tap Resend to send a new code to your customer.
+                    </Text>
+                  ) : (
+                    <Text style={styles.startVerifyTimerText}>
+                      Enter the code within{' '}
+                      <Text style={styles.startVerifyTimerBold}>{startVerifySecondsLeft}s</Text>
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.startVerifyOtpRow}>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <TextInput
+                      key={i}
+                      ref={(el) => {
+                        startCodeOtpRefs.current[i] = el;
+                      }}
+                      style={[
+                        styles.startVerifyOtpCell,
+                        startVerifyExpired && styles.startVerifyOtpCellDisabled,
+                      ]}
+                      value={startCodeInput[i] ?? ''}
+                      onChangeText={(t) => handleStartOtpChange(t, i)}
+                      onKeyPress={({ nativeEvent }) =>
+                        handleStartOtpKeyPress(nativeEvent.key, i)
+                      }
+                      keyboardType="number-pad"
+                      maxLength={1}
+                      selectTextOnFocus
+                      editable={!startVerifyExpired}
+                      placeholder=""
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.startVerifyActionsRow}>
+                  <TouchableOpacity
+                    style={styles.startVerifyBtnGhost}
+                    onPress={closeStartCodeModal}
+                    disabled={startCodeSubmitLoading || startCodeRequestLoading}
+                  >
+                    <Text style={styles.startVerifyBtnGhostText}>Cancel</Text>
+                  </TouchableOpacity>
+                  {startVerifyExpired ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.startVerifyBtnPrimary,
+                        startCodeRequestLoading && styles.startVerifyBtnPrimaryDisabled,
+                      ]}
+                      onPress={handleResendStartCode}
+                      disabled={startCodeRequestLoading}
+                    >
+                      <Text style={styles.startVerifyBtnPrimaryText}>
+                        {startCodeRequestLoading ? 'Sending…' : 'Resend code'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.startVerifyBtnPrimary,
+                        (startCodeSubmitLoading ||
+                          startCodeInput.replace(/\D/g, '').length < 6) &&
+                          styles.startVerifyBtnPrimaryDisabled,
+                      ]}
+                      onPress={handleStartCodeSubmit}
+                      disabled={
+                        startCodeSubmitLoading ||
+                        startCodeInput.replace(/\D/g, '').length < 6
+                      }
+                    >
+                      <Text style={styles.startVerifyBtnPrimaryText}>
+                        {startCodeSubmitLoading ? 'Verifying…' : 'Verify & start'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+
+          {completeCodeModalVisible && completeVerifyBooking && (
+            <View style={styles.popupOverlay}>
+              <View style={styles.startVerifyModalCard}>
+                <TouchableOpacity
+                  onPress={closeCompleteCodeModal}
+                  style={styles.startVerifyCloseFab}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={moderateScale(20)} color="#64748b" />
+                </TouchableOpacity>
+
+                <View style={styles.startVerifyHero}>
+                  <View style={styles.startVerifyIconCircle}>
+                    <Ionicons name="shield-checkmark" size={moderateScale(28)} color="#059669" />
+                  </View>
+                  <Text style={styles.startVerifyTitleText}>Verify to complete job</Text>
+                  <Text style={styles.startVerifySubtitleText}>
+                    Your customer received a 6-digit code in their app and notification. Enter it below
+                    to mark this booking completed.
+                  </Text>
+                  <View style={styles.startVerifyBookingChip}>
+                    <Text style={styles.startVerifyBookingChipText}>
+                      #{completeVerifyBooking.booking_id}
+                    </Text>
+                  </View>
+                  {completeVerifyExpired ? (
+                    <Text style={styles.startVerifyExpiredText}>
+                      Time's up. Tap Resend to send a new code to your customer.
+                    </Text>
+                  ) : (
+                    <Text style={styles.startVerifyTimerText}>
+                      Enter the code within{' '}
+                      <Text style={styles.startVerifyTimerBold}>{completeVerifySecondsLeft}s</Text>
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.startVerifyOtpRow}>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <TextInput
+                      key={i}
+                      ref={(el) => {
+                        completeCodeOtpRefs.current[i] = el;
+                      }}
+                      style={[
+                        styles.startVerifyOtpCell,
+                        completeVerifyExpired && styles.startVerifyOtpCellDisabled,
+                      ]}
+                      value={completeCodeInput[i] ?? ''}
+                      onChangeText={(t) => handleCompleteOtpChange(t, i)}
+                      onKeyPress={({ nativeEvent }) =>
+                        handleCompleteOtpKeyPress(nativeEvent.key, i)
+                      }
+                      keyboardType="number-pad"
+                      maxLength={1}
+                      selectTextOnFocus
+                      editable={!completeVerifyExpired}
+                      placeholder=""
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.startVerifyActionsRow}>
+                  <TouchableOpacity
+                    style={styles.startVerifyBtnGhost}
+                    onPress={closeCompleteCodeModal}
+                    disabled={completeCodeSubmitLoading || completeCodeRequestLoading}
+                  >
+                    <Text style={styles.startVerifyBtnGhostText}>Cancel</Text>
+                  </TouchableOpacity>
+                  {completeVerifyExpired ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.startVerifyBtnPrimary,
+                        completeCodeRequestLoading && styles.startVerifyBtnPrimaryDisabled,
+                      ]}
+                      onPress={handleResendCompleteCode}
+                      disabled={completeCodeRequestLoading}
+                    >
+                      <Text style={styles.startVerifyBtnPrimaryText}>
+                        {completeCodeRequestLoading ? 'Sending…' : 'Resend code'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.startVerifyBtnPrimary,
+                        (completeCodeSubmitLoading ||
+                          completeCodeInput.replace(/\D/g, '').length < 6) &&
+                          styles.startVerifyBtnPrimaryDisabled,
+                      ]}
+                      onPress={handleCompleteCodeSubmit}
+                      disabled={
+                        completeCodeSubmitLoading ||
+                        completeCodeInput.replace(/\D/g, '').length < 6
+                      }
+                    >
+                      <Text style={styles.startVerifyBtnPrimaryText}>
+                        {completeCodeSubmitLoading ? 'Verifying…' : 'Verify & complete'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -2824,6 +3857,11 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     borderWidth: 1,
     borderColor: '#d6d8db',
   },
+  statusBadgeOnHold: {
+    backgroundColor: '#ede9fe',
+    borderWidth: 1,
+    borderColor: '#c4b5fd',
+  },
   statusText: {
     fontSize: moderateScale(12),
     fontWeight: 'bold',
@@ -2841,6 +3879,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   statusTextCancelled: {
     color: '#721c24',
+  },
+  statusTextOnHold: {
+    color: '#5b21b6',
   },
   statusTextMissed: {
     color: '#495057',
@@ -2894,6 +3935,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
   },
   completeButton: {
     backgroundColor: '#2196F3', // Blue
+  },
+  uploadCommentsButton: {
+    backgroundColor: '#64748b',
   },
   cancelActionButton: {
     backgroundColor: '#F44336', // Red
@@ -2950,6 +3994,92 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     fontStyle: 'italic',
     textAlign: 'center',
   },
+  onHoldStatusBlock: {
+    alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: moderateScale(4),
+  },
+  viewWorkCommentsButtonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: moderateScale(10),
+    width: '100%',
+  },
+  viewWorkCommentsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ede9fe',
+    paddingVertical: moderateScale(8),
+    paddingHorizontal: moderateScale(12),
+    borderRadius: moderateScale(12),
+    borderWidth: 1,
+    borderColor: '#c4b5fd',
+    marginHorizontal: moderateScale(4),
+    marginVertical: moderateScale(4),
+  },
+  viewWorkCommentsChipText: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+    color: '#5b21b6',
+    marginLeft: moderateScale(6),
+  },
+  viewWorkCommentMetaText: {
+    fontSize: moderateScale(13),
+    color: '#64748b',
+    marginBottom: moderateScale(6),
+    alignSelf: 'stretch',
+  },
+  viewWorkCommentEmptyText: {
+    fontSize: moderateScale(15),
+    color: '#64748b',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginVertical: moderateScale(16),
+    paddingHorizontal: moderateScale(8),
+  },
+  viewWorkCommentReadOnlyText: {
+    fontSize: moderateScale(15),
+    color: '#0f172a',
+    lineHeight: moderateScale(22),
+    marginBottom: moderateScale(16),
+    padding: moderateScale(14),
+    backgroundColor: '#f8fafc',
+    borderRadius: moderateScale(16),
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    alignSelf: 'stretch',
+  },
+  viewWorkCommentEmptyCloseButton: {
+    marginTop: moderateScale(12),
+    alignSelf: 'stretch',
+    paddingVertical: moderateScale(14),
+    borderRadius: moderateScale(14),
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewWorkCommentEmptyCloseButtonText: {
+    fontSize: moderateScale(15),
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  viewWorkCommentAddCommentsButton: {
+    alignSelf: 'stretch',
+    paddingVertical: moderateScale(12),
+    borderRadius: moderateScale(14),
+    borderWidth: 1.5,
+    borderColor: '#7c3aed',
+    backgroundColor: '#faf5ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: moderateScale(14),
+  },
+  viewWorkCommentAddCommentsButtonText: {
+    fontSize: moderateScale(15),
+    fontWeight: '700',
+    color: '#7c3aed',
+  },
   bottomNavigation: {
     position: 'absolute',
     bottom: 0,
@@ -2997,6 +4127,9 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     alignItems: 'center',
     zIndex: 1000,
   },
+  popupOverlayStackTop: {
+    zIndex: 3000,
+  },
   popupContainer: {
     backgroundColor: '#ffffff',
     borderRadius: moderateScale(16),
@@ -3009,6 +4142,300 @@ const createStyles = (screenHeight: number, screenWidth: number) => {
     shadowOpacity: 0.25,
     shadowRadius: getResponsiveSpacing(8),
     elevation: 8,
+  },
+  startVerifyModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: moderateScale(24),
+    marginHorizontal: moderateScale(20),
+    width: '90%',
+    maxWidth: isLargeScreen ? moderateScale(400) : moderateScale(368),
+    paddingTop: moderateScale(28),
+    paddingBottom: moderateScale(22),
+    paddingHorizontal: moderateScale(20),
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: getResponsiveSpacing(10) },
+    shadowOpacity: 0.14,
+    shadowRadius: getResponsiveSpacing(20),
+    elevation: 16,
+    borderWidth: 1,
+    borderColor: '#e8eef5',
+  },
+  startVerifyCloseFab: {
+    position: 'absolute',
+    top: moderateScale(14),
+    right: moderateScale(14),
+    zIndex: 2,
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: moderateScale(18),
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startVerifyHero: {
+    alignItems: 'center',
+    paddingBottom: moderateScale(18),
+    paddingHorizontal: moderateScale(4),
+  },
+  startVerifyIconCircle: {
+    width: moderateScale(60),
+    height: moderateScale(60),
+    borderRadius: moderateScale(30),
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: moderateScale(12),
+  },
+  startVerifyTitleText: {
+    fontSize: moderateScale(21),
+    fontWeight: '700',
+    color: '#0f172a',
+    letterSpacing: -0.35,
+    marginBottom: moderateScale(8),
+    textAlign: 'center',
+  },
+  startVerifySubtitleText: {
+    fontSize: moderateScale(14),
+    color: '#64748b',
+    lineHeight: moderateScale(21),
+    textAlign: 'center',
+    marginBottom: moderateScale(14),
+  },
+  startVerifyBookingChip: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: moderateScale(14),
+    paddingVertical: moderateScale(6),
+    borderRadius: moderateScale(20),
+  },
+  startVerifyBookingChipText: {
+    fontSize: moderateScale(13),
+    fontWeight: '600',
+    color: '#475569',
+    letterSpacing: 0.4,
+  },
+  startVerifyTimerText: {
+    fontSize: moderateScale(13),
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: moderateScale(10),
+  },
+  startVerifyTimerBold: {
+    fontWeight: '800',
+    color: '#dc2626',
+  },
+  startVerifyExpiredText: {
+    fontSize: moderateScale(13),
+    color: '#b45309',
+    textAlign: 'center',
+    marginTop: moderateScale(10),
+    fontWeight: '600',
+  },
+  startVerifyOtpRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(20),
+    columnGap: moderateScale(6),
+  },
+  startVerifyOtpCell: {
+    flex: 1,
+    minWidth: moderateScale(38),
+    maxWidth: moderateScale(52),
+    height: moderateScale(52),
+    borderRadius: moderateScale(14),
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    fontSize: moderateScale(21),
+    fontWeight: '700',
+    color: '#0f172a',
+    textAlign: 'center',
+    paddingVertical: 0,
+  },
+  startVerifyOtpCellDisabled: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    opacity: 0.75,
+  },
+  startVerifyActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: moderateScale(10),
+  },
+  startVerifyBtnGhost: {
+    flex: 1,
+    paddingVertical: moderateScale(14),
+    borderRadius: moderateScale(14),
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startVerifyBtnGhostText: {
+    fontSize: moderateScale(15),
+    fontWeight: '600',
+    color: '#475569',
+  },
+  startVerifyBtnPrimary: {
+    flex: 1,
+    paddingVertical: moderateScale(14),
+    borderRadius: moderateScale(14),
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  startVerifyBtnPrimaryDisabled: {
+    backgroundColor: '#93c5fd',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  startVerifyBtnPrimaryText: {
+    fontSize: moderateScale(15),
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  jobCommentsModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: moderateScale(24),
+    marginHorizontal: moderateScale(20),
+    width: '90%',
+    maxWidth: isLargeScreen ? moderateScale(400) : moderateScale(368),
+    paddingTop: moderateScale(28),
+    paddingBottom: moderateScale(22),
+    paddingHorizontal: moderateScale(20),
+    shadowColor: '#4c1d95',
+    shadowOffset: { width: 0, height: getResponsiveSpacing(10) },
+    shadowOpacity: 0.14,
+    shadowRadius: getResponsiveSpacing(22),
+    elevation: 16,
+    borderWidth: 1,
+    borderColor: '#ede9fe',
+  },
+  jobCommentsHero: {
+    alignItems: 'center',
+    paddingBottom: moderateScale(20),
+    paddingHorizontal: moderateScale(4),
+  },
+  jobCommentsIconCircle: {
+    width: moderateScale(64),
+    height: moderateScale(64),
+    borderRadius: moderateScale(32),
+    backgroundColor: '#f5f3ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: moderateScale(14),
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+  },
+  jobCommentsTitleText: {
+    fontSize: moderateScale(21),
+    fontWeight: '700',
+    color: '#0f172a',
+    letterSpacing: -0.35,
+    marginBottom: moderateScale(8),
+    textAlign: 'center',
+  },
+  jobCommentsSubtitleText: {
+    fontSize: moderateScale(14),
+    color: '#64748b',
+    lineHeight: moderateScale(21),
+    textAlign: 'center',
+    marginBottom: moderateScale(16),
+    paddingHorizontal: moderateScale(2),
+  },
+  jobCommentsBookingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#ede9fe',
+    paddingVertical: moderateScale(12),
+    paddingHorizontal: moderateScale(18),
+    borderRadius: moderateScale(16),
+    borderWidth: 1.5,
+    borderColor: '#c4b5fd',
+    shadowColor: '#6d28d9',
+    shadowOffset: { width: 0, height: getResponsiveSpacing(4) },
+    shadowOpacity: 0.14,
+    shadowRadius: getResponsiveSpacing(10),
+    elevation: 5,
+  },
+  jobCommentsBookingChipText: {
+    fontSize: moderateScale(14),
+    fontWeight: '700',
+    color: '#5b21b6',
+    letterSpacing: 0.4,
+    marginLeft: moderateScale(10),
+  },
+  jobCommentsForm: {
+    marginBottom: moderateScale(20),
+  },
+  jobCommentsFieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(10),
+  },
+  jobCommentsFieldLabel: {
+    fontSize: moderateScale(15),
+    fontWeight: '600',
+    color: '#334155',
+  },
+  jobCommentsInput: {
+    minHeight: moderateScale(128),
+    borderRadius: moderateScale(16),
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(14),
+    fontSize: moderateScale(15),
+    color: '#0f172a',
+    lineHeight: moderateScale(22),
+  },
+  jobCommentsInputError: {
+    borderColor: '#fda4af',
+    backgroundColor: '#fff1f2',
+  },
+  jobCommentsErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: moderateScale(10),
+  },
+  jobCommentsErrorText: {
+    fontSize: moderateScale(13),
+    color: '#e11d48',
+    fontWeight: '600',
+    flex: 1,
+    marginLeft: moderateScale(8),
+    lineHeight: moderateScale(18),
+  },
+  jobCommentsSubmitBtn: {
+    flex: 1,
+    paddingVertical: moderateScale(14),
+    borderRadius: moderateScale(14),
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  jobCommentsSubmitBtnDisabled: {
+    backgroundColor: '#c4b5fd',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  jobCommentsSubmitBtnText: {
+    fontSize: moderateScale(15),
+    fontWeight: '700',
+    color: '#ffffff',
   },
   popupHeader: {
     flexDirection: 'row',

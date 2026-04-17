@@ -33,6 +33,7 @@ export const API_ENDPOINTS = {
   UPDATE_WORKER: `${getBaseUrl()}/workers`,
   WORKERS: `${getBaseUrl()}/workers`,
   WORKER_BY_ID: (id: string) => `${getBaseUrl()}/workers/${id}`,
+  CUSTOMER_BY_ID: (id: number | string) => `${getBaseUrl()}/admin/customers/${id}`,
   REGISTER_SERVICESEEKER: `${getBaseUrl()}/register-serviceseeker`,
   UPDATE_SERVICESEEKER: (id: string) => `${getBaseUrl()}/serviceseeker/${id}`,
   SERVICESEEKER_BY_MOBILE: (mobile: string) => `${getBaseUrl()}/serviceseeker/mobile/${mobile}`,
@@ -53,6 +54,20 @@ export const API_ENDPOINTS = {
   BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=1`,
   TOTAL_BOOKINGS_BY_WORKER: (workerId: string) => `${getBaseUrl()}/bookings/worker/${workerId}?status=2,3`,
   UPDATE_BOOKING_STATUS: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/status`,
+  REQUEST_BOOKING_START: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/request-start`,
+  CONFIRM_BOOKING_START: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/confirm-start`,
+  EXPIRE_BOOKING_START_CODE: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/expire-start-code`,
+  REQUEST_BOOKING_COMPLETE: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/request-complete`,
+  CONFIRM_BOOKING_COMPLETE: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/confirm-complete`,
+  EXPIRE_BOOKING_COMPLETE_CODE: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/expire-complete-code`,
+  WORKER_BOOKING_ONHOLD_COMMENT: (bookingId: number) =>
+    `${getBaseUrl()}/bookings/${bookingId}/worker-on-hold-comment`,
+  CUSTOMER_BOOKING_ONHOLD_COMMENT: (bookingId: number) =>
+    `${getBaseUrl()}/bookings/${bookingId}/customer-on-hold-comment`,
+  CUSTOMER_BOOKING_WORK_COMMENT: (bookingId: number) =>
+    `${getBaseUrl()}/bookings/${bookingId}/customer-work-comment`,
+  WORKER_BOOKING_WORK_COMMENT: (bookingId: number) =>
+    `${getBaseUrl()}/bookings/${bookingId}/worker-work-comment`,
   UPDATE_BOOKING_PAYMENT: (bookingId: string) => `${getBaseUrl()}/bookings/${bookingId}/payment`,
   ASSIGN_TO_OTHER_WORKER: (bookingId: number) => `${getBaseUrl()}/bookings/${bookingId}/assign-other-worker`,
   CHECK_BOOKING_STATUS: (bookingId: string) => `${getBaseUrl()}/bookings/check-status/${bookingId}`,
@@ -109,6 +124,7 @@ export const API_ENDPOINTS = {
   ADMIN_ANALYSIS_CATEGORY_BOOKINGS: `${getBaseUrl()}/admin/analysis/category-bookings`,
   ADMIN_ANALYSIS_SUBCATEGORY_BOOKINGS: `${getBaseUrl()}/admin/analysis/subcategory-bookings`,
   ADMIN_ANALYSIS_SERVICE_BOOKINGS: `${getBaseUrl()}/admin/analysis/service-bookings`,
+  ADMIN_ANALYSIS_BOOKING_BREAKDOWN: `${getBaseUrl()}/admin/analysis/booking-breakdown`,
   ADMIN_ANALYSIS_PAYMENT_MONTHLY: `${getBaseUrl()}/admin/analysis/payment-monthly`,
   ADMIN_ANALYSIS_PAYMENT_DAILY: `${getBaseUrl()}/admin/analysis/payment-daily`,
   
