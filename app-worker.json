@@ -8,7 +8,7 @@
     "scheme": "fieldworker",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/icon-worker.jpeg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },

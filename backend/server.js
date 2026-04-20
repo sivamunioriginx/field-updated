@@ -1453,7 +1453,9 @@ app.put('/api/bookings/:bookingId/status', async (req, res) => {
         }
         if (status === 3) {
           await pool.execute(
-            `UPDATE tbl_track_bookings SET complete_verification_code = NULL, complete_time = NOW() WHERE bookingid = ?`,
+            `INSERT INTO tbl_track_bookings (bookingid, start_verification_code, complete_verification_code, start_time, complete_time)
+             VALUES (?, NULL, NULL, NULL, NOW())
+             ON DUPLICATE KEY UPDATE complete_verification_code = NULL, complete_time = NOW()`,
             [bookingId]
           );
         }

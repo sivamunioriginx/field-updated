@@ -16,7 +16,7 @@ export default {
     scheme: IS_CUSTOMER_APP ? "fieldcustomer" : "fieldworker",
     userInterfaceStyle: "automatic",
     splash: {
-      image: "./assets/images/splash-icon.png",
+      image: appIcon,
       resizeMode: "contain",
       backgroundColor: "#ffffff"
     },

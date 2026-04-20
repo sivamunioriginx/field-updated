@@ -8,7 +8,7 @@
     "scheme": "fieldcustomer",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/icon-customer.jpeg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
