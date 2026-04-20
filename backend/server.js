@@ -8471,10 +8471,14 @@ const startServer = async () => {
     console.log(`   Example: http://192.168.1.100:${PORT}/api/health`);
     console.log(`   Run 'node scripts/find-ip.js' to find your IP address`);
 
-    // Start periodic notifications after server starts
-    setTimeout(() => {
-      startPeriodicNotifications();
-    }, 2000); // Wait 2 seconds after server starts
+    // Start periodic notifications after server starts if explicitly enabled
+    if (process.env.ENABLE_PERIODIC_NOTIFICATIONS === 'true') {
+      setTimeout(() => {
+        startPeriodicNotifications();
+      }, 2000); // Wait 2 seconds after server starts
+    } else {
+      console.log('⏸️ Periodic notifications are disabled (ENABLE_PERIODIC_NOTIFICATIONS != true)');
+    }
   });
 };
 
