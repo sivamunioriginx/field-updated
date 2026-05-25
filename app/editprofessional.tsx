@@ -1502,7 +1502,7 @@ export default function RegisterProfessionalScreen() {
       {/* Location Field */}
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>
-          {isEditMode ? 'Location' : 'Location *'}
+          {isEditMode ? 'Contact Location' : 'Contact Location *'}
         </Text>
         <View style={{ position: 'relative' }}>
           <View style={styles.inputWrapper}>
@@ -1572,7 +1572,7 @@ export default function RegisterProfessionalScreen() {
       {/* Address Field */}
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>
-          {isEditMode ? 'Address' : 'Address *'}
+          {isEditMode ? 'Contact Address' : 'Contact Address *'}
         </Text>
         <View style={styles.inputWrapper}>
           <Ionicons name="home-outline" size={moderateScale(30)} color="#666" style={styles.inputIcon} />
@@ -1830,7 +1830,6 @@ export default function RegisterProfessionalScreen() {
         }}
       />
       <SafeAreaView style={styles.container}>
-        <TouchableWithoutFeedback onPress={handleOutsideTouch}>
           <KeyboardAvoidingView 
             style={styles.container} 
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1848,7 +1847,12 @@ export default function RegisterProfessionalScreen() {
               />
             </View>
 
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
             {/* Progress Indicator */}
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
@@ -1877,7 +1881,6 @@ export default function RegisterProfessionalScreen() {
             {currentStep === 1 ? renderStep1() : renderStep2()}
           </ScrollView>
         </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
 
       {/* Photo Modal */}
       <Modal

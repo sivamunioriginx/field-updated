@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ResizeMode, Video } from 'expo-av';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
+import { resolveCurrentPosition } from '@/lib/resolveCurrentPosition';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
