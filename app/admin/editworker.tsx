@@ -24,7 +24,6 @@ interface Worker {
   name: string;
   mobile: string;
   email: string;
-  price: number;
   skill_id: string;
   category_title?: string;
   pincode: string;
@@ -70,7 +69,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
-  const [price, setPrice] = useState('');
   const [pincode, setPincode] = useState('');
   const [address, setAddress] = useState('');
   const [mandal, setMandal] = useState('');
@@ -557,7 +555,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
       name !== initialData.name ||
       mobile !== initialData.mobile ||
       email !== initialData.email ||
-      price !== initialData.price ||
       pincode !== initialData.pincode ||
       address !== initialData.address ||
       mandal !== initialData.mandal ||
@@ -574,7 +571,7 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
 
     setHasChanges(changed);
   }, [
-    name, mobile, email, price, pincode, address, mandal, city, district, state, country,
+    name, mobile, email, pincode, address, mandal, city, district, state, country,
     areaName, latitude, longitude,
     selectedSkills, existingPersonalDocs, existingProfessionalDocs,
     personalDocuments, professionalDocuments, profilePhoto, initialData
@@ -582,11 +579,14 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.CATEGORIES);
+      const response = await fetch(API_ENDPOINTS.SUBCATEGORIES);
       const data = await response.json();
       
       if (data.success) {
-        setCategories(data.categories || data.data || []);
+        setCategories(data.data.map((sub: any) => ({
+          id: sub.id,
+          title: sub.name
+        })));
       }
     } catch (error) {
     }
@@ -614,7 +614,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
         setName(workerData.name || '');
         setMobile(workerData.mobile || '');
         setEmail(workerData.email || '');
-        setPrice(workerData.price?.toString() || '');
         setPincode(workerData.pincode || '');
         setAddress(workerData.address || '');
         setMandal(workerData.mandal || '');
@@ -650,7 +649,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
           name: workerData.name || '',
           mobile: workerData.mobile || '',
           email: workerData.email || '',
-          price: workerData.price?.toString() || '',
           pincode: workerData.pincode || '',
           address: workerData.address || '',
           mandal: workerData.mandal || '',
@@ -865,7 +863,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
     formData.append('name', name.trim());
     formData.append('mobile', mobile.trim());
     formData.append('email', email.trim());
-    formData.append('price', price || '0');
     formData.append('skills', JSON.stringify(selectedSkills));
     formData.append('pincode', pincode.trim());
     formData.append('address', address.trim());
@@ -943,7 +940,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
         webForm.append('name', name.trim());
         webForm.append('mobile', mobile.trim());
         webForm.append('email', email.trim());
-        webForm.append('price', price || '0');
         webForm.append('skills', JSON.stringify(selectedSkills));
         webForm.append('pincode', pincode.trim());
         webForm.append('address', address.trim());
@@ -1196,17 +1192,6 @@ export default function EditWorker({ workerId, onBack, onSave }: EditWorkerProps
                   placeholderTextColor="#94a3b8"
                   keyboardType="email-address"
                   autoCapitalize="none"
-                />
-              </View>
-              <View style={styles.inputGroupHalf}>
-                <Text style={styles.inputLabel}>Price (₹/Per Hour)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={price}
-                  onChangeText={setPrice}
-                  placeholder="Enter price"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="numeric"
                 />
               </View>
             </View>

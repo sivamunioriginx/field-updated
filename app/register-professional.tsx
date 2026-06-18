@@ -39,6 +39,9 @@ interface Suggestion {
 interface Skill {
   id: number;
   name: string;
+  worker_price?: number | string;
+  price?: number | string;
+  subcategory_id?: number | string;
 }
 
 export default function RegisterProfessionalScreen() {
@@ -102,7 +105,6 @@ export default function RegisterProfessionalScreen() {
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
-  const [price, setPrice] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<number[]>([]);
   const [personalDocuments, setPersonalDocuments] = useState<any[]>([]);
@@ -133,7 +135,6 @@ export default function RegisterProfessionalScreen() {
   const [nameError, setNameError] = useState('');
   const [mobileError, setMobileError] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [priceError, setPriceError] = useState('');
   const [locationError, setLocationError] = useState('');
   const [addressError, setAddressError] = useState('');
   const [skillsError, setSkillsError] = useState('');
@@ -162,9 +163,6 @@ export default function RegisterProfessionalScreen() {
       case 'email':
         setEmailError(errorMessage);
         break;
-      case 'price':
-        setPriceError(errorMessage);
-        break;
       case 'location':
         setLocationError(errorMessage);
         break;
@@ -187,9 +185,6 @@ export default function RegisterProfessionalScreen() {
           break;
         case 'email':
           setEmailError('');
-          break;
-        case 'price':
-          setPriceError('');
           break;
         case 'location':
           setLocationError('');
@@ -217,29 +212,47 @@ export default function RegisterProfessionalScreen() {
   // Add skillsData state
   const [skillsData, setSkillsData] = useState<Skill[]>([]);
 
-  // Fetch categories from backend on mount
+  // Add servicesData state
+  const [servicesData, setServicesData] = useState<Skill[]>([]);
+  const [selectedServices, setSelectedServices] = useState<number[]>([]);
+  const [showServicesDropdown, setShowServicesDropdown] = useState(false);
+
+  // Fetch subcategories from backend on mount (skills come from tbl_subcategory)
   useEffect(() => {
-    const fetchCategories = async () => {
+    const fetchSubcategories = async () => {
       try {
         // Use your backend IP or localhost if running on emulator
-        const response = await fetch(API_ENDPOINTS.CATEGORIES);
+        const response = await fetch(API_ENDPOINTS.SUBCATEGORIES);
         const result = await response.json();
-        if (result.success && result.data && Array.isArray(result.data)) {
-          const mappedSkills = result.data.map((cat: any) => ({
-            id: cat.id,
-            name: cat.title
-          }));
-          setSkillsData(mappedSkills);
-        } else {
-          console.warn('Categories API returned unsuccessful or no data:', result);
+        if (result.success) {
+          setSkillsData(result.data.map((sub: any) => ({
+            id: sub.id,
+            name: sub.name,
+          })));
         }
       } catch (error) {
-        console.error('Error fetching categories:', error);
       }
     };
-    fetchCategories();
-    
-    // Cleanup function to clear all error timers when component unmounts
+    fetchSubcategories();
+  }, []);
+
+  // Fetch services from backend on mount (services come from tbl_services)
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.SERVICES);
+        const result = await response.json();
+        if (result.success) {
+          setServicesData(result.data);
+        }
+      } catch (error) {
+      }
+    };
+    fetchServices();
+  }, []);
+
+  // Cleanup function to clear all error timers when component unmounts
+  useEffect(() => {
     return () => {
       Object.values(errorTimers.current).forEach(timer => {
         if (timer) clearTimeout(timer);
@@ -601,6 +614,22 @@ export default function RegisterProfessionalScreen() {
     );
   };
 
+  // Handle service selection
+  const toggleService = (serviceId: number) => {
+    setSelectedServices(prev =>
+      prev.includes(serviceId)
+        ? prev.filter(id => id !== serviceId)
+        : [...prev, serviceId]
+    );
+  };
+
+  // Services filtered by selected skills / subcategories
+  const selectedSkillIds = selectedSkills;
+  const filteredServices = servicesData.filter((service) => {
+    const subcategoryId = Number(service.subcategory_id);
+    return !isNaN(subcategoryId) && selectedSkillIds.includes(subcategoryId);
+  });
+
   // Handle document upload with options
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [currentDocumentType, setCurrentDocumentType] = useState<'personal' | 'professional'>('personal');
@@ -797,7 +826,6 @@ export default function RegisterProfessionalScreen() {
     setNameError('');
     setMobileError('');
     setEmailError('');
-    setPriceError('');
     setLocationError('');
     
     let hasErrors = false;
@@ -828,19 +856,6 @@ export default function RegisterProfessionalScreen() {
         setErrorWithAutoDismiss('email', 'Please enter a valid email address');
         hasErrors = true;
     }
-    }
-    
-    // Check price
-    if (!price.trim()) {
-      setErrorWithAutoDismiss('price', 'Price per hour is required');
-      hasErrors = true;
-    } else {
-      // Validate price is a positive number
-      const priceValue = parseFloat(price.trim());
-      if (isNaN(priceValue) || priceValue <= 0) {
-        setErrorWithAutoDismiss('price', 'Please enter a valid price (positive number)');
-        hasErrors = true;
-      }
     }
     
     // Check location
@@ -888,7 +903,6 @@ export default function RegisterProfessionalScreen() {
       formData.append('name', name);
       formData.append('mobile', mobile);
       formData.append('email', email);
-      formData.append('price', price);
       formData.append('skills', JSON.stringify(selectedSkills));
       formData.append('location', location);
       formData.append('address', address);
@@ -967,7 +981,6 @@ export default function RegisterProfessionalScreen() {
                   setName('');
                   setMobile('');
                   setEmail('');
-                  setPrice('');
                   setProfilePhoto(null);
                   setSelectedSkills([]);
                   setPersonalDocuments([]);
@@ -1172,38 +1185,9 @@ export default function RegisterProfessionalScreen() {
         )}
       </View>
 
-      {/* Price Field */}
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Price *</Text>
-        <View style={styles.inputWrapper}>
-          <Ionicons name="cash-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Enter price per hour"
-            placeholderTextColor="#999"
-            value={price}
-            onChangeText={(text) => {
-              setPrice(text);
-              // Clear error immediately when user types
-              if (priceError) {
-                if (errorTimers.current['price']) {
-                  clearTimeout(errorTimers.current['price']);
-                  delete errorTimers.current['price'];
-                }
-                setPriceError('');
-              }
-            }}
-            keyboardType="numeric"
-          />
-        </View>
-        {priceError ? (
-          <Text style={styles.errorText}>{priceError}</Text>
-        ) : null}
-      </View>
-
       {/* Location Field */}
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Location *</Text>
+        <Text style={styles.inputLabel}>Contact Location *</Text>
         <View style={styles.locationInputWrapper}>
           <View style={styles.inputWrapper}>
             <Ionicons name="location-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
@@ -1243,34 +1227,9 @@ export default function RegisterProfessionalScreen() {
         ) : null}
       </View>
 
-      {/* Next Button */}
-      <TouchableOpacity
-        style={[styles.nextButton, isCheckingUser && styles.nextButtonDisabled]}
-        onPress={handleNext}
-        disabled={isCheckingUser}
-      >
-        {isCheckingUser ? (
-          <View style={styles.loadingContainer}>
-            <Ionicons name="reload" size={moderateScale(20)} color="#fff" style={styles.spinningIcon} />
-            <Text style={styles.nextButtonText}>Checking...</Text>
-          </View>
-        ) : (
-          <>
-            <Text style={styles.nextButtonText}>Next</Text>
-            <Ionicons name="arrow-forward" size={moderateScale(20)} color="#fff" />
-          </>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Step 2: Skills and Documents  
-  const renderStep2 = () => (
-    <View style={styles.formContainer}>
-
       {/* Address Field */}
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Address *</Text>
+        <Text style={styles.inputLabel}>Contact Address *</Text>
         <View style={styles.inputWrapper}>
           <Ionicons name="home-outline" size={moderateScale(30)} color="#666" style={styles.inputIcon} />
           <TextInput
@@ -1296,6 +1255,31 @@ export default function RegisterProfessionalScreen() {
           <Text style={styles.errorText}>{addressError}</Text>
         ) : null}
       </View>
+
+      {/* Next Button */}
+      <TouchableOpacity
+        style={[styles.nextButton, isCheckingUser && styles.nextButtonDisabled]}
+        onPress={handleNext}
+        disabled={isCheckingUser}
+      >
+        {isCheckingUser ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons name="reload" size={moderateScale(20)} color="#fff" style={styles.spinningIcon} />
+            <Text style={styles.nextButtonText}>Checking...</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.nextButtonText}>Next</Text>
+            <Ionicons name="arrow-forward" size={moderateScale(20)} color="#fff" />
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Step 2: Skills and Documents  
+  const renderStep2 = () => (
+    <View style={styles.formContainer}>
 
       {/* Skills Field */}
       <View style={styles.inputContainer}>
@@ -1363,6 +1347,52 @@ export default function RegisterProfessionalScreen() {
         {skillsError ? (
           <Text style={styles.errorText}>{skillsError}</Text>
         ) : null}
+      </View>
+
+      {/* Services Field */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Services</Text>
+        <TouchableOpacity
+          style={styles.skillsDropdown}
+          onPress={() => setShowServicesDropdown(!showServicesDropdown)}
+        >
+          <View style={styles.skillsDropdownHeader}>
+            <Ionicons name="hammer-outline" size={moderateScale(20)} color="#666" style={styles.inputIcon} />
+            <Text style={styles.skillsDropdownText}>
+              {selectedServices.length > 0 
+                ? `${selectedServices.length} service(s) selected`
+                : 'Select services'
+              }
+            </Text>
+            <Ionicons 
+              name={showServicesDropdown ? "chevron-up" : "chevron-down"} 
+              size={moderateScale(20)} 
+              color="#666" 
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Services Dropdown */}
+        {showServicesDropdown && (
+          <View style={styles.skillsDropdownContent}>
+            <ScrollView style={styles.skillsList} nestedScrollEnabled={true}>
+              {filteredServices.map((service) => {
+                const displayText = service.worker_price ? `${service.name} (Per Hour/₹${service.worker_price})` : service.name;
+                return (
+                  <View
+                    key={service.id}
+                    style={styles.skillItem}
+                  >
+                    <Text style={styles.skillText}>{displayText}</Text>
+                    {selectedServices.includes(service.id) && (
+                      <Ionicons name="checkmark-circle" size={moderateScale(20)} color="#27ae60" />
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       {/* Personal Documents Field */}

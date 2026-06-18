@@ -137,7 +137,8 @@ interface Service {
   name: string;
   category_name: string;
   subcaregory_name: string;
-  price: number;
+  customer_price: number;
+  worker_price: number;
   rating: number;
   instant_service: number;
   image: string;
@@ -179,7 +180,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
   const [subcategories, setSubcategories] = useState<{ id: number; name: string; category_id: number; category_name?: string }[]>([]);
   const [serviceImage, setServiceImage] = useState<string | null>(null);
   const [categoryName, setCategoryName] = useState('');
-  const [price, setPrice] = useState('');
+  const [customerPrice, setCustomerPrice] = useState('');
+  const [workerPrice, setWorkerPrice] = useState('');
   const [rating, setRating] = useState('');
   const [instantService, setInstantService] = useState<number>(1);
   const [showSubcategoryDropdown, setShowSubcategoryDropdown] = useState(false);
@@ -357,7 +359,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       'Service Name': s.name,
       'Category Name': s.category_name || 'N/A',
       'Subcategory Name': s.subcaregory_name || 'N/A',
-      'Price (₹)': s.price,
+      'Customer Price (₹)': s.customer_price,
+      'Worker Price (₹)': s.worker_price,
       'Rating': s.rating,
       'Instant Service': s.instant_service === 1 ? 'Yes' : 'No',
       'Status': s.status === 1 ? 'Active' : 'Inactive',
@@ -491,7 +494,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
         Service.name.toLowerCase().includes(query) ||
         Service.category_name.toLowerCase().includes(query) ||
         Service.subcaregory_name.toLowerCase().includes(query) ||
-        Service.price.toString().toLowerCase().includes(query) ||
+        Service.customer_price.toString().toLowerCase().includes(query) ||
+        Service.worker_price.toString().toLowerCase().includes(query) ||
         Service.rating.toString().toLowerCase().includes(query) ||
         Service.instant_service.toString().toLowerCase().includes(query) ||
         (Service.image && Service.image.toLowerCase().includes(query)) ||
@@ -574,7 +578,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       const formData = new FormData();
       formData.append('name', service.name);
       formData.append('subcategory_id', (service as any).subcategory_id?.toString() || '');
-      formData.append('price', service.price.toString());
+      formData.append('customer_price', service.customer_price.toString());
+      formData.append('worker_price', service.worker_price.toString());
       formData.append('rating', service.rating.toString());
       formData.append('instant_service', service.instant_service.toString());
       // Keep existing status, only update visibility
@@ -631,7 +636,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       }
       const finalImageUrl = imageUrl || null;
       setServiceImage(finalImageUrl);
-      setPrice(service.price.toString());
+      setCustomerPrice(service.customer_price.toString());
+      setWorkerPrice((service as any).worker_price ? (service as any).worker_price.toString() : '');
       setRating(service.rating.toString());
       setInstantService(service.instant_service);
       // Set visibility - check both status and visibility fields
@@ -690,7 +696,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       const formData = new FormData();
       formData.append('name', service.name);
       formData.append('subcategory_id', (service as any).subcategory_id?.toString() || '');
-      formData.append('price', service.price.toString());
+      formData.append('customer_price', service.customer_price.toString());
+      formData.append('worker_price', service.worker_price.toString());
       formData.append('rating', service.rating.toString());
       formData.append('instant_service', service.instant_service.toString());
       // Get current visibility value and preserve it
@@ -754,7 +761,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       const formData = new FormData();
       formData.append('name', service.name);
       formData.append('subcategory_id', (service as any).subcategory_id?.toString() || '');
-      formData.append('price', service.price.toString());
+      formData.append('customer_price', service.customer_price.toString());
+      formData.append('worker_price', service.worker_price.toString());
       formData.append('rating', service.rating.toString());
       formData.append('instant_service', service.instant_service.toString());
       // Get current visibility value
@@ -802,7 +810,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setSelectedSubcategoryId(null);
     setCategoryName('');
     setServiceImage(null);
-    setPrice('');
+    setCustomerPrice('');
+    setWorkerPrice('');
     setRating('');
     setInstantService(1);
     setVisibility(1);
@@ -820,7 +829,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
     setSelectedSubcategoryId(null);
     setCategoryName('');
     setServiceImage(null);
-    setPrice('');
+    setCustomerPrice('');
+    setWorkerPrice('');
     setRating('');
     setInstantService(1);
     setVisibility(1);
@@ -869,7 +879,13 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
   const handlePriceChange = (text: string) => {
     // Only allow positive integers (no decimals, no negative, no alphabets)
     const filtered = text.replace(/[^0-9]/g, '');
-    setPrice(filtered);
+    setCustomerPrice(filtered);
+  };
+
+  const handleWorkerPriceChange = (text: string) => {
+    // Only allow positive integers (no decimals, no negative, no alphabets)
+    const filtered = text.replace(/[^0-9]/g, '');
+    setWorkerPrice(filtered);
   };
 
   const handleRatingChange = (text: string) => {
@@ -904,8 +920,13 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       return;
     }
 
-    if (!price.trim() || isNaN(Number(price))) {
-      Alert.alert('Validation Error', 'Please enter a valid price');
+    if (!customerPrice.trim() || isNaN(Number(customerPrice))) {
+      Alert.alert('Validation Error', 'Please enter a valid Customer price');
+      return;
+    }
+
+    if (!workerPrice.trim() || isNaN(Number(workerPrice))) {
+      Alert.alert('Validation Error', 'Please enter a valid Worker price');
       return;
     }
 
@@ -924,7 +945,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
       const formData = new FormData();
       formData.append('name', serviceName.trim());
       formData.append('subcategory_id', selectedSubcategoryId.toString());
-      formData.append('price', price.trim());
+      formData.append('customer_price', customerPrice.trim());
+      formData.append('worker_price', workerPrice.trim());
       formData.append('rating', rating.trim());
       formData.append('instant_service', instantService.toString());
       formData.append('status', visibility.toString());
@@ -1275,9 +1297,13 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                   <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
                   <Text style={styles.tableHeaderText}>SubCategory Name</Text>
                 </View>
-                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 150 : isTablet ? 75 : 50 }]}>
+                <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 200 : isTablet ? 75 : 50 }]}>
                   <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
-                  <Text style={styles.tableHeaderText}>Price</Text>
+                  <Text style={styles.tableHeaderText}>Customer Price</Text>
+                </View>
+                 <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 150 : isTablet ? 75 : 50 }]}>
+                  <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
+                  <Text style={styles.tableHeaderText}>Worker Price</Text>
                 </View>
                 <View style={[styles.tableCell, styles.tableHeaderCell, { width: isDesktop ? 190 : isTablet ? 100 : 50 }]}>
                   <Ionicons name="person" size={isDesktop ? 16 : 14} color="#ffffff" />
@@ -1326,8 +1352,11 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                     <View style={[styles.tableCell, { width: isDesktop ? 300 : isTablet ? 100 : 50 }]}>
                       <Text style={styles.tableCellText}>{services.subcaregory_name || 'N/A'}</Text>
                     </View>
+                    <View style={[styles.tableCell, { width: isDesktop ? 200 : isTablet ? 100 : 50 }]}>
+                      <Text style={styles.tableCellText}>{services.customer_price || 'N/A'}</Text>
+                    </View>
                     <View style={[styles.tableCell, { width: isDesktop ? 150 : isTablet ? 100 : 50 }]}>
-                      <Text style={styles.tableCellText}>{services.price || 'N/A'}</Text>
+                      <Text style={styles.tableCellText}>{services.worker_price || 'N/A'}</Text>
                     </View>
                     <View style={[styles.tableCell, { width: isDesktop ? 180 : isTablet ? 100 : 50 }]}>
                       <Text style={styles.tableCellText}>{services.rating || 'N/A'}</Text>
@@ -1541,7 +1570,8 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
               </View>
 
               {/* Service Image */}
-              <View style={styles.modalField}>
+              <View style={styles.modalRow}>
+                <View style={[styles.modalField, styles.modalFieldHalf]}>
                 <Text style={styles.modalLabel}>Service Image</Text>
                 <TouchableOpacity
                   style={styles.imageUploadInput}
@@ -1564,30 +1594,43 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
                   </View>
                 )}
               </View>
+               {/* Rating */}
+              <View style={[styles.modalField, styles.modalFieldHalf]}>
+                <Text style={styles.modalLabel}>Rating</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter rating"
+                  placeholderTextColor="#94a3b8"
+                  value={rating}
+                  onChangeText={handleRatingChange}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+           </View>
 
-              {/* Price and Rating in one row */}
+              {/* Customer Price and Worker Price in one row */}
               <View style={styles.modalRow}>
                 <View style={[styles.modalField, styles.modalFieldHalf]}>
-                  <Text style={styles.modalLabel}>Price</Text>
+                  <Text style={styles.modalLabel}>Customer Price</Text>
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Enter price"
                     placeholderTextColor="#94a3b8"
-                    value={price}
+                    value={customerPrice}
                     onChangeText={handlePriceChange}
                     keyboardType="numeric"
                   />
                 </View>
 
                 <View style={[styles.modalField, styles.modalFieldHalf]}>
-                  <Text style={styles.modalLabel}>Rating</Text>
+                  <Text style={styles.modalLabel}>Worker Price</Text>
                   <TextInput
                     style={styles.modalInput}
-                    placeholder="Enter rating"
+                    placeholder="Enter worker price"
                     placeholderTextColor="#94a3b8"
-                    value={rating}
-                    onChangeText={handleRatingChange}
-                    keyboardType="decimal-pad"
+                    value={workerPrice}
+                    onChangeText={handleWorkerPriceChange}
+                    keyboardType="numeric"
                   />
                 </View>
               </View>
@@ -1787,10 +1830,10 @@ export default function Services({ searchQuery: externalSearchQuery, onSearchCha
               <TouchableOpacity
                 style={[
                   styles.modalSubmitButton, 
-                  (loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !price.trim() || !rating.trim() || selectedLocations.length === 0) && styles.modalSubmitButtonDisabled
+                  (loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !customerPrice.trim() || !rating.trim() || selectedLocations.length === 0) && styles.modalSubmitButtonDisabled
                 ]}
                 onPress={handleSubmitService}
-                disabled={loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !price.trim() || !rating.trim() || selectedLocations.length === 0}
+                disabled={loading || !serviceName.trim() || !selectedSubcategoryId || (!editingServiceId && !serviceImage) || !customerPrice.trim() || !rating.trim() || selectedLocations.length === 0}
               >
                 {loading ? (
                   <ActivityIndicator size="small" color="#ffffff" />

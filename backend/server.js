@@ -329,7 +329,6 @@ app.post('/api/register-professional', upload.fields([
       name,
       mobile,
       email,
-      price,
       skills,
       location,
       address,
@@ -343,10 +342,10 @@ app.post('/api/register-professional', upload.fields([
     } = req.body;
 
     // Validation
-    if (!name || !mobile || !email || !price) {
+    if (!name || !mobile || !email) {
       return res.status(400).json({
         success: false,
-        message: 'Required fields are missing: name, mobile, email, price'
+        message: 'Required fields are missing: name, mobile, email'
       });
     }
 
@@ -401,10 +400,10 @@ app.post('/api/register-professional', upload.fields([
     // Insert into database
     const insertQuery = `
       INSERT INTO tbl_workers (
-        name, mobile, email, price, skill_id, pincode, mandal, city,
+        name, mobile, email, skill_id, pincode, mandal, city,
         district, state, country, latitude, longitude, address, type,
         profile_image, document1, document2
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     `;
 
     // Extract area name from location for city column
@@ -425,7 +424,6 @@ app.post('/api/register-professional', upload.fields([
       name,
       mobile,
       email,
-      price,
       skillsString,
       pincode || null,
       district || null, // Using district as mandal
@@ -451,7 +449,6 @@ app.post('/api/register-professional', upload.fields([
         name,
         email,
         mobile,
-        price,
         skills: skillsString,
         location,
         profileImage: profileImagePath ? `/uploads/profiles/${profileImagePath}` : null,
@@ -473,7 +470,7 @@ app.post('/api/register-professional', upload.fields([
 app.get('/api/workers', async (req, res) => {
   try {
     const [workers] = await pool.execute(
-      'SELECT id, name, mobile, email, price, skill_id, pincode, district, state, country, profile_image, status, created_at FROM tbl_workers ORDER BY created_at DESC'
+      'SELECT id, name, mobile, email, skill_id, pincode, district, state, country, profile_image, status, created_at FROM tbl_workers ORDER BY created_at DESC'
     );
 
     // Add full image URLs
@@ -501,7 +498,7 @@ app.get('/api/workers/:id', async (req, res) => {
     const { id } = req.params;
 
     const [workers] = await pool.execute(
-      'SELECT * FROM tbl_workers WHERE id = ?',
+      'SELECT id, name, mobile, email, skill_id, pincode, mandal, city, district, state, country, latitude, longitude, address, type, status, profile_image, document1, document2, created_at FROM tbl_workers WHERE id = ?',
       [id]
     );
 
@@ -559,7 +556,6 @@ app.put('/api/workers/:id', upload.fields([
       name,
       mobile,
       email,
-      price,
       skills,
       location,
       address,
@@ -577,10 +573,10 @@ app.put('/api/workers/:id', upload.fields([
     } = req.body;
 
     // Validation
-    if (!name || !mobile || !email || !price) {
+    if (!name || !mobile || !email) {
       return res.status(400).json({
         success: false,
-        message: 'Required fields are missing: name, mobile, email, price'
+        message: 'Required fields are missing: name, mobile, email'
       });
     }
 
@@ -700,7 +696,7 @@ app.put('/api/workers/:id', upload.fields([
     // Update database
     const updateQuery = `
       UPDATE tbl_workers SET
-        name = ?, mobile = ?, email = ?, price = ?, skill_id = ?, pincode = ?, mandal = ?, city = ?,
+        name = ?, mobile = ?, email = ?, skill_id = ?, pincode = ?, mandal = ?, city = ?,
         district = ?, state = ?, country = ?, latitude = ?, longitude = ?, address = ?,
         profile_image = ?, document1 = ?, document2 = ?, status = ?
       WHERE id = ?
@@ -710,7 +706,6 @@ app.put('/api/workers/:id', upload.fields([
       name,
       mobile,
       email,
-      price,
       skillsString,
       pincode || null,
       mandal || null,
@@ -738,7 +733,6 @@ app.put('/api/workers/:id', upload.fields([
         name,
         mobile,
         email,
-        price,
         skill_id: skillsString,
         pincode,
         city: cityName,
@@ -789,7 +783,6 @@ app.put('/api/admin/workers/:id', upload.fields([
       name,
       mobile,
       email,
-      price,
       skills,
       location,
       address,
@@ -807,10 +800,10 @@ app.put('/api/admin/workers/:id', upload.fields([
     } = req.body;
 
     // Validation
-    if (!name || !mobile || !email || !price) {
+    if (!name || !mobile || !email) {
       return res.status(400).json({
         success: false,
-        message: 'Required fields are missing: name, mobile, email, price'
+        message: 'Required fields are missing: name, mobile, email'
       });
     }
 
@@ -928,7 +921,7 @@ app.put('/api/admin/workers/:id', upload.fields([
     // Update database - force type = 1 and status = 1
     const updateQuery = `
       UPDATE tbl_workers SET
-        name = ?, mobile = ?, email = ?, price = ?, skill_id = ?, pincode = ?, mandal = ?, city = ?,
+        name = ?, mobile = ?, email = ?, skill_id = ?, pincode = ?, mandal = ?, city = ?,
         district = ?, state = ?, country = ?, latitude = ?, longitude = ?, address = ?,
         type = ?, profile_image = ?, document1 = ?, document2 = ?, status = ?
       WHERE id = ?
@@ -938,7 +931,6 @@ app.put('/api/admin/workers/:id', upload.fields([
       name,
       mobile,
       email,
-      price,
       skillsString,
       pincode || null,
       mandal || null,
@@ -967,7 +959,6 @@ app.put('/api/admin/workers/:id', upload.fields([
         name,
         mobile,
         email,
-        price,
         skill_id: skillsString,
         pincode,
         city: cityName,
@@ -1000,7 +991,7 @@ app.get('/api/workers/mobile/:mobile', async (req, res) => {
     const { mobile } = req.params;
 
     const [workers] = await pool.execute(
-      'SELECT * FROM tbl_workers WHERE mobile = ?',
+      'SELECT id, name, mobile, email, skill_id, pincode, mandal, city, district, state, country, latitude, longitude, address, type, status, profile_image, document1, document2, created_at FROM tbl_workers WHERE mobile = ?',
       [mobile]
     );
 
@@ -2866,7 +2857,7 @@ app.get('/api/top-services', async (req, res) => {
           s.name,
           s.subcategory_id,
           s.image,
-          COALESCE(d.deal_price, s.price) AS price,
+          COALESCE(d.deal_price, s.customer_price) AS price,
           s.rating,
           s.created_at,
           s.instant_service,
@@ -2886,7 +2877,7 @@ app.get('/api/top-services', async (req, res) => {
           AND b.work_location IS NOT NULL
           AND b.work_location != ''
           AND b.work_location LIKE ?
-        GROUP BY s.id, s.name, s.subcategory_id, s.image, s.price, d.deal_price, s.rating, s.created_at, s.instant_service, sc.name, c.title
+        GROUP BY s.id, s.name, s.subcategory_id, s.image, s.customer_price, d.deal_price, s.rating, s.created_at, s.instant_service, sc.name, c.title
         HAVING booking_count >= 2
         ORDER BY booking_count DESC, s.rating DESC
         LIMIT 10`
@@ -2902,7 +2893,7 @@ app.get('/api/top-services', async (req, res) => {
             s.name,
             s.subcategory_id,
             s.image,
-            COALESCE(d.deal_price, s.price) AS price,
+            COALESCE(d.deal_price, s.customer_price) AS price,
             s.rating,
             s.created_at,
             s.instant_service,
@@ -2922,7 +2913,7 @@ app.get('/api/top-services', async (req, res) => {
             AND b.work_location IS NOT NULL
             AND b.work_location != ''
             AND b.work_location LIKE ?
-          GROUP BY s.id, s.name, s.subcategory_id, s.image, s.price, d.deal_price, s.rating, s.created_at, s.instant_service, sc.name, c.title
+          GROUP BY s.id, s.name, s.subcategory_id, s.image, s.customer_price, d.deal_price, s.rating, s.created_at, s.instant_service, sc.name, c.title
           HAVING booking_count >= 1
           ORDER BY booking_count DESC, s.rating DESC
           LIMIT 10`
@@ -3088,7 +3079,7 @@ app.get('/api/services/search', async (req, res) => {
         s.name, 
         s.subcategory_id, 
         s.image, 
-        COALESCE(d.deal_price, s.price) AS price, 
+        COALESCE(d.deal_price, s.customer_price) AS price, 
         s.rating, 
         s.created_at,
         s.instant_service
@@ -3192,7 +3183,7 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
         s.name, 
         s.subcategory_id, 
         s.image, 
-        COALESCE(d.deal_price, s.price) AS price, 
+        COALESCE(d.deal_price, s.customer_price) AS price, 
         s.rating, 
         s.created_at,
         s.instant_service
@@ -3249,7 +3240,7 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
         s.name, 
         s.subcategory_id, 
         s.image, 
-        COALESCE(d.deal_price, s.price) AS price, 
+        COALESCE(d.deal_price, s.customer_price) AS price, 
         s.rating, 
         s.created_at,
         s.instant_service
@@ -3291,9 +3282,8 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
 app.get('/api/services', async (req, res) => {
   try {
     const [services] = await pool.execute(
-      'SELECT id, name, subcategory_id, image, created_at, instant_service FROM tbl_services ORDER BY created_at DESC'
-    );
-
+      'SELECT id, name, subcategory_id, image, customer_price, worker_price, created_at, instant_service FROM tbl_services ORDER BY created_at DESC'
+      );
     // Add full image URLs
     const servicesWithImages = services.map(service => ({
       ...service,
@@ -3362,7 +3352,6 @@ SELECT
     w.name,
     w.mobile,
     w.email,
-    w.price,
     w.skill_id,
     w.pincode,
     w.mandal,
@@ -6206,7 +6195,6 @@ app.get('/api/admin/workers/:id', async (req, res) => {
         w.name,
         w.mobile,
         w.email,
-        w.price,
         w.skill_id,
         w.pincode,
         w.mandal,
@@ -7302,7 +7290,7 @@ app.get('/api/admin/services', async (req, res) => {
 // Create Service for admin
 app.post('/api/admin/services', upload.single('image'), async (req, res) => {
   try {
-    const { name, subcategory_id, price, rating, instant_service, pincodes } = req.body;
+    const { name, subcategory_id, customer_price, worker_price, rating, instant_service, pincodes } = req.body;
 
     // Validation
     if (!name || !name.trim()) {
@@ -7326,12 +7314,20 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
       });
     }
 
-    if (!price || isNaN(Number(price))) {
+    if (!customer_price || isNaN(Number(customer_price))) {
       return res.status(400).json({
         success: false,
         message: 'Valid price is required'
       });
     }
+
+    if (!worker_price || isNaN(Number(worker_price))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid price is required'
+      });
+    }
+
 
     if (!rating || isNaN(Number(rating))) {
       return res.status(400).json({
@@ -7344,17 +7340,19 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
     const imageFileName = req.file.filename;
 
     // Parse values
-    const priceValue = parseFloat(price);
+    const customerPriceValue = parseFloat(customer_price);
+    const workerPriceValue = parseFloat(worker_price);
     const ratingValue = parseFloat(rating);
     const instantServiceValue = instant_service ? parseInt(instant_service) : 0;
 
     // Insert into tbl_services
-    const query = `INSERT INTO tbl_services (name, subcategory_id, image, price, rating, instant_service, status, visibility) VALUES (?, ?, ?, ?, ?, ?, 1, 1)`;
+    const query = `INSERT INTO tbl_services (name, subcategory_id, image, customer_price, worker_price, rating, instant_service, status, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`;
     const [result] = await pool.execute(query, [
       name.trim(),
       subcategory_id,
       imageFileName,
-      priceValue,
+      customerPriceValue,
+      workerPriceValue,
       ratingValue,
       instantServiceValue
     ]);
@@ -7406,7 +7404,8 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
         name: name.trim(),
         subcategory_id: subcategory_id,
         image: imageFileName,
-        price: priceValue,
+        customer_price: customerPriceValue,
+        worker_price: workerPriceValue,
         rating: ratingValue,
         instant_service: instantServiceValue,
         status: 1,
@@ -7428,7 +7427,7 @@ app.post('/api/admin/services', upload.single('image'), async (req, res) => {
 app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, subcategory_id, price, rating, instant_service, status, visibility, pincodes } = req.body;
+    const { name, subcategory_id, customer_price, worker_price, rating, instant_service, status, visibility, pincodes } = req.body;
 
     // Validation
     if (!name || !name.trim()) {
@@ -7445,10 +7444,17 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
       });
     }
 
-    if (!price || isNaN(Number(price))) {
+    if (!customer_price || isNaN(Number(customer_price))) {
       return res.status(400).json({
         success: false,
         message: 'Valid price is required'
+      });
+    }
+
+    if (!worker_price || isNaN(Number(worker_price))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid worker price is required'
       });
     }
 
@@ -7469,7 +7475,8 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
     }
 
     // Parse values
-    const priceValue = parseFloat(price);
+    const customerPriceValue = parseFloat(customer_price);
+    const workerPriceValue = parseFloat(worker_price);
     const ratingValue = parseFloat(rating);
     const instantServiceValue = instant_service ? parseInt(instant_service) : 0;
     const statusValue = status !== undefined ? parseInt(status) : 1;
@@ -7481,11 +7488,23 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
 
     if (req.file) {
       const imageFileName = req.file.filename;
-      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, image = ?, price = ?, rating = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
-      values = [name.trim(), subcategory_id, imageFileName, priceValue, ratingValue, instantServiceValue, statusValue, visibilityValue, id];
+      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, image = ?, customer_price = ?, worker_price = ?, rating = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
+      values = [name.trim(), subcategory_id, imageFileName, customerPriceValue, workerPriceValue, ratingValue, instantServiceValue, statusValue, visibilityValue, id];
     } else {
-      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, price = ?, rating = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
-      values = [name.trim(), subcategory_id, priceValue, ratingValue, instantServiceValue, statusValue, visibilityValue, id];
+      updateQuery = `UPDATE tbl_services SET name = ?, subcategory_id = ?, customer_price = ?, worker_price = ?, rating = ?, instant_service = ?, status = ?, visibility = ? WHERE id = ?`;
+
+      values = [
+      name.trim(),
+      subcategory_id,
+      customerPriceValue,
+      workerPriceValue,
+      ratingValue,
+      instantServiceValue,
+      statusValue,
+      visibilityValue,
+      id
+    ];
+    
     }
 
     await pool.execute(updateQuery, values);
