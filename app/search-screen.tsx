@@ -212,10 +212,11 @@ export default function SearchScreen() {
     return {
       id: service.id,
       name: service.name,
-      price: service.deal_price || service.price || 0,
       image: imageUrl,
       subcategory_id: service.subcategory_id,
       instant_service: service.instant_service ?? 0,
+      deal_price: service.deal_price,
+      customer_price: service.price,
     };
   };
 
@@ -234,17 +235,9 @@ export default function SearchScreen() {
   // Calculate cart totals
   const cartTotal = useMemo(() => {
     const itemCount = getTotalItems();
-    const services = searchResults
-      .filter(r => r.type === 'service')
-      .map(r => ({ 
-        id: r.id, 
-        name: r.name, 
-        price: r.price, 
-        image: r.image || undefined 
-      }));
-    const total = getTotalPrice(services as any);
+    const total = getTotalPrice();
     return { total, itemCount };
-  }, [cart, searchResults, getTotalItems, getTotalPrice]);
+  }, [cart, getTotalItems, getTotalPrice]);
 
   const styles = createStyles(screenWidth, screenHeight);
   const isInstantService = (value?: SearchResult['instant_service']) => {

@@ -104,7 +104,8 @@ export default function CartScreen() {
         quantity
       });
       group.totalServices += quantity;
-      group.totalPrice += (service.price || 0) * quantity;
+      const priceToUse = (service.deal_price && service.deal_price > 0) ? service.deal_price : (service.customer_price || 0);
+      group.totalPrice += priceToUse * quantity;
     });
 
     return Array.from(grouped.values());

@@ -2857,7 +2857,7 @@ app.get('/api/top-services', async (req, res) => {
           s.name,
           s.subcategory_id,
           s.image,
-          COALESCE(d.deal_price, s.customer_price) AS price,
+          COALESCE(NULLIF(d.deal_price, 0), s.customer_price) AS price,
           s.rating,
           s.created_at,
           s.instant_service,
@@ -2893,7 +2893,7 @@ app.get('/api/top-services', async (req, res) => {
             s.name,
             s.subcategory_id,
             s.image,
-            COALESCE(d.deal_price, s.customer_price) AS price,
+            COALESCE(NULLIF(d.deal_price, 0), s.customer_price) AS price,
             s.rating,
             s.created_at,
             s.instant_service,
@@ -3079,7 +3079,7 @@ app.get('/api/services/search', async (req, res) => {
         s.name, 
         s.subcategory_id, 
         s.image, 
-        COALESCE(d.deal_price, s.customer_price) AS price, 
+        COALESCE(NULLIF(d.deal_price, 0), s.customer_price) AS price, 
         s.rating, 
         s.created_at,
         s.instant_service
@@ -3183,7 +3183,7 @@ app.get('/api/services-by-category/:categoryId', async (req, res) => {
         s.name, 
         s.subcategory_id, 
         s.image, 
-        COALESCE(d.deal_price, s.customer_price) AS price, 
+        COALESCE(NULLIF(d.deal_price, 0), s.customer_price) AS price, 
         s.rating, 
         s.created_at,
         s.instant_service
@@ -3240,7 +3240,7 @@ app.get('/api/services/:subcategoryId', async (req, res) => {
         s.name, 
         s.subcategory_id, 
         s.image, 
-        COALESCE(d.deal_price, s.customer_price) AS price, 
+        COALESCE(NULLIF(d.deal_price, 0), s.customer_price) AS price, 
         s.rating, 
         s.created_at,
         s.instant_service
@@ -7504,7 +7504,7 @@ app.put('/api/admin/services/:id', upload.single('image'), async (req, res) => {
       visibilityValue,
       id
     ];
-    
+
     }
 
     await pool.execute(updateQuery, values);

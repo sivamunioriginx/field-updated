@@ -378,6 +378,8 @@ export default function ServicesScreen() {
       image: imageUrl,
       subcategory_id: service.subcategory_id,
       instant_service: service.instant_service ?? 0,
+      deal_price: service.deal_price,
+      customer_price: service.price,
     };
   };
 
@@ -396,9 +398,9 @@ export default function ServicesScreen() {
   // Calculate cart totals
   const cartTotal = useMemo(() => {
     const itemCount = getTotalItems();
-    const total = getTotalPrice(services);
+    const total = getTotalPrice();
     return { total, itemCount };
-  }, [cart, services, getTotalItems, getTotalPrice]);
+  }, [cart, getTotalItems, getTotalPrice]);
 
   // Fetch FAQs and process data for a service
   const fetchFaqsProcess = async (serviceId: number) => {
