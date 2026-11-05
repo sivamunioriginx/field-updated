@@ -1,8 +1,10 @@
 package com.yourcompany.field
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -10,10 +12,19 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.MapView
+import com.google.android.gms.maps.MapsInitializer
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.PolylineOptions
 import com.yourcompany.field.BuildConfig
-import com.yourcompany.field.MainActivity
 import com.yourcompany.field.R
 import okhttp3.MediaType.Companion.toMediaType
+import org.json.JSONObject
 
 class FullScreenNotificationOverlay(private val context: Context) {
     
@@ -21,13 +32,15 @@ class FullScreenNotificationOverlay(private val context: Context) {
     private var overlayView: View? = null
     private var isShowing = false
     private var currentBookingId: String? = null
+    private var mapView: MapView? = null
+    private var googleMap: GoogleMap? = null
     
     companion object {
         private const val OVERLAY_TAG = "FullScreenNotificationOverlay"
         // NOTE: Keep DEV_API_BASE_URL in sync with BASE_URL in constants/api.ts
-        // Extract base URL from constants/api.ts: getBaseUrl() return value without /api suffix, then add /api
         private const val DEV_API_BASE_URL = "http://192.168.31.84:3001/api"
         private const val PROD_API_BASE_URL = "https://lois-nonenvironmental-alisa.ngrok-free.dev/api"
+        private const val GOOGLE_MAPS_API_KEY = "AIzaSyAL-aVnUdrc0p2o0iWCSsjgKoqW5ywd0MQ"
 
         private fun getApiBaseUrl(): String {
             return if (BuildConfig.DEBUG) DEV_API_BASE_URL else PROD_API_BASE_URL
@@ -53,17 +66,19 @@ class FullScreenNotificationOverlay(private val context: Context) {
         workDescription: String? = null,
         bookingTime: String? = null,
         bookingId: String? = null,
-        workerId: String? = null
+        workerId: String? = null,
+        workerLat: String? = null,
+        workerLng: String? = null,
+        workLat: String? = null,
+        workLng: String? = null
     ) {
         if (isShowing) {
             hide()
         }
         
-        // Check if app is in foreground
         val isAppInForeground = isAppInForeground()
         android.util.Log.d("FullScreenOverlay", "🚨 App in foreground: $isAppInForeground")
         
-        // Ensure UI operations run on main thread
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
                 createOverlayView(
@@ -78,7 +93,11 @@ class FullScreenNotificationOverlay(private val context: Context) {
                     workDescription,
                     bookingTime,
                     bookingId,
-                    workerId
+                    workerId,
+                    workerLat,
+                    workerLng,
+                    workLat,
+                    workLng
                 )
                 addOverlayToWindow()
                 isShowing = true
@@ -90,9 +109,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
     }
     
-    /**
-     * Check if the app is currently in the foreground
-     */
     private fun isAppInForeground(): Boolean {
         return try {
             val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
@@ -109,11 +125,9 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
     }
     
-    /**
-     * Hide the overlay immediately
-     */
     fun hide() {
         try {
+            teardownMap()
             overlayView?.let { view ->
                 windowManager?.removeView(view)
                 android.util.Log.d("FullScreenOverlay", "🚨 Overlay removed from window")
@@ -129,9 +143,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
     }
     
-    /**
-     * Check if overlay is currently showing
-     */
     fun isOverlayShowing(): Boolean = isShowing
     
     private fun createOverlayView(
@@ -146,86 +157,262 @@ class FullScreenNotificationOverlay(private val context: Context) {
         workDescription: String?,
         bookingTime: String?,
         bookingId: String?,
-        workerId: String?
+        workerId: String?,
+        workerLat: String?,
+        workerLng: String?,
+        workLat: String?,
+        workLng: String?
     ) {
         currentBookingId = bookingId
         val inflater = LayoutInflater.from(context)
         overlayView = inflater.inflate(R.layout.overlay_fullscreen_notification, null)
         
-        // Initialize views
         val titleText = overlayView?.findViewById<TextView>(R.id.overlay_title)
         val bodyText = overlayView?.findViewById<TextView>(R.id.overlay_body)
         val iconImage = overlayView?.findViewById<ImageView>(R.id.overlay_icon)
         val acceptButton = overlayView?.findViewById<Button>(R.id.btn_accept)
         val rejectButton = overlayView?.findViewById<Button>(R.id.btn_reject)
         
-        // Initialize booking data views
         val customerNameText = overlayView?.findViewById<TextView>(R.id.booking_customer_name)
         val customerMobileText = overlayView?.findViewById<TextView>(R.id.booking_customer_mobile)
         val workAddressText = overlayView?.findViewById<TextView>(R.id.booking_work_address)
-        val workDistanceText = overlayView?.findViewById<TextView>(R.id.booking_work_distance)
         val workDescriptionText = overlayView?.findViewById<TextView>(R.id.booking_work_description)
-        val workOriginalDistanceText = overlayView?.findViewById<TextView>(R.id.booking_work_original_distance)
         val bookingTimeText = overlayView?.findViewById<TextView>(R.id.booking_time)
-        val bookingIdText = overlayView?.findViewById<TextView>(R.id.booking_id)
+        val mapLoadingText = overlayView?.findViewById<TextView>(R.id.booking_map_loading)
+        mapView = overlayView?.findViewById(R.id.booking_route_map)
         
-        // Set content
         titleText?.text = title
-        bodyText?.text = body
+        bodyText?.visibility = View.GONE
         iconImage?.setImageResource(iconRes)
         
-        // Set booking data
         customerNameText?.text = "Customer: ${customerName ?: "N/A"}"
         customerMobileText?.text = "Mobile: ${customerMobile ?: "N/A"}"
         workAddressText?.text = "Location: ${workAddress ?: "N/A"}"
-        
-        // Set distance with visibility control
-        if (!workLocationDistance.isNullOrEmpty()) {
-            workDistanceText?.text = "Distance From Your Current Location: $workLocationDistance"
-            workDistanceText?.visibility = android.view.View.VISIBLE
-        } else {
-            workDistanceText?.visibility = android.view.View.GONE
-        }
-
-        if (!workOriginalDistance.isNullOrEmpty()) {
-            workOriginalDistanceText?.text = "Distance From Your Original Location: $workOriginalDistance"
-            workOriginalDistanceText?.visibility = android.view.View.VISIBLE
-        } else {
-            workOriginalDistanceText?.visibility = android.view.View.GONE
-        }
-        
         workDescriptionText?.text = "Description: ${workDescription ?: "N/A"}"
         bookingTimeText?.text = "Booking For: ${formatBookingTime(bookingTime)}"
-        bookingIdText?.text = "Booking ID: ${bookingId ?: "N/A"}"
         
-        // Set click listeners with immediate hide and click protection
+        setupRouteMap(workerLat, workerLng, workLat, workLng, mapLoadingText)
+        
         acceptButton?.setOnClickListener {
-            // Disable buttons immediately to prevent multiple clicks
             acceptButton.isEnabled = false
             rejectButton?.isEnabled = false
             MyFirebaseMessagingService.markBookingHandled(bookingId)
-            
-            // Hide overlay immediately for better UX
             stopVibrationAndHide()
-            
-            // Handle accept in background thread
             Thread { handleAcceptClick(bookingId, workerId) }.start()
         }
         
         rejectButton?.setOnClickListener {
-            // Disable buttons immediately to prevent multiple clicks
             acceptButton?.isEnabled = false
             rejectButton.isEnabled = false
             MyFirebaseMessagingService.markBookingHandled(bookingId)
-            
-            // Hide overlay immediately for better UX
             stopVibrationAndHide()
-            
-            // Handle reject in background thread
             Thread { handleRejectClick(bookingId, workerId) }.start()
         }
-        
-        // Remove auto-dismiss - notification persists until user action
+    }
+
+    private fun setupRouteMap(
+        workerLat: String?,
+        workerLng: String?,
+        workLat: String?,
+        workLng: String?,
+        etaBadgeText: TextView?
+    ) {
+        val originLat = workerLat?.toDoubleOrNull()
+        val originLng = workerLng?.toDoubleOrNull()
+        val destLat = workLat?.toDoubleOrNull()
+        val destLng = workLng?.toDoubleOrNull()
+
+        if (originLat == null || originLng == null || destLat == null || destLng == null) {
+            etaBadgeText?.text = "Map unavailable"
+            android.util.Log.w(
+                "FullScreenOverlay",
+                "⚠️ Missing coords worker=($workerLat,$workerLng) work=($workLat,$workLng)"
+            )
+            return
+        }
+
+        val origin = LatLng(originLat, originLng)
+        val destination = LatLng(destLat, destLng)
+
+        try {
+            MapsInitializer.initialize(context)
+            mapView?.onCreate(Bundle())
+            mapView?.onResume()
+            mapView?.getMapAsync { map ->
+                googleMap = map
+                map.uiSettings.isZoomControlsEnabled = false
+                map.uiSettings.isMapToolbarEnabled = false
+                map.uiSettings.isMyLocationButtonEnabled = false
+                map.isTrafficEnabled = true
+                // Hide business/POI icons (e.g. shopping bag markers)
+                try {
+                    map.setMapStyle(
+                        com.google.android.gms.maps.model.MapStyleOptions(
+                            """[{"featureType":"poi","stylers":[{"visibility":"off"}]}]"""
+                        )
+                    )
+                } catch (_: Exception) { }
+
+                map.addMarker(
+                    MarkerOptions()
+                        .position(origin)
+                        .title("You")
+                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
+                )
+                map.addMarker(
+                    MarkerOptions()
+                        .position(destination)
+                        .title("Job location")
+                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                )
+
+                val bounds = LatLngBounds.builder()
+                    .include(origin)
+                    .include(destination)
+                    .build()
+                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 80))
+
+                fetchAndDrawNearestRoute(origin, destination, map, etaBadgeText)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FullScreenOverlay", "❌ Map setup failed: ${e.message}", e)
+            etaBadgeText?.text = "Map failed to load"
+        }
+    }
+
+    private fun fetchAndDrawNearestRoute(
+        origin: LatLng,
+        destination: LatLng,
+        map: GoogleMap,
+        etaBadgeText: TextView?
+    ) {
+        Thread {
+            try {
+                val url =
+                    "https://maps.googleapis.com/maps/api/directions/json" +
+                        "?origin=${origin.latitude},${origin.longitude}" +
+                        "&destination=${destination.latitude},${destination.longitude}" +
+                        "&mode=driving" +
+                        "&departure_time=now" +
+                        "&traffic_model=best_guess" +
+                        "&alternatives=false" +
+                        "&key=$GOOGLE_MAPS_API_KEY"
+
+                val client = okhttp3.OkHttpClient()
+                val request = okhttp3.Request.Builder().url(url).get().build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                val json = JSONObject(body)
+                val status = json.optString("status")
+
+                if (status != "OK") {
+                    android.util.Log.e("FullScreenOverlay", "❌ Directions API status=$status body=$body")
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        etaBadgeText?.text = "Route unavailable"
+                        drawStraightFallback(map, origin, destination)
+                    }
+                    return@Thread
+                }
+
+                val route = json.getJSONArray("routes").getJSONObject(0)
+                val leg = route.getJSONArray("legs").getJSONObject(0)
+                val distanceText = leg.getJSONObject("distance").optString("text", "N/A")
+                val durationTraffic = leg.optJSONObject("duration_in_traffic")
+                val durationText = durationTraffic?.optString("text")
+                    ?: leg.getJSONObject("duration").optString("text", "N/A")
+                val points = route.getJSONObject("overview_polyline").optString("points")
+                val path = decodePolyline(points)
+                val etaLabel = "$durationText ($distanceText)"
+
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (path.isNotEmpty()) {
+                        map.addPolyline(
+                            PolylineOptions()
+                                .addAll(path)
+                                .width(10f)
+                                .color(Color.parseColor("#2563EB"))
+                                .geodesic(true)
+                        )
+                        val builder = LatLngBounds.builder()
+                        path.forEach { builder.include(it) }
+                        try {
+                            map.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 90))
+                        } catch (_: Exception) {
+                            map.moveCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 90))
+                        }
+                    } else {
+                        drawStraightFallback(map, origin, destination)
+                    }
+                    etaBadgeText?.text = etaLabel
+                    etaBadgeText?.visibility = View.VISIBLE
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FullScreenOverlay", "❌ Directions fetch failed: ${e.message}", e)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    etaBadgeText?.text = "Route unavailable"
+                    drawStraightFallback(map, origin, destination)
+                }
+            }
+        }.start()
+    }
+
+    private fun drawStraightFallback(map: GoogleMap, origin: LatLng, destination: LatLng) {
+        map.addPolyline(
+            PolylineOptions()
+                .add(origin, destination)
+                .width(8f)
+                .color(Color.parseColor("#718096"))
+        )
+    }
+
+    /**
+     * Decodes Google encoded polyline algorithm into LatLng points.
+     */
+    private fun decodePolyline(encoded: String?): List<LatLng> {
+        if (encoded.isNullOrEmpty()) return emptyList()
+        val poly = ArrayList<LatLng>()
+        var index = 0
+        val len = encoded.length
+        var lat = 0
+        var lng = 0
+
+        while (index < len) {
+            var b: Int
+            var shift = 0
+            var result = 0
+            do {
+                b = encoded[index++].code - 63
+                result = result or ((b and 0x1f) shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            val dlat = if ((result and 1) != 0) (result shr 1).inv() else result shr 1
+            lat += dlat
+
+            shift = 0
+            result = 0
+            do {
+                b = encoded[index++].code - 63
+                result = result or ((b and 0x1f) shl shift)
+                shift += 5
+            } while (b >= 0x20)
+            val dlng = if ((result and 1) != 0) (result shr 1).inv() else result shr 1
+            lng += dlng
+
+            poly.add(LatLng(lat / 1E5, lng / 1E5))
+        }
+        return poly
+    }
+
+    private fun teardownMap() {
+        try {
+            googleMap = null
+            mapView?.onPause()
+            mapView?.onDestroy()
+        } catch (e: Exception) {
+            android.util.Log.w("FullScreenOverlay", "⚠️ Map teardown: ${e.message}")
+        } finally {
+            mapView = null
+        }
     }
     
     private fun addOverlayToWindow() {
@@ -244,7 +431,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
     private fun createLayoutParams(): WindowManager.LayoutParams {
         val layoutParams = WindowManager.LayoutParams()
         
-        // Set window type based on Android version
         layoutParams.type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -252,7 +438,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         
-        // Set flags for overlay behavior - optimized for background/killed state
         layoutParams.flags = (
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -265,12 +450,9 @@ class FullScreenNotificationOverlay(private val context: Context) {
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
         
-        // Set size and position
         layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
         layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
         layoutParams.gravity = Gravity.CENTER
-        
-        // Set format
         layoutParams.format = PixelFormat.TRANSLUCENT
         
         return layoutParams
@@ -286,7 +468,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
                 return
             }
             
-            // Call backend API to accept booking
             acceptBookingOnBackend(bookingId, resolvedWorkerId)
             
         } catch (e: Exception) {
@@ -305,7 +486,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
                 return
             }
             
-            // Call backend API to reject booking
             rejectBookingOnBackend(bookingId, resolvedWorkerId)
             
         } catch (e: Exception) {
@@ -314,23 +494,15 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
     }
     
-    /**
-     * Stop vibration and hide overlay when user takes action
-     */
     private fun stopVibrationAndHide() {
-        // Hide overlay immediately for better UX
         hide()
         MyFirebaseMessagingService.clearActiveOverlayBooking(currentBookingId)
         
-        // Cleanup operations in background thread to avoid blocking UI
         Thread {
             try {
-                // Stop vibration
-                val firebaseService = MyFirebaseMessagingService()
-                firebaseService.stopContinuousVibration()
+                MyFirebaseMessagingService.stopOverlayVibration()
                 android.util.Log.d("FullScreenOverlay", "📳 Vibration stopped by user action")
                 
-                // Stop overlay service
                 if (context is OverlayNotificationService) {
                     context.stopVibrationAndService()
                 }
@@ -340,9 +512,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }.start()
     }
     
-    /**
-     * Call backend API to accept booking
-     */
     private fun acceptBookingOnBackend(bookingId: String?, workerId: String) {
         if (bookingId == null) {
             android.util.Log.e("FullScreenOverlay", "❌ Booking ID is null")
@@ -359,7 +528,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
             try {
                 val url = "${getApiBaseUrl()}/accept-booking-alert"
                 
-                val json = org.json.JSONObject().apply {
+                val json = JSONObject().apply {
                     put("booking_id", bookingId)
                     put("worker_id", workerIdInt)
                     put("action", "accept")
@@ -382,18 +551,12 @@ class FullScreenNotificationOverlay(private val context: Context) {
                 
                 android.util.Log.d("FullScreenOverlay", "✅ Accept API response: $responseBody")
                 
-                // API call completed successfully - overlay already hidden
-                
             } catch (e: Exception) {
                 android.util.Log.e("FullScreenOverlay", "❌ Error calling accept API: ${e.message}")
-                // API call failed but overlay already hidden
             }
         }.start()
     }
     
-    /**
-     * Call backend API to reject booking
-     */
     private fun rejectBookingOnBackend(bookingId: String?, workerId: String) {
         if (bookingId == null) {
             android.util.Log.e("FullScreenOverlay", "❌ Booking ID is null")
@@ -410,7 +573,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
             try {
                 val url = "${getApiBaseUrl()}/reject-booking-alert"
                 
-                val json = org.json.JSONObject().apply {
+                val json = JSONObject().apply {
                     put("booking_id", bookingId)
                     put("worker_id", workerIdInt)
                     put("reason", "Booking Failed")
@@ -433,11 +596,8 @@ class FullScreenNotificationOverlay(private val context: Context) {
                 
                 android.util.Log.d("FullScreenOverlay", "✅ Reject API response: $responseBody")
                 
-                // API call completed successfully - overlay already hidden
-                
             } catch (e: Exception) {
                 android.util.Log.e("FullScreenOverlay", "❌ Error calling reject API: ${e.message}")
-                // API call failed but overlay already hidden
             }
         }.start()
     }
@@ -458,7 +618,7 @@ class FullScreenNotificationOverlay(private val context: Context) {
     
     private fun getStoredWorkerId(): String? {
         return try {
-            val sharedPrefs = context.getSharedPreferences("worker_prefs", android.content.Context.MODE_PRIVATE)
+            val sharedPrefs = context.getSharedPreferences("worker_prefs", Context.MODE_PRIVATE)
             sharedPrefs.getString("worker_id", null)
         } catch (e: Exception) {
             android.util.Log.e("FullScreenOverlay", "❌ Error reading worker ID from storage: ${e.message}")
@@ -466,9 +626,6 @@ class FullScreenNotificationOverlay(private val context: Context) {
         }
     }
     
-    /**
-     * Format booking time to readable format like "2025-09-27 12:30:00 PM"
-     */
     private fun formatBookingTime(bookingTime: String?): String {
         if (bookingTime.isNullOrEmpty()) {
             return "N/A"
@@ -476,38 +633,32 @@ class FullScreenNotificationOverlay(private val context: Context) {
 
         val outputFormat = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm:ss a", java.util.Locale.getDefault())
         val possibleFormats = listOf(
-            "yyyy-MM-dd HH:mm:ss",                // Backend format (e.g., 2025-11-28 13:30:00)
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",      // ISO with millis
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",          // ISO without millis
-            "yyyy-MM-dd'T'HH:mm:ss.SSS",         // ISO with millis, no Z
-            "yyyy-MM-dd'T'HH:mm:ss"               // ISO without millis, no Z
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss"
         )
 
         for (pattern in possibleFormats) {
             try {
                 val inputFormat = java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault())
-                // Set timezone to UTC for ISO formats, or use system default for non-ISO formats
                 if (pattern.contains("'Z'")) {
                     inputFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
                 } else {
-                    // For non-ISO formats like "yyyy-MM-dd HH:mm:ss", use system timezone
-                    // This ensures 13:30:00 stays as 13:30:00 (1:30 PM) without timezone conversion
                     inputFormat.timeZone = java.util.TimeZone.getDefault()
                 }
                 
                 val date = inputFormat.parse(bookingTime)
                 if (date != null) {
-                    // Use system timezone for output to ensure correct local time display
                     outputFormat.timeZone = java.util.TimeZone.getDefault()
                     return outputFormat.format(date)
                 }
             } catch (e: Exception) {
                 android.util.Log.d("FullScreenOverlay", "⚠️ Failed to parse time with pattern $pattern: ${e.message}")
-                // Try next pattern
             }
         }
 
-        // Fallback to original string if nothing matched
         android.util.Log.w("FullScreenOverlay", "⚠️ Could not parse booking time: $bookingTime")
         return bookingTime
     }

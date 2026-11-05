@@ -29,6 +29,10 @@ class OverlayNotificationService : Service() {
         private const val EXTRA_BOOKING_TIME = "booking_time"
         private const val EXTRA_BOOKING_ID = "booking_id"
         private const val EXTRA_WORKER_ID = "worker_id"
+        private const val EXTRA_WORKER_LAT = "worker_lat"
+        private const val EXTRA_WORKER_LNG = "worker_lng"
+        private const val EXTRA_WORK_LAT = "work_lat"
+        private const val EXTRA_WORK_LNG = "work_lng"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "overlay_service_channel"
         
@@ -45,7 +49,11 @@ class OverlayNotificationService : Service() {
             workDescription: String? = null,
             bookingTime: String? = null,
             bookingId: String? = null,
-            workerId: String? = null
+            workerId: String? = null,
+            workerLat: String? = null,
+            workerLng: String? = null,
+            workLat: String? = null,
+            workLng: String? = null
         ) {
             val intent = Intent(context, OverlayNotificationService::class.java).apply {
                 action = ACTION_SHOW_OVERLAY
@@ -61,6 +69,10 @@ class OverlayNotificationService : Service() {
                 putExtra(EXTRA_BOOKING_TIME, bookingTime)
                 putExtra(EXTRA_BOOKING_ID, bookingId)
                 putExtra(EXTRA_WORKER_ID, workerId)
+                putExtra(EXTRA_WORKER_LAT, workerLat)
+                putExtra(EXTRA_WORKER_LNG, workerLng)
+                putExtra(EXTRA_WORK_LAT, workLat)
+                putExtra(EXTRA_WORK_LNG, workLng)
             }
             context.startService(intent)
         }
@@ -85,6 +97,10 @@ class OverlayNotificationService : Service() {
                 val bookingTime = intent.getStringExtra(EXTRA_BOOKING_TIME)
                 val bookingId = intent.getStringExtra(EXTRA_BOOKING_ID)
                 val workerId = intent.getStringExtra(EXTRA_WORKER_ID)
+                val workerLat = intent.getStringExtra(EXTRA_WORKER_LAT)
+                val workerLng = intent.getStringExtra(EXTRA_WORKER_LNG)
+                val workLat = intent.getStringExtra(EXTRA_WORK_LAT)
+                val workLng = intent.getStringExtra(EXTRA_WORK_LNG)
                 
                 Log.d("OverlayService", "🚨 Showing overlay from service - Title: $title")
                 Log.d("OverlayService", "🚨 Service context: ${this}")
@@ -93,6 +109,9 @@ class OverlayNotificationService : Service() {
                 
                 // Start as foreground service for better background support
                 startForegroundService()
+
+                // Keep vibrating from this long-lived service until Accept/Reject
+                MyFirebaseMessagingService.startOverlayVibration(this)
                 
                 // Add small delay to ensure service is properly started
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -111,8 +130,14 @@ class OverlayNotificationService : Service() {
                             workDescription,
                             bookingTime,
                             bookingId,
-                            workerId
+                            workerId,
+                            workerLat,
+                            workerLng,
+                            workLat,
+                            workLng
                         )
+                        // Re-assert vibration after overlay is up (FCM service may have ended)
+                        MyFirebaseMessagingService.startOverlayVibration(this)
                         Log.d("OverlayService", "🚨 Overlay creation completed")
                         
                         // Keep service running until user accepts/rejects
@@ -120,6 +145,7 @@ class OverlayNotificationService : Service() {
                         
                     } catch (e: Exception) {
                         Log.e("OverlayService", "❌ Error showing overlay: ${e.message}", e)
+                        MyFirebaseMessagingService.stopOverlayVibration()
                         stopSelf()
                     }
                 }, 500) // 500ms delay for better reliability
@@ -150,8 +176,7 @@ class OverlayNotificationService : Service() {
         
         // Stop vibration when service is destroyed
         try {
-            val firebaseService = MyFirebaseMessagingService()
-            firebaseService.stopContinuousVibration()
+            MyFirebaseMessagingService.stopOverlayVibration()
             Log.d("OverlayService", "📳 Vibration stopped on service destroy")
         } catch (e: Exception) {
             Log.e("OverlayService", "❌ Error stopping vibration: ${e.message}")
@@ -214,8 +239,7 @@ class OverlayNotificationService : Service() {
      */
     fun stopVibrationAndService() {
         try {
-            val firebaseService = MyFirebaseMessagingService()
-            firebaseService.stopContinuousVibration()
+            MyFirebaseMessagingService.stopOverlayVibration()
             Log.d("OverlayService", "📳 Vibration stopped by user action")
         } catch (e: Exception) {
             Log.e("OverlayService", "❌ Error stopping vibration: ${e.message}")

@@ -4245,6 +4245,8 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
     // Calculate distance if work location coordinates are available
     let distance = null;
     let distanceText = '';
+    let workerLat = null;
+    let workerLng = null;
     if (bookingData.work_location_lat && bookingData.work_location_lng) {
       try {
         // Get worker's current location from tbl_workerlocation
@@ -4254,8 +4256,8 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
         );
 
         if (workerLocations.length > 0 && workerLocations[0].latitude && workerLocations[0].longitude) {
-          const workerLat = parseFloat(workerLocations[0].latitude);
-          const workerLng = parseFloat(workerLocations[0].longitude);
+          workerLat = parseFloat(workerLocations[0].latitude);
+          workerLng = parseFloat(workerLocations[0].longitude);
           const workLat = parseFloat(bookingData.work_location_lat);
           const workLng = parseFloat(bookingData.work_location_lng);
 
@@ -4338,6 +4340,11 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
         worker_id: String(workerId),
         timestamp: String(Date.now()),
         work_type: String(bookingData.work_type || 'Service Request'),
+        // Coordinates for in-app route map (worker current → job)
+        worker_lat: workerLat != null ? String(workerLat) : '',
+        worker_lng: workerLng != null ? String(workerLng) : '',
+        work_location_lat: bookingData.work_location_lat != null ? String(bookingData.work_location_lat) : '',
+        work_location_lng: bookingData.work_location_lng != null ? String(bookingData.work_location_lng) : '',
         // Add notification content to data payload so our service can create the notification
         notification_title: '🚨 URGENT: New Booking Request!',
         notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
@@ -4382,11 +4389,14 @@ const sendBookingAlertNotification = async (workerId, bookingData) => {
             work_location: String(bookingData.work_location || ''),
             work_location_distance: String(distanceText || ''),
             work_location_distance_original: String(originalDistanceText || ''),
-            work_location_distance_original: String(originalDistanceText || ''),
             description: String(bookingData.description || ''),
             booking_time: bookingTimeStr,
             worker_id: String(workerId),
             timestamp: String(Date.now()),
+            worker_lat: workerLat != null ? String(workerLat) : '',
+            worker_lng: workerLng != null ? String(workerLng) : '',
+            work_location_lat: bookingData.work_location_lat != null ? String(bookingData.work_location_lat) : '',
+            work_location_lng: bookingData.work_location_lng != null ? String(bookingData.work_location_lng) : '',
             notification_title: '🚨 URGENT: New Booking Request!',
             notification_body: `${bookingData.customer_name} needs ${bookingData.work_type || 'service'} at ${bookingData.work_location}`,
           }
@@ -4447,6 +4457,30 @@ app.post('/api/send-otp', async (req, res) => {
   }
 
   if (userType === 'professional') {
+    const [SigninWorker] = await pool.execute(
+      'SELECT id FROM tbl_workers WHERE mobile = ? LIMIT 1',
+      [mobile]
+    );
+    if (SigninWorker.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Worker is Not Founded Sign Up Before Login'
+      });
+    }
+  } else {
+    const [SigninCustomer] = await pool.execute(
+      'SELECT id FROM tbl_serviceseeker WHERE mobile = ? LIMIT 1',
+      [mobile]
+    );
+    if (SigninCustomer.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer is Not Founded Sign Up Before Login'
+      });
+    }
+  }
+
+if (userType === 'professional') {
     const [ActiveWorker] = await pool.execute(
       'SELECT id FROM tbl_workers WHERE mobile = ? AND status = ? LIMIT 1',
       [mobile, 1]

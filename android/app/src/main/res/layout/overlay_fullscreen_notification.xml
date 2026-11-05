@@ -5,15 +5,18 @@
     android:orientation="vertical"
     android:background="#CC000000"
     android:gravity="center"
-    android:padding="20dp">
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp"
+    android:paddingTop="40dp"
+    android:paddingBottom="40dp">
 
     <!-- Main notification container -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@drawable/overlay_notification_background"
-        android:padding="24dp"
+        android:padding="20dp"
         android:elevation="8dp">
 
         <!-- Header with icon and title -->
@@ -22,7 +25,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="12dp">
 
             <ImageView
                 android:id="@+id/overlay_icon"
@@ -44,25 +47,22 @@
 
         </LinearLayout>
 
-        <!-- Body text -->
+        <!-- Hidden body (kept for ID compatibility; not shown) -->
         <TextView
             android:id="@+id/overlay_body"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="You have a new urgent booking request"
-            android:textSize="16sp"
-            android:textColor="#333333"
-            android:layout_marginBottom="20dp"
-            android:gravity="center" />
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone" />
 
-        <!-- Booking details -->
+        <!-- Booking details + map (map fills remaining space down to buttons) -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:background="@drawable/booking_details_background"
             android:padding="16dp"
-            android:layout_marginBottom="20dp"
+            android:layout_marginBottom="12dp"
             android:elevation="4dp">
 
             <TextView
@@ -113,56 +113,73 @@
                 android:textSize="15sp"
                 android:textColor="#1A202C"
                 android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginBottom="10dp" />
+
+            <!-- Route map fills all remaining space above ACCEPT/REJECT -->
+            <FrameLayout
+                android:id="@+id/booking_map_container"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="#E2E8F0">
+
+                <com.google.android.gms.maps.MapView
+                    android:id="@+id/booking_route_map"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/booking_map_loading"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal|top"
+                    android:layout_marginTop="12dp"
+                    android:text="Loading route…"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:background="#1D4ED8"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="8dp" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/booking_route_summary"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/booking_id"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Booking ID: N/A"
-                android:textSize="15sp"
-                android:textColor="#1A202C"
-                android:textStyle="bold"
-                android:layout_marginBottom="2dp" />
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
 
+            <!-- Kept for binary compatibility; permanently hidden -->
             <LinearLayout
                 android:id="@+id/booking_distance_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingTop="8dp"
-                android:paddingBottom="12dp"
-                android:paddingEnd="12dp"
-                android:paddingStart="0dp"
-                android:layout_marginTop="0dp">
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone"
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/booking_distance_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Distance Summary"
-                    android:textStyle="bold"
-                    android:textColor="#2D3748"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="6dp" />
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/booking_work_distance"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Distance From Your Current Location: N/A"
-                    android:textSize="15sp"
-                    android:textColor="#2D3748"
-                    android:layout_marginBottom="4dp" />
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/booking_work_original_distance"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Distance From Your Original Location: N/A"
-                    android:textSize="15sp"
-                    android:textColor="#2D3748" />
-
+                    android:visibility="gone" />
             </LinearLayout>
 
         </LinearLayout>
@@ -201,7 +218,6 @@
                 android:padding="12dp" />
 
         </LinearLayout>
-
 
     </LinearLayout>
 

@@ -50,6 +50,46 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         fun isOverlayBookingActive(bookingId: String?): Boolean {
             return bookingId != null && activeOverlayBookingId == bookingId
         }
+
+        /**
+         * Start repeating vibration until popup is dismissed.
+         * Must be started from OverlayNotificationService (long-lived), not only FCM.
+         */
+        fun startOverlayVibration(context: Context) {
+            try {
+                // Always (re)start — FCM may have started briefly then died after 1–2s
+                vibrator?.cancel()
+                isVibrating = true
+                vibrator = context.applicationContext.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+
+                // Vibrate 1s, pause 0.5s — repeat until stopOverlayVibration()
+                val pattern = longArrayOf(0, 1000, 500)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val vibrationEffect = VibrationEffect.createWaveform(pattern, 0)
+                    vibrator?.vibrate(vibrationEffect)
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(pattern, 0)
+                }
+                Log.d(TAG, "📳 Overlay vibration started (until popup dismissed)")
+            } catch (e: Exception) {
+                isVibrating = false
+                Log.e(TAG, "❌ Error starting overlay vibration: ${e.message}")
+            }
+        }
+
+        fun stopOverlayVibration() {
+            try {
+                if (isVibrating) {
+                    vibrator?.cancel()
+                    isVibrating = false
+                    Log.d(TAG, "📳 Overlay vibration stopped")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error stopping overlay vibration: ${e.message}")
+            }
+        }
     }
 
     // Override to prevent default notification display and handle it ourselves
@@ -164,6 +204,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val bookingId = data["booking_id"] ?: data["bookingId"]
             val workerId = data["worker_id"] ?: data["workerId"]
             val workOriginalDistance = data["work_location_distance_original"] ?: ""
+            val workerLat = data["worker_lat"] ?: data["workerLat"]
+            val workerLng = data["worker_lng"] ?: data["workerLng"]
+            val workLat = data["work_location_lat"] ?: data["work_lat"] ?: data["workLat"]
+            val workLng = data["work_location_lng"] ?: data["work_lng"] ?: data["workLng"]
             
             if (isBookingHandled(bookingId)) {
                 Log.d(TAG, "🚨 Booking $bookingId already handled locally, skipping overlay.")
@@ -184,7 +228,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 if (OverlayPermissionHelper.hasOverlayPermission(this)) {
                     Log.d(TAG, "🚨 Overlay permission granted, showing full-screen notification")
                     
-                    // Start continuous vibration
+                    // Vibration is started by OverlayNotificationService (keeps running until popup closes)
                     startContinuousVibration()
                     
                     try {
@@ -200,7 +244,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                             workDescription = workDescription,
                             bookingTime = bookingTime,
                             bookingId = bookingId,
-                            workerId = workerId
+                            workerId = workerId,
+                            workerLat = workerLat,
+                            workerLng = workerLng,
+                            workLat = workLat,
+                            workLng = workLng
                         )
                         Log.d(TAG, "🚨 Full-screen notification overlay displayed - Title: $title, Body: $body")
                     } catch (overlayError: Exception) {
@@ -283,7 +331,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         workDescription: String?,
         bookingTime: String?,
         bookingId: String?,
-        workerId: String?
+        workerId: String?,
+        workerLat: String? = null,
+        workerLng: String? = null,
+        workLat: String? = null,
+        workLng: String? = null
     ) {
         try {
             Log.d(TAG, "🚨 Attempting to show full-screen notification overlay")
@@ -302,7 +354,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 workDescription = workDescription,
                 bookingTime = bookingTime,
                 bookingId = bookingId,
-                workerId = workerId
+                workerId = workerId,
+                workerLat = workerLat,
+                workerLng = workerLng,
+                workLat = workLat,
+                workLng = workLng
             )
             
             Log.d(TAG, "🚨 Full-screen notification service started")
@@ -468,51 +524,16 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     /**
-     * Start continuous vibration for urgent booking alerts
+     * Start continuous vibration for urgent booking alerts (until popup dismissed)
      */
     private fun startContinuousVibration() {
-        try {
-            if (!isVibrating) {
-                isVibrating = true
-                vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                
-                Log.d(TAG, "📳 Starting continuous vibration for booking alert")
-                
-                // Create a simple repeating pattern: vibrate for 1 second, pause for 0.5 seconds
-                // This pattern will repeat indefinitely until stopped
-                val pattern = longArrayOf(0, 1000, 500)
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    // Use -1 to repeat indefinitely
-                    val vibrationEffect = VibrationEffect.createWaveform(pattern, -1)
-                    vibrator?.vibrate(vibrationEffect)
-                    Log.d(TAG, "📳 Continuous vibration started (Android O+)")
-                } else {
-                    @Suppress("DEPRECATION")
-                    // Use -1 to repeat indefinitely
-                    vibrator?.vibrate(pattern, -1)
-                    Log.d(TAG, "📳 Continuous vibration started (Legacy)")
-                }
-                
-                Log.d(TAG, "📳 Continuous vibration started - will repeat until user action")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error starting vibration: ${e.message}")
-        }
+        startOverlayVibration(this)
     }
 
     /**
      * Stop continuous vibration
      */
     fun stopContinuousVibration() {
-        try {
-            if (isVibrating) {
-                vibrator?.cancel()
-                isVibrating = false
-                Log.d(TAG, "📳 Continuous vibration stopped")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error stopping vibration: ${e.message}")
-        }
+        stopOverlayVibration()
     }
 }

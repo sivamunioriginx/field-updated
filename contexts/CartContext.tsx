@@ -9,6 +9,8 @@ export interface CartService {
   image?: string;
   subcategory_id?: string;
   instant_service?: number | string | boolean;
+  deal_price?: number;
+  customer_price?: number;
 }
 
 interface CartItem {
@@ -168,7 +170,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       const numericId = parseInt(serviceId);
       const service = services.find(s => s.id === numericId) || cartDetails[numericId];
       if (service) {
-        total += (service.price || 299) * quantity;
+        const priceToUse = (service.deal_price && service.deal_price > 0) ? service.deal_price : (service.customer_price || 299);
+        total += priceToUse * quantity;
       }
     });
     return total;
